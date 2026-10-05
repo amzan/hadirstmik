@@ -1,0 +1,10 @@
+{
+  "name": "Sistem Presensi QR Kampus - STMIK PGRI Arungbinang Kebumen",
+  "description": "Sistem presensi perkuliahan berbasis QR Code real-time dengan integrasi jadwal otomatis, modul dosen, mahasiswa, dan admin, serta ekspor laporan PDF dan Excel.",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
