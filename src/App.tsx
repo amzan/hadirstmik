@@ -23,6 +23,7 @@ const AppContent: React.FC = () => {
   const [isUnifiedLoginOpen, setIsUnifiedLoginOpen] = useState(false);
   const [isStudentLoginOpen, setIsStudentLoginOpen] = useState(false);
   const [unifiedLoginTab, setUnifiedLoginTab] = useState<'dosen' | 'admin'>('dosen');
+  const [activeRoleTab, setActiveRoleTab] = useState<'mahasiswa' | 'dosen' | 'admin'>('mahasiswa');
 
   // Authentication session state (DEFAULT: FALSE - always lands on Home Page on initial load/refresh)
   // "tidak boleh menampilkan tampilan user yang login sebelumnya."
@@ -66,23 +67,33 @@ const AppContent: React.FC = () => {
     };
   }, [isAuthenticated, lastActivityTimestamp]);
 
-  // Handlers to open each user's login portal
+  // Handlers to open each user's login portal / switch role tab
   const handleOpenStudentLogin = useCallback(() => {
     setInactivityNotice(null);
-    setIsStudentLoginOpen(true);
+    setActiveRoleTab('mahasiswa');
+    setIsStudentLoginOpen(false);
   }, []);
 
   const handleOpenDosenLogin = useCallback(() => {
     setInactivityNotice(null);
+    setActiveRoleTab('dosen');
     setUnifiedLoginTab('dosen');
-    setIsUnifiedLoginOpen(true);
   }, []);
 
   const handleOpenBaakLogin = useCallback(() => {
     setInactivityNotice(null);
+    setActiveRoleTab('admin');
     setUnifiedLoginTab('admin');
-    setIsUnifiedLoginOpen(true);
   }, []);
+
+  const handleLoginSuccess = useCallback((user: any) => {
+    setCurrentUser(user);
+    setIsAuthenticated(true);
+    setIsRoleSwitcherOpen(false);
+    setIsUnifiedLoginOpen(false);
+    setIsStudentLoginOpen(false);
+    setInactivityNotice(null);
+  }, [setCurrentUser]);
 
   const handleLogout = useCallback(() => {
     setIsAuthenticated(false);
@@ -93,7 +104,7 @@ const AppContent: React.FC = () => {
   }, []);
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-50 font-sans text-slate-900">
+    <div className="min-h-screen flex flex-col bg-slate-50 font-sans text-slate-900 w-full max-w-full overflow-x-hidden">
       {/* Campus Header & System Bar */}
       <Header
         isLoggedOut={!isAuthenticated}
@@ -109,13 +120,13 @@ const AppContent: React.FC = () => {
       />
 
       {/* Main View Port */}
-      <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-3 py-4 sm:p-6 lg:p-8 min-w-0 overflow-x-hidden">
         {!isAuthenticated ? (
-          /* Default Tampilan Awal / Home Page */
+          /* Default Tampilan Awal / Home Page with Role Tab Switcher */
           <HomePage
-            onOpenStudentLogin={handleOpenStudentLogin}
-            onOpenDosenLogin={handleOpenDosenLogin}
-            onOpenBaakLogin={handleOpenBaakLogin}
+            onLoginSuccess={handleLoginSuccess}
+            activeRoleTab={activeRoleTab}
+            onChangeRoleTab={(tab) => setActiveRoleTab(tab)}
             inactivityNotice={inactivityNotice}
             onDismissInactivityNotice={() => setInactivityNotice(null)}
           />
@@ -130,7 +141,7 @@ const AppContent: React.FC = () => {
       </main>
 
       {/* Campus Footer */}
-      <footer className="bg-white border-t border-slate-200 mt-auto py-6 px-4 text-sm text-slate-500">
+      <footer className="bg-white border-t border-slate-200 mt-auto py-5 px-3 sm:px-6 text-sm text-slate-500 w-full max-w-full">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 text-center sm:text-left">
           <div>
             <p className="font-semibold text-slate-900">
