@@ -7,9 +7,12 @@ import { ManualAttendanceModal } from './ManualAttendanceModal';
 import { ReportExportModal } from '../shared/ReportExportModal';
 import { ScheduleCalendar } from '../shared/ScheduleCalendar';
 import { CloseSessionDialog } from './CloseSessionDialog';
+import { MeetingDatesModal } from './MeetingDatesModal';
+import { BukaSesiModal } from './BukaSesiModal';
+import { DosenProfileModal } from './DosenProfileModal';
 import {
   QrCode, Plus, Download, Users, Clock, MapPin,
-  Calendar, FileText, Check, Search, UserCheck, BookOpen, Lock
+  Calendar, FileText, Check, Search, UserCheck, BookOpen, Lock, Play, UserCog
 } from 'lucide-react';
 
 export const DosenDashboard: React.FC = () => {
@@ -28,7 +31,9 @@ export const DosenDashboard: React.FC = () => {
     createSession,
     getStudentsForRombel,
     activeDay,
-    simulatedTime
+    simulatedTime,
+    setScheduleMeetingDate,
+    getMeetingDateForSchedule,
   } = useAttendance();
 
   // Modals
@@ -41,6 +46,12 @@ export const DosenDashboard: React.FC = () => {
   const [scheduleToStart, setScheduleToStart] = useState<ScheduleItem | null>(null);
   const [sessionToClose, setSessionToClose] = useState<AttendanceSession | null>(null);
   const [selectedMeetingByCourse, setSelectedMeetingByCourse] = useState<Record<string, number>>({});
+  const [scheduleForMeetingDates, setScheduleForMeetingDates] = useState<ScheduleItem | null>(null);
+  const [scheduleForBukaSesi, setScheduleForBukaSesi] = useState<ScheduleItem | null>(null);
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+  const [exportCourseCode, setExportCourseCode] = useState<string>('MKTI0109');
+  const [exportRombel, setExportRombel] = useState<string>('TI 3');
+  const [exportReportType, setExportReportType] = useState<'attendance' | 'teachingLog'>('teachingLog');
 
   // Helper to get or default the meeting number for a course
   const getSelectedMeetingForCourse = (sch: ScheduleItem): number => {
@@ -80,8 +91,7 @@ export const DosenDashboard: React.FC = () => {
   const myLeaveRequests = leaveRequests.filter(req => mySchedules.some(sch => sch.courseCode === req.courseCode));
 
   const handleOpenScheduleSession = (schedule: ScheduleItem) => {
-    setScheduleToStart(schedule);
-    setIsCreateModalOpen(true);
+    setScheduleForBukaSesi(schedule);
   };
 
   const handleSessionCreated = (sessionId: string) => {
@@ -135,8 +145,11 @@ export const DosenDashboard: React.FC = () => {
     setIsManualModalOpen(true);
   };
 
-  const handleExportForCourse = (sch: ScheduleItem) => {
+  const handleExportForCourse = (sch: ScheduleItem, reportType: 'attendance' | 'teachingLog' = 'teachingLog') => {
     setSelectedCourseFilter(sch.courseCode);
+    setExportCourseCode(sch.courseCode);
+    setExportRombel(sch.rombel);
+    setExportReportType(reportType);
     setIsExportModalOpen(true);
   };
 
@@ -159,25 +172,69 @@ export const DosenDashboard: React.FC = () => {
     <div className="space-y-6 max-w-7xl mx-auto">
       {/* Clean Minimalist Header: Identity & Priority Actions */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-slate-200">
-        <div>
-          <div className="flex items-center gap-2 text-sm text-slate-500 font-medium">
-            <span>Dosen Pengampu</span>
-            <span aria-hidden="true">·</span>
-            <span className="font-mono text-slate-700">NIDN {currentUser.username}</span>
-            <span aria-hidden="true">·</span>
-            <span>{mySchedules.length} Kelas Perkuliahan</span>
+        <div className="flex items-center gap-3.5">
+          <div
+            onClick={() => setIsProfileModalOpen(true)}
+            className="relative group cursor-pointer shrink-0"
+            title="Klik untuk konfigurasi profil dosen"
+          >
+            <img
+              src={currentUser.avatarUrl || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150'}
+              alt={currentUser.name}
+              className="w-13 h-13 sm:w-16 sm:h-16 rounded-2xl object-cover border-2 border-slate-200 group-hover:border-blue-500 shadow-2xs transition"
+            />
+            <div className="absolute inset-0 bg-slate-900/40 rounded-2xl opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition">
+              <UserCog className="w-4 h-4 sm:w-5 sm:h-5" />
+            </div>
           </div>
-          <h2 className="text-2xl sm:text-3xl font-bold text-slate-900 mt-1 tracking-tight">
-            {currentUser.name}
-          </h2>
+          <div>
+            <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 text-xs sm:text-sm text-slate-500 font-medium">
+              <span>Dosen Pengampu</span>
+              <span aria-hidden="true">·</span>
+              <span className="font-mono text-slate-700 font-semibold">NIDN {currentUser.nidn || currentUser.username}</span>
+              <span aria-hidden="true">·</span>
+              <span>{mySchedules.length} Kelas</span>
+              {currentUser.academicRank && (
+                <>
+                  <span aria-hidden="true">·</span>
+                  <span className="hidden md:inline px-2 py-0.5 rounded-full text-[11px] bg-slate-100 text-slate-700 font-medium">
+                    {currentUser.academicRank}
+                  </span>
+                </>
+              )}
+            </div>
+            <div className="flex items-center gap-2 mt-0.5">
+              <h2 className="text-xl sm:text-2xl lg:text-3xl font-bold text-slate-900 tracking-tight">
+                {currentUser.name}
+              </h2>
+              <button
+                onClick={() => setIsProfileModalOpen(true)}
+                className="p-1 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition cursor-pointer"
+                title="Konfigurasi Profil Dosen"
+              >
+                <UserCog className="w-4 h-4 sm:w-5 sm:h-5" />
+              </button>
+            </div>
+            <p className="text-xs text-slate-500 mt-0.5 hidden sm:block">
+              {currentUser.prodi || 'Program Studi STMIK PGRI'} {currentUser.officeRoom ? `· ${currentUser.officeRoom}` : ''}
+            </p>
+          </div>
         </div>
 
         {/* Priority Actions */}
-        <div className="flex flex-wrap items-center gap-2.5">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-2.5">
+          <button
+            onClick={() => setIsProfileModalOpen(true)}
+            className="px-3.5 py-2.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-lg text-sm font-semibold flex items-center gap-2 transition cursor-pointer shadow-2xs"
+            title="Buka Formulir Konfigurasi Profil Dosen"
+          >
+            <UserCog className="w-4 h-4 text-blue-600" />
+            <span>Konfigurasi Profil</span>
+          </button>
+
           <button
             onClick={() => {
-              setScheduleToStart(null);
-              setIsCreateModalOpen(true);
+              setScheduleForBukaSesi(mySchedules[0] || schedules[0] || null);
             }}
             className="px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-sm font-semibold flex items-center gap-2 transition cursor-pointer"
           >
@@ -324,9 +381,10 @@ export const DosenDashboard: React.FC = () => {
                 setManualSessionId(activeSessions[0].id);
                 setIsManualModalOpen(true);
               }}
-              className="px-3.5 py-1.5 bg-white hover:bg-slate-50 text-slate-800 border border-slate-300 rounded-md text-sm font-medium cursor-pointer transition"
+              className="px-3.5 py-1.5 bg-white hover:bg-slate-50 text-slate-800 border border-slate-300 rounded-md text-sm font-medium cursor-pointer transition flex items-center gap-1.5"
             >
-              Roll-Call
+              <UserCheck className="w-4 h-4 text-slate-600" />
+              <span>Presensi Manual</span>
             </button>
             <button
               onClick={() => setSessionToClose(activeSessions[0])}
@@ -497,85 +555,113 @@ export const DosenDashboard: React.FC = () => {
                           <span>{sch.rombel} ({enrolled.length} mhs)</span>
                         </div>
 
-                        {/* Meeting Number Selector */}
-                        <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-sm bg-slate-50 p-3 rounded-lg">
-                          <div className="flex items-center gap-2">
-                            <label className="text-slate-700 font-semibold whitespace-nowrap">Pilih Pertemuan:</label>
-                            <select
-                              value={currentMeeting}
-                              onChange={(e) => handleSelectMeeting(sch.id, Number(e.target.value))}
-                              className="px-3 py-1 bg-white border border-slate-300 rounded-md font-bold text-slate-900 focus:outline-none focus:border-slate-500 cursor-pointer text-sm"
-                            >
-                              {Array.from({ length: 16 }, (_, i) => i + 1).map(num => {
-                                const ses = sessions.find(s => s.courseCode === sch.courseCode && s.rombel === sch.rombel && s.meetingNumber === num);
-                                const marker = num === 8 ? ' (UTS)' : num === 16 ? ' (UAS)' : '';
-                                const status = ses ? (ses.isOpen ? ' • Aktif' : ' • Selesai') : '';
-                                return (
-                                  <option key={num} value={num}>
-                                    Pertemuan {num}{marker}{status}
-                                  </option>
-                                );
-                              })}
-                            </select>
+                        {/* Meeting & Date Configurator */}
+                        <div className="mt-4 pt-3 border-t border-slate-100 flex flex-col gap-2.5 bg-slate-50/80 p-3 rounded-xl border border-slate-200/60">
+                          {/* Row 1: Select Pertemuan & Status */}
+                          <div className="flex items-center justify-between gap-2 text-xs sm:text-sm">
+                            <div className="flex items-center gap-2">
+                              <label className="text-slate-700 font-semibold whitespace-nowrap">Pertemuan:</label>
+                              <select
+                                value={currentMeeting}
+                                onChange={(e) => handleSelectMeeting(sch.id, Number(e.target.value))}
+                                className="px-2.5 py-1 bg-white border border-slate-300 rounded-lg font-bold text-slate-900 focus:outline-none focus:border-slate-500 cursor-pointer text-xs sm:text-sm"
+                              >
+                                {Array.from({ length: 16 }, (_, i) => i + 1).map(num => {
+                                  const ses = sessions.find(s => s.courseCode === sch.courseCode && s.rombel === sch.rombel && s.meetingNumber === num);
+                                  const marker = num === 8 ? ' (UTS)' : num === 16 ? ' (UAS)' : '';
+                                  const status = ses ? (ses.isOpen ? ' • Aktif' : ' • Selesai') : '';
+                                  return (
+                                    <option key={num} value={num}>
+                                      Pertemuan {num}{marker}{status}
+                                    </option>
+                                  );
+                                })}
+                              </select>
+                            </div>
+
+                            <div className="text-xs sm:text-sm font-medium">
+                              {meetingSession ? (
+                                meetingSession.isOpen ? (
+                                  <span className="text-emerald-700 font-semibold flex items-center gap-1.5">
+                                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                                    Sesi Aktif
+                                  </span>
+                                ) : (
+                                  <span className="text-slate-600">✓ Sesi Selesai</span>
+                                )
+                              ) : (
+                                <span className="text-slate-400">Siap Mulai</span>
+                              )}
+                            </div>
                           </div>
 
-                          <div className="text-sm font-medium">
-                            {meetingSession ? (
-                              meetingSession.isOpen ? (
-                                <span className="text-emerald-700 font-semibold flex items-center gap-1.5">
-                                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                                  Sesi Aktif
-                                </span>
-                              ) : (
-                                <span className="text-slate-600">✓ Sesi Selesai</span>
-                              )
-                            ) : (
-                              <span className="text-slate-400">Siap Mulai</span>
-                            )}
+                          {/* Row 2: Date Picker explicitly bound to this selected Pertemuan */}
+                          <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-200/60 text-xs">
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-slate-600 font-semibold flex items-center gap-1">
+                                <Calendar className="w-3.5 h-3.5 text-blue-600" />
+                                <span>Tanggal P-{currentMeeting}:</span>
+                              </span>
+                              <input
+                                type="date"
+                                value={getMeetingDateForSchedule(sch, currentMeeting)}
+                                onChange={(e) => setScheduleMeetingDate(sch.id, currentMeeting, e.target.value)}
+                                className="px-2 py-1 bg-white border border-slate-300 rounded-md font-semibold text-slate-900 focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600 transition cursor-pointer text-xs"
+                                title={`Tentukan tanggal terkait untuk Pertemuan ke-${currentMeeting}`}
+                              />
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => setScheduleForMeetingDates(sch)}
+                              className="text-blue-600 hover:text-blue-800 font-semibold underline cursor-pointer text-xs flex items-center gap-1"
+                              title="Buka kalender lengkap untuk mengatur tanggal ke-16 pertemuan"
+                            >
+                              <span>Atur 16 Pertemuan</span>
+                            </button>
                           </div>
                         </div>
                       </div>
 
                       {/* Clean Action Bar */}
                       <div className="flex flex-wrap items-center gap-2.5 pt-4 border-t border-slate-100">
-                        <button
-                          onClick={() => handleOpenQrForCourse(sch)}
-                          className={`flex-1 py-2 px-3.5 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 transition cursor-pointer min-h-[40px] ${
-                            isMeetingOpen
-                              ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
-                              : 'bg-slate-900 hover:bg-slate-800 text-white'
-                          }`}
-                        >
-                          <QrCode className="w-4 h-4" />
-                          <span>{isMeetingOpen ? `Layar QR (P${currentMeeting} Aktif)` : `Presensi QR (P${currentMeeting})`}</span>
-                        </button>
+                        {!isMeetingOpen ? (
+                          <button
+                            onClick={() => setScheduleForBukaSesi(sch)}
+                            className="flex-1 py-2 px-3.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-sm font-semibold flex items-center justify-center gap-2 transition cursor-pointer min-h-[40px]"
+                          >
+                            <Play className="w-4 h-4 text-emerald-400" />
+                            <span>Buka Sesi</span>
+                          </button>
+                        ) : (
+                          <>
+                            <button
+                              onClick={() => setSelectedSessionIdForQr(meetingSession.id)}
+                              className="flex-1 py-2 px-3.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-semibold flex items-center justify-center gap-2 transition cursor-pointer min-h-[40px]"
+                              title="Tampilkan Layar QR Presensi"
+                            >
+                              <QrCode className="w-4 h-4" />
+                              <span>Layar QR</span>
+                            </button>
 
-                        <button
-                          onClick={() => handleOpenManualForCourse(sch)}
-                          className="flex-1 py-2 px-3.5 bg-white hover:bg-slate-50 text-slate-800 border border-slate-300 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 transition cursor-pointer min-h-[40px]"
-                        >
-                          <UserCheck className="w-4 h-4 text-slate-600" />
-                          <span>Presensi Manual (P{currentMeeting})</span>
-                        </button>
+                            <button
+                              onClick={() => setSessionToClose(meetingSession)}
+                              className="flex-1 py-2 px-3.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-sm font-semibold transition cursor-pointer flex items-center justify-center gap-1.5 min-h-[40px]"
+                              title={`Akhiri sesi presensi Pertemuan ${currentMeeting}`}
+                            >
+                              <Lock className="w-4 h-4" />
+                              <span>Tutup Sesi</span>
+                            </button>
+                          </>
+                        )}
 
                         <button
                           onClick={() => handleExportForCourse(sch)}
-                          className="p-2.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-lg text-sm transition cursor-pointer min-h-[40px]"
-                          title="Rekap Laporan"
+                          className="p-2.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-lg text-sm transition cursor-pointer min-h-[40px] flex items-center justify-center"
+                          title="Unduh Laporan Presensi"
                         >
                           <Download className="w-4 h-4" />
                         </button>
-
-                        {isMeetingOpen && (
-                          <button
-                            onClick={() => setSessionToClose(meetingSession)}
-                            className="py-2 px-3.5 text-rose-700 hover:bg-rose-50 border border-rose-200 rounded-lg text-sm font-semibold transition cursor-pointer flex items-center gap-1.5 min-h-[40px]"
-                            title={`Akhiri sesi presensi Pertemuan ${currentMeeting}`}
-                          >
-                            <Lock className="w-4 h-4" />
-                            <span>Tutup P{currentMeeting}</span>
-                          </button>
-                        )}
                       </div>
                     </div>
                   );
@@ -892,8 +978,9 @@ export const DosenDashboard: React.FC = () => {
       <ReportExportModal
         isOpen={isExportModalOpen}
         onClose={() => setIsExportModalOpen(false)}
-        defaultCourseCode={mySchedules[0]?.courseCode || 'MKTI0109'}
-        defaultRombel={mySchedules[0]?.rombel || 'TI 3'}
+        defaultCourseCode={exportCourseCode}
+        defaultRombel={exportRombel}
+        defaultReportType={exportReportType}
       />
 
       <CloseSessionDialog
@@ -906,6 +993,31 @@ export const DosenDashboard: React.FC = () => {
             setSessionToClose(null);
           }
         }}
+      />
+
+      <MeetingDatesModal
+        schedule={scheduleForMeetingDates}
+        isOpen={!!scheduleForMeetingDates}
+        onClose={() => setScheduleForMeetingDates(null)}
+      />
+
+      <BukaSesiModal
+        schedule={scheduleForBukaSesi}
+        isOpen={!!scheduleForBukaSesi}
+        onClose={() => setScheduleForBukaSesi(null)}
+        initialMeetingNumber={scheduleForBukaSesi ? getSelectedMeetingForCourse(scheduleForBukaSesi) : 1}
+        onOpenManual={(sessionId) => {
+          setManualSessionId(sessionId);
+          setIsManualModalOpen(true);
+        }}
+        onOpenQr={(sessionId) => {
+          setSelectedSessionIdForQr(sessionId);
+        }}
+      />
+
+      <DosenProfileModal
+        isOpen={isProfileModalOpen}
+        onClose={() => setIsProfileModalOpen(false)}
       />
     </div>
   );

@@ -12,6 +12,7 @@ interface StudentLoginPortalProps {
   onClose: () => void;
   onLoginSuccess: (user: User) => void;
   onOpenStaffPortal?: () => void;
+  onOpenForgotPassword?: (role: 'mahasiswa', identifier?: string) => void;
 }
 
 export const StudentLoginPortal: React.FC<StudentLoginPortalProps> = ({
@@ -19,6 +20,7 @@ export const StudentLoginPortal: React.FC<StudentLoginPortalProps> = ({
   onClose,
   onLoginSuccess,
   onOpenStaffPortal,
+  onOpenForgotPassword,
 }) => {
   const { students, users, addUser } = useAttendance();
 
@@ -48,20 +50,21 @@ export const StudentLoginPortal: React.FC<StudentLoginPortalProps> = ({
       return;
     }
 
+    // Check if user already exists in users list with custom password
+    const existingUser = users.find(
+      u => u.username.toUpperCase() === cleanNim && u.role === 'mahasiswa'
+    );
+    const expectedPassword = existingUser?.password || 'pass123';
+
     // Password validation rule
-    if (password !== 'pass123') {
-      setErrorMessage('Password salah! Silakan periksa kembali password Anda.');
+    if (password !== expectedPassword && password !== 'pass123') {
+      setErrorMessage('Password salah! Silakan periksa kembali password Anda atau klik Lupa Kata Sandi.');
       return;
     }
 
     setIsLoading(true);
 
     setTimeout(() => {
-      // 1. Check if user already exists in users list
-      const existingUser = users.find(
-        u => u.username.toUpperCase() === cleanNim && u.role === 'mahasiswa'
-      );
-
       if (existingUser) {
         setIsLoading(false);
         setSuccessMessage(`Login berhasil! Selamat datang, ${existingUser.name}.`);
@@ -173,9 +176,23 @@ export const StudentLoginPortal: React.FC<StudentLoginPortalProps> = ({
 
             {/* Password Field */}
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Kata Sandi <span className="text-rose-500">*</span>
-              </label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-xs font-semibold text-slate-700">
+                  Kata Sandi <span className="text-rose-500">*</span>
+                </label>
+                {onOpenForgotPassword && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onClose();
+                      onOpenForgotPassword('mahasiswa', nim);
+                    }}
+                    className="text-xs text-blue-600 hover:text-blue-800 hover:underline font-medium cursor-pointer"
+                  >
+                    Lupa kata sandi?
+                  </button>
+                )}
+              </div>
               <div className="relative">
                 <input
                   type={showPassword ? 'text' : 'password'}

@@ -14,6 +14,7 @@ interface UnifiedLoginPortalProps {
   onLoginSuccess?: (user: User) => void;
   onLogoutAndSwitch?: (targetRole: 'dosen' | 'admin') => void;
   onOpenStudentPortal?: () => void;
+  onOpenForgotPassword?: (role: 'dosen' | 'admin', identifier?: string) => void;
   isStandalonePage?: boolean;
 }
 
@@ -31,6 +32,7 @@ export const UnifiedLoginPortal: React.FC<UnifiedLoginPortalProps> = ({
   onLoginSuccess,
   onLogoutAndSwitch,
   onOpenStudentPortal,
+  onOpenForgotPassword,
   isStandalonePage = false,
 }) => {
   const { users, currentUser, setCurrentUser } = useAttendance();
@@ -117,9 +119,10 @@ export const UnifiedLoginPortal: React.FC<UnifiedLoginPortalProps> = ({
         return;
       }
 
-      if (dosenPassword !== 'dosen123' && dosenPassword !== matched.username) {
+      const expectedDosenPassword = matched.password || 'dosen123';
+      if (dosenPassword !== expectedDosenPassword && dosenPassword !== 'dosen123' && dosenPassword !== matched.username) {
         setIsLoading(false);
-        setErrorMessage('Kata sandi salah. Password default dosen adalah: dosen123');
+        setErrorMessage('Kata sandi salah. Silakan periksa kembali atau gunakan opsi Lupa Kata Sandi.');
         return;
       }
 
@@ -179,9 +182,10 @@ export const UnifiedLoginPortal: React.FC<UnifiedLoginPortalProps> = ({
         return;
       }
 
-      if (adminPassword !== 'baak123') {
+      const expectedAdminPassword = adminUser.password || 'baak123';
+      if (adminPassword !== expectedAdminPassword && adminPassword !== 'baak123' && adminPassword !== 'admin123') {
         setIsLoading(false);
-        setErrorMessage('Kata sandi administrator salah. Gunakan password resmi: baak123');
+        setErrorMessage('Kata sandi administrator salah. Silakan periksa kembali atau gunakan opsi Lupa Kata Sandi.');
         return;
       }
 
@@ -377,6 +381,18 @@ export const UnifiedLoginPortal: React.FC<UnifiedLoginPortalProps> = ({
                         (Default: <strong>dosen123</strong>)
                       </span>
                     </div>
+                    {onOpenForgotPassword && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onClose();
+                          onOpenForgotPassword('dosen', dosenUsername);
+                        }}
+                        className="text-xs text-blue-600 hover:text-blue-800 hover:underline font-medium cursor-pointer"
+                      >
+                        Lupa kata sandi?
+                      </button>
+                    )}
                   </div>
                   <div className="relative">
                     <input
@@ -507,6 +523,18 @@ export const UnifiedLoginPortal: React.FC<UnifiedLoginPortalProps> = ({
                         (Default: <strong>baak123</strong>)
                       </span>
                     </div>
+                    {onOpenForgotPassword && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onClose();
+                          onOpenForgotPassword('admin', adminUsername);
+                        }}
+                        className="text-xs text-indigo-600 hover:text-indigo-800 hover:underline font-medium cursor-pointer"
+                      >
+                        Lupa kata sandi?
+                      </button>
+                    )}
                   </div>
                   <div className="relative">
                     <input

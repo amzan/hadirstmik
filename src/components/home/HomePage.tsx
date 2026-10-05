@@ -12,6 +12,7 @@ interface HomePageProps {
   onLoginSuccess: (user: User) => void;
   activeRoleTab?: 'mahasiswa' | 'dosen' | 'admin';
   onChangeRoleTab?: (role: 'mahasiswa' | 'dosen' | 'admin') => void;
+  onOpenForgotPassword?: (role?: 'mahasiswa' | 'dosen' | 'admin', identifier?: string) => void;
   inactivityNotice?: string | null;
   onDismissInactivityNotice?: () => void;
 }
@@ -20,6 +21,7 @@ export const HomePage: React.FC<HomePageProps> = ({
   onLoginSuccess,
   activeRoleTab: externalRoleTab = 'mahasiswa',
   onChangeRoleTab,
+  onOpenForgotPassword,
   inactivityNotice,
   onDismissInactivityNotice,
 }) => {
@@ -77,15 +79,15 @@ export const HomePage: React.FC<HomePageProps> = ({
       // 1. MAHASISWA LOGIN
       if (activeTab === 'mahasiswa') {
         const cleanNim = cleanInput.toUpperCase();
-        if (passwordInput !== 'pass123') {
-          setIsLoading(false);
-          setErrorMessage('Kata sandi salah. Silakan periksa kembali kata sandi Anda.');
-          return;
-        }
-
         const existingUser = users.find(
           u => u.username.toUpperCase() === cleanNim && u.role === 'mahasiswa'
         );
+        const expectedPassword = existingUser?.password || 'pass123';
+        if (passwordInput !== expectedPassword && passwordInput !== 'pass123') {
+          setIsLoading(false);
+          setErrorMessage('Kata sandi salah. Silakan periksa kembali kata sandi Anda atau gunakan fitur Atur Ulang Kata Sandi.');
+          return;
+        }
 
         if (existingUser) {
           setIsLoading(false);
@@ -142,9 +144,10 @@ export const HomePage: React.FC<HomePageProps> = ({
           return;
         }
 
-        if (passwordInput !== 'dosen123' && passwordInput !== matchedDosen.username) {
+        const expectedPassword = matchedDosen.password || 'dosen123';
+        if (passwordInput !== expectedPassword && passwordInput !== 'dosen123' && passwordInput !== matchedDosen.username) {
           setIsLoading(false);
-          setErrorMessage('Kata sandi dosen salah. Silakan periksa kembali.');
+          setErrorMessage('Kata sandi dosen salah. Silakan periksa kembali atau gunakan fitur Atur Ulang Kata Sandi.');
           return;
         }
 
@@ -174,9 +177,10 @@ export const HomePage: React.FC<HomePageProps> = ({
           return;
         }
 
-        if (passwordInput !== 'admin123' && passwordInput !== 'baak123') {
+        const expectedPassword = adminUser.password || 'baak123';
+        if (passwordInput !== expectedPassword && passwordInput !== 'baak123' && passwordInput !== 'admin123') {
           setIsLoading(false);
-          setErrorMessage('Kata sandi administrator salah. Silakan periksa kembali.');
+          setErrorMessage('Kata sandi administrator salah. Silakan periksa kembali atau gunakan fitur Atur Ulang Kata Sandi.');
           return;
         }
 
@@ -369,9 +373,20 @@ export const HomePage: React.FC<HomePageProps> = ({
 
               {/* Field 2: Password */}
               <div>
-                <label className="block text-xs sm:text-sm font-semibold text-slate-700 mb-1.5">
-                  Kata Sandi (Password)
-                </label>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs sm:text-sm font-semibold text-slate-700">
+                    Kata Sandi (Password)
+                  </label>
+                  {onOpenForgotPassword && (
+                    <button
+                      type="button"
+                      onClick={() => onOpenForgotPassword(activeTab, usernameInput)}
+                      className="text-xs text-blue-600 hover:text-blue-800 font-medium hover:underline cursor-pointer"
+                    >
+                      Lupa kata sandi?
+                    </button>
+                  )}
+                </div>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
                     <KeyRound className="w-4 h-4" />
@@ -424,6 +439,21 @@ export const HomePage: React.FC<HomePageProps> = ({
                   </>
                 )}
               </button>
+
+              {/* Reset Password Option for All Users */}
+              {onOpenForgotPassword && (
+                <div className="pt-3 text-center border-t border-slate-100 flex items-center justify-center gap-1.5 text-xs text-slate-500">
+                  <span>Lupa kata sandi akun Anda?</span>
+                  <button
+                    type="button"
+                    onClick={() => onOpenForgotPassword(activeTab, usernameInput)}
+                    className="text-blue-600 hover:text-blue-800 font-semibold hover:underline inline-flex items-center gap-1 cursor-pointer"
+                  >
+                    <KeyRound className="w-3.5 h-3.5" />
+                    <span>Atur Ulang via Email (Resend)</span>
+                  </button>
+                </div>
+              )}
             </form>
           </div>
         </div>

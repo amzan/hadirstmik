@@ -38,6 +38,8 @@ interface AttendanceContextType {
     meetingNumber: number;
     topic: string;
     isDynamicQr: boolean;
+    date?: string;
+    evaluationMethod?: string;
   }) => AttendanceSession;
   closeSession: (sessionId: string) => void;
   refreshQrToken: (sessionId: string) => string;
@@ -75,11 +77,20 @@ interface AttendanceContextType {
   
   resetToDefaultData: () => void;
   
+  // Meeting date management
+  setScheduleMeetingDate: (scheduleId: string, meetingNumber: number, date: string) => void;
+  setScheduleAllMeetingDates: (scheduleId: string, dates: Record<number, string>) => void;
+  getMeetingDateForSchedule: (schedule: ScheduleItem, meetingNumber: number) => string;
+
   // Computed helpers
   getStudentsForRombel: (rombel: string) => Student[];
   getActiveScheduleNow: () => ScheduleItem | null;
   getSchedulesForDay: (day: DayOfWeek) => ScheduleItem[];
   getAttendanceRateForStudent: (nim: string, courseCode?: string) => { totalSessions: number; hadir: number; izin: number; sakit: number; alpha: number; percentage: number };
+
+  // Password reset helpers across all users
+  findUserByIdentifier: (identifier: string) => User | null;
+  resetUserPassword: (identifier: string, newPassword: string) => { success: boolean; message: string; user?: User };
 }
 
 const AttendanceContext = createContext<AttendanceContextType | undefined>(undefined);
@@ -102,7 +113,15 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     if (saved) {
       try {
         const parsed: User[] = JSON.parse(saved);
-        return parsed.map(u => u.role === 'admin' ? { ...u, username: 'baak' } : u);
+        return parsed.map(u => {
+          const init = INITIAL_USERS.find(iu => iu.id === u.id);
+          return {
+            ...init,
+            ...u,
+            nidn: u.nidn || init?.nidn || (u.role === 'dosen' ? u.username : undefined),
+            ...(u.role === 'admin' ? { username: 'baak' } : {}),
+          };
+        });
       } catch {
         return INITIAL_USERS;
       }
@@ -264,6 +283,92 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     });
   }, [students, leaveRequests]);
 
+  // Helper to get or calculate date for a specific meeting of a schedule
+  const getMeetingDateForSchedule = useCallback((schedule: ScheduleItem, meetingNumber: number): string => {
+    // 1. If explicit date in schedule.meetingDates
+    if (schedule.meetingDates && schedule.meetingDates[meetingNumber]) {
+      return schedule.meetingDates[meetingNumber];
+    }
+
+    // 2. If matching existing session exists
+    const matchingSession = sessions.find(
+      s => (s.scheduleId === schedule.id || (s.courseCode === schedule.courseCode && s.rombel === schedule.rombel)) &&
+           s.meetingNumber === meetingNumber
+    );
+    if (matchingSession?.date) {
+      return matchingSession.date;
+    }
+
+    // 3. Fallback: compute realistic date based on schedule day and academic semester (Semester Ganjil 2026/2027)
+    // Starting week: Monday, 7 September 2026
+    const dayOffsets: Record<DayOfWeek, number> = {
+      'Senin': 0,
+      'Selasa': 1,
+      'Rabu': 2,
+      'Kamis': 3,
+      'Jumat': 4,
+      'Sabtu': 5,
+    };
+    const dayOffset = dayOffsets[schedule.day] ?? 0;
+    // Week offset: (meetingNumber - 1) * 7 days
+    const baseDate = new Date(2026, 8, 7); // September 7, 2026
+    const meetingDateObj = new Date(baseDate.getTime() + (dayOffset + (meetingNumber - 1) * 7) * 24 * 60 * 60 * 1000);
+    
+    // Format YYYY-MM-DD
+    const yyyy = meetingDateObj.getFullYear();
+    const mm = String(meetingDateObj.getMonth() + 1).padStart(2, '0');
+    const dd = String(meetingDateObj.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  }, [sessions]);
+
+  // Update specific meeting date for a schedule
+  const setScheduleMeetingDate = useCallback((scheduleId: string, meetingNumber: number, date: string) => {
+    setSchedules(prev => prev.map(sch => {
+      if (sch.id === scheduleId) {
+        return {
+          ...sch,
+          meetingDates: {
+            ...(sch.meetingDates || {}),
+            [meetingNumber]: date,
+          },
+        };
+      }
+      return sch;
+    }));
+
+    // Sync any existing session for this schedule and meeting number
+    setSessions(prev => prev.map(sess => {
+      if (sess.scheduleId === scheduleId && sess.meetingNumber === meetingNumber) {
+        return { ...sess, date };
+      }
+      return sess;
+    }));
+  }, []);
+
+  // Update multiple or all meeting dates for a schedule
+  const setScheduleAllMeetingDates = useCallback((scheduleId: string, dates: Record<number, string>) => {
+    setSchedules(prev => prev.map(sch => {
+      if (sch.id === scheduleId) {
+        return {
+          ...sch,
+          meetingDates: {
+            ...(sch.meetingDates || {}),
+            ...dates,
+          },
+        };
+      }
+      return sch;
+    }));
+
+    // Sync existing sessions
+    setSessions(prev => prev.map(sess => {
+      if (sess.scheduleId === scheduleId && dates[sess.meetingNumber]) {
+        return { ...sess, date: dates[sess.meetingNumber] };
+      }
+      return sess;
+    }));
+  }, []);
+
   // Create Session
   const createSession = useCallback((data: {
     scheduleId?: string;
@@ -274,17 +379,58 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     meetingNumber: number;
     topic: string;
     isDynamicQr: boolean;
+    date?: string;
+    evaluationMethod?: string;
   }): AttendanceSession => {
     const todayStr = new Date().toISOString().split('T')[0];
     const nowTimeStr = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', hour12: false });
     
-    // Find matching schedule for default times
+    // Find matching schedule for default times and meeting date
     const matchingSchedule = schedules.find(s => s.id === data.scheduleId || (s.courseCode === data.courseCode && s.rombel === data.rombel));
     const startTime = matchingSchedule?.startTime || nowTimeStr;
     const endTime = matchingSchedule?.endTime || '12:00';
+    const meetingDate = data.date || (matchingSchedule
+      ? getMeetingDateForSchedule(matchingSchedule, data.meetingNumber)
+      : todayStr);
+
+    // If date is passed and schedule exists, sync schedule.meetingDates
+    if (matchingSchedule && data.date) {
+      setSchedules(prev => prev.map(sch => {
+        if (sch.id === matchingSchedule.id) {
+          return {
+            ...sch,
+            meetingDates: {
+              ...(sch.meetingDates || {}),
+              [data.meetingNumber]: data.date!,
+            },
+          };
+        }
+        return sch;
+      }));
+    }
 
     const tokenRandom = Math.random().toString(36).substring(2, 8).toUpperCase();
     const qrToken = `STMIK-${data.courseCode}-P${data.meetingNumber}-${tokenRandom}`;
+
+    // Check if session for this meeting already exists
+    const existing = sessions.find(
+      s => (s.scheduleId === data.scheduleId || (s.courseCode === data.courseCode && s.rombel === data.rombel)) &&
+           s.meetingNumber === data.meetingNumber
+    );
+
+    if (existing) {
+      const updatedExisting: AttendanceSession = {
+        ...existing,
+        date: meetingDate,
+        topic: data.topic || existing.topic,
+        evaluationMethod: data.evaluationMethod ?? existing.evaluationMethod,
+        isDynamicQr: data.isDynamicQr,
+        isOpen: true,
+      };
+
+      setSessions(prev => prev.map(s => s.id === existing.id ? updatedExisting : s));
+      return updatedExisting;
+    }
     
     const newSession: AttendanceSession = {
       id: `session-${Date.now()}`,
@@ -295,11 +441,12 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       lecturerName: currentUser.name,
       rombel: data.rombel,
       room: data.room,
-      date: todayStr,
+      date: meetingDate,
       startTime,
       endTime,
       meetingNumber: data.meetingNumber,
       topic: data.topic || `Perkuliahan Pertemuan ${data.meetingNumber}`,
+      evaluationMethod: data.evaluationMethod,
       qrToken,
       isDynamicQr: data.isDynamicQr,
       qrExpiresAt: new Date(Date.now() + 90 * 60 * 1000).toISOString(),
@@ -309,7 +456,7 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
     setSessions(prev => [newSession, ...prev]);
     return newSession;
-  }, [currentUser, schedules]);
+  }, [currentUser, schedules, sessions, getMeetingDateForSchedule]);
 
   // Close Session & Trigger Automatic Absence Assignment (ALPHA)
   const closeSession = useCallback((sessionId: string) => {
@@ -610,10 +757,12 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   const updateUser = useCallback((id: string, updated: Partial<User>) => {
     setUsers(prev => prev.map(u => u.id === id ? { ...u, ...updated } : u));
-    if (currentUser.id === id) {
-      setCurrentUser(prev => ({ ...prev, ...updated }));
+    setCurrentUser(prev => (prev.id === id ? { ...prev, ...updated } : prev));
+    if (updated.name) {
+      setSchedules(prev => prev.map(s => s.lecturerId === id ? { ...s, lecturerName: updated.name! } : s));
+      setSessions(prev => prev.map(ses => ses.lecturerId === id ? { ...ses, lecturerName: updated.name! } : ses));
     }
-  }, [currentUser]);
+  }, []);
 
   const deleteUser = useCallback((id: string) => {
     setUsers(prev => prev.filter(u => u.id !== id));
@@ -735,6 +884,92 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     return { totalSessions, hadir, izin, sakit, alpha, percentage };
   }, [students, sessions, records]);
 
+  // Find user by username, email, NIM, NIDN across users list and students directory
+  const findUserByIdentifier = useCallback((identifier: string): User | null => {
+    const clean = identifier.trim().toLowerCase();
+    if (!clean) return null;
+
+    // 1. Check in users state (Admin, Dosen, Mahasiswa who previously logged in)
+    const matchedUser = users.find(u => {
+      const email = u.email?.toLowerCase();
+      const uname = u.username?.toLowerCase();
+      const nidn = u.nidn?.toLowerCase();
+      const name = u.name.toLowerCase();
+      const firstName = u.name.replace(/^(dr\.|dra\.|prof\.|ir\.)\s+/i, '').trim().split(/[\s,]+/)[0].toLowerCase();
+
+      return (
+        email === clean ||
+        uname === clean ||
+        nidn === clean ||
+        firstName === clean ||
+        name === clean
+      );
+    });
+
+    if (matchedUser) return matchedUser;
+
+    // 2. Check in students database (master students)
+    const matchedStudent = students.find(s => {
+      return (
+        s.nim.toLowerCase() === clean ||
+        s.email?.toLowerCase() === clean ||
+        s.name.toLowerCase() === clean
+      );
+    });
+
+    if (matchedStudent) {
+      return {
+        id: `mhs-${matchedStudent.nim}`,
+        username: matchedStudent.nim,
+        name: matchedStudent.name,
+        email: matchedStudent.email,
+        role: 'mahasiswa',
+        prodi: matchedStudent.prodi,
+        rombel: matchedStudent.rombel,
+        phone: matchedStudent.phone,
+        avatarUrl: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150',
+      };
+    }
+
+    return null;
+  }, [users, students]);
+
+  // Reset user password and persist in users state
+  const resetUserPassword = useCallback((identifier: string, newPassword: string): { success: boolean; message: string; user?: User } => {
+    const targetUser = findUserByIdentifier(identifier);
+    if (!targetUser) {
+      return { success: false, message: 'Akun dengan identitas / email tersebut tidak ditemukan.' };
+    }
+
+    const updatedUser: User = {
+      ...targetUser,
+      password: newPassword,
+    };
+
+    setUsers(prev => {
+      const exists = prev.some(
+        u => u.id === targetUser.id || (u.username.toLowerCase() === targetUser.username.toLowerCase() && u.role === targetUser.role)
+      );
+      if (exists) {
+        return prev.map(u => 
+          (u.id === targetUser.id || (u.username.toLowerCase() === targetUser.username.toLowerCase() && u.role === targetUser.role))
+            ? { ...u, password: newPassword }
+            : u
+        );
+      } else {
+        return [...prev, updatedUser];
+      }
+    });
+
+    setCurrentUser(prev => (prev.id === targetUser.id ? { ...prev, password: newPassword } : prev));
+
+    return {
+      success: true,
+      message: `Kata sandi untuk ${targetUser.name} (${targetUser.role.toUpperCase()}) berhasil diperbarui!`,
+      user: updatedUser
+    };
+  }, [findUserByIdentifier]);
+
   const value = useMemo(() => ({
     currentUser,
     setCurrentUser,
@@ -777,10 +1012,15 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     updateStudent,
     deleteStudent,
     resetToDefaultData,
+    setScheduleMeetingDate,
+    setScheduleAllMeetingDates,
+    getMeetingDateForSchedule,
     getStudentsForRombel,
     getActiveScheduleNow,
     getSchedulesForDay,
     getAttendanceRateForStudent,
+    findUserByIdentifier,
+    resetUserPassword,
   }), [
     currentUser, users, students, courses, schedules, sessions, records, leaveRequests,
     activeDay, simulatedTime, useSimulatedTime, createSession, closeSession, refreshQrToken,
@@ -788,8 +1028,9 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     scanQrCode, manualUpdateAttendance, markStudentAttendanceDirectly, batchMarkAttendance, submitLeaveRequest,
     reviewLeaveRequest, addUser, updateUser, deleteUser, addSchedule, updateSchedule,
     deleteSchedule, addCourse, updateCourse, deleteCourse, addStudent, updateStudent,
-    deleteStudent, resetToDefaultData, getStudentsForRombel, getActiveScheduleNow,
-    getSchedulesForDay, getAttendanceRateForStudent
+    deleteStudent, resetToDefaultData, setScheduleMeetingDate, setScheduleAllMeetingDates,
+    getMeetingDateForSchedule, getStudentsForRombel, getActiveScheduleNow,
+    getSchedulesForDay, getAttendanceRateForStudent, findUserByIdentifier, resetUserPassword
   ]);
 
   return (

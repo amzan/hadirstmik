@@ -116,8 +116,20 @@ export const QrSessionModal: React.FC<QrSessionModalProps> = ({ session, isOpen,
               </h2>
             </div>
             <p className="text-sm text-slate-500 mt-1">
-              Ruang {session.room} · {session.rombel} · {session.startTime}–{session.endTime} WIB
+              Ruang {session.room} · {session.rombel} · {session.date} · {session.startTime}–{session.endTime} WIB
             </p>
+            {session.topic && (
+              <div className="flex flex-wrap items-center gap-2 mt-1.5 text-xs">
+                <span className="bg-slate-100 text-slate-700 px-2.5 py-0.5 rounded-md font-medium">
+                  Topik: {session.topic}
+                </span>
+                {session.evaluationMethod && (
+                  <span className="bg-blue-50 text-blue-700 border border-blue-200 px-2.5 py-0.5 rounded-md font-medium">
+                    Evaluasi: {session.evaluationMethod}
+                  </span>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="flex items-center gap-2">
@@ -229,7 +241,7 @@ export const QrSessionModal: React.FC<QrSessionModalProps> = ({ session, isOpen,
                   className="px-3.5 py-2 bg-white hover:bg-slate-50 text-slate-800 text-sm font-medium border border-slate-300 rounded-lg flex items-center gap-1.5 cursor-pointer transition"
                 >
                   <UserCheck className="w-4 h-4 text-slate-600" />
-                  <span>Roll-Call</span>
+                  <span>Presensi Manual</span>
                 </button>
               </div>
 

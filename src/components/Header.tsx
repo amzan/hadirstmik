@@ -1,8 +1,9 @@
 import React from 'react';
 import { useAttendance } from '../context/AttendanceContext';
 import { CAMPUS_INFO } from '../data/initialData';
+import { getStmikLogoDataUrl } from '../utils/logoStmik';
 import {
-  Clock, QrCode, ChevronDown, GraduationCap, LogOut, Shield, LogIn, BookOpen
+  Clock, ChevronDown, GraduationCap, LogOut, Shield, LogIn, BookOpen, UserCog, KeyRound
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -12,6 +13,8 @@ interface HeaderProps {
   onOpenStudentLogin?: () => void;
   onOpenDosenLogin?: () => void;
   onOpenBaakLogin?: () => void;
+  onOpenDosenProfile?: () => void;
+  onOpenForgotPassword?: () => void;
   onLogout?: () => void;
   isLoggedOut?: boolean;
 }
@@ -22,6 +25,8 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenStudentLogin,
   onOpenDosenLogin,
   onOpenBaakLogin,
+  onOpenDosenProfile,
+  onOpenForgotPassword,
   onLogout,
   isLoggedOut = false
 }) => {
@@ -81,8 +86,12 @@ export const Header: React.FC<HeaderProps> = ({
       <div className="max-w-7xl mx-auto px-2.5 sm:px-6 py-2 sm:py-3.5 flex items-center justify-between gap-2 sm:gap-4 w-full">
         {/* Brand */}
         <div className="flex items-center gap-1.5 sm:gap-3 min-w-0 shrink">
-          <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-lg bg-slate-900 flex items-center justify-center text-white shrink-0">
-            <QrCode className="w-4 h-4 sm:w-5 sm:h-5" />
+          <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-full flex items-center justify-center overflow-hidden shrink-0 shadow-2xs border border-slate-200">
+            <img
+              src={getStmikLogoDataUrl()}
+              alt="Logo STMIK PGRI Arungbinang"
+              className="w-full h-full object-contain"
+            />
           </div>
           <div className="min-w-0">
             <h1 className="text-xs sm:text-base font-bold text-slate-900 tracking-tight leading-tight truncate">
@@ -146,6 +155,17 @@ export const Header: React.FC<HeaderProps> = ({
                   <span className="sm:hidden">BAAK</span>
                 </button>
               )}
+
+              {onOpenForgotPassword && (
+                <button
+                  onClick={onOpenForgotPassword}
+                  className="hidden md:flex items-center gap-1 px-2.5 py-1.5 sm:py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition cursor-pointer shrink-0 border border-slate-200"
+                  title="Atur Ulang Kata Sandi Akun via Email"
+                >
+                  <KeyRound className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                  <span>Reset Sandi</span>
+                </button>
+              )}
             </div>
           )}
 
@@ -185,28 +205,32 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
           )}
 
-          {/* Dosen: Strictly Locked Profile */}
+          {/* Dosen: Profile with configuration access */}
           {isDosen && (
             <div className="flex items-center gap-1 sm:gap-2 shrink-0">
-              <div
-                className="flex items-center gap-1.5 sm:gap-2.5 px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg bg-slate-50 border border-slate-200 text-left select-none max-w-[120px] sm:max-w-[200px]"
-                title="Akun Dosen Aktif (Terisolasi dari sistem BAAK)"
+              <button
+                type="button"
+                onClick={onOpenDosenProfile}
+                className="flex items-center gap-1.5 sm:gap-2.5 px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 hover:border-blue-300 border border-slate-200 text-left cursor-pointer max-w-[130px] sm:max-w-[220px] transition group"
+                title="Klik untuk melihat dan konfigurasi profil dosen"
               >
                 <img
                   src={currentUser.avatarUrl || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150'}
                   alt={currentUser.name}
-                  className="w-6 h-6 sm:w-7 sm:h-7 rounded-full object-cover border border-slate-200 shrink-0"
+                  className="w-6 h-6 sm:w-7 sm:h-7 rounded-full object-cover border border-slate-200 group-hover:border-blue-400 shrink-0"
                 />
 
-                <div className="min-w-0">
-                  <span className="text-[11px] sm:text-xs font-semibold text-slate-900 truncate block leading-tight">
+                <div className="min-w-0 flex-1">
+                  <span className="text-[11px] sm:text-xs font-semibold text-slate-900 group-hover:text-blue-700 truncate block leading-tight">
                     {currentUser.name}
                   </span>
-                  <span className="text-[9px] sm:text-[10px] text-slate-500 truncate block leading-tight mt-0.5">
-                    Dosen
+                  <span className="text-[9px] sm:text-[10px] text-slate-500 truncate block leading-tight mt-0.5 flex items-center gap-1">
+                    <span>NIDN {currentUser.nidn || currentUser.username}</span>
                   </span>
                 </div>
-              </div>
+
+                <UserCog className="w-3.5 h-3.5 text-slate-400 group-hover:text-blue-600 hidden sm:block shrink-0" />
+              </button>
 
               {onLogout && (
                 <button

@@ -41,6 +41,7 @@ export const CreateSessionModal: React.FC<CreateSessionModalProps> = ({
   );
   const [meetingNumber, setMeetingNumber] = useState<number>(6);
   const [topic, setTopic] = useState<string>('');
+  const [evaluation, setEvaluation] = useState<string>('');
   const [isDynamicQr, setIsDynamicQr] = useState<boolean>(true);
   const [errorMessage, setErrorMessage] = useState<string>('');
 
@@ -73,6 +74,7 @@ export const CreateSessionModal: React.FC<CreateSessionModalProps> = ({
       room,
       meetingNumber: Number(meetingNumber),
       topic: topic || `Pertemuan ke-${meetingNumber}: Pembahasan Materi Perkuliahan`,
+      evaluation: evaluation || 'Kuis singkat & tanya jawab pemahaman materi',
       isDynamicQr,
     });
 
@@ -206,15 +208,32 @@ export const CreateSessionModal: React.FC<CreateSessionModalProps> = ({
           {/* Topic */}
           <div>
             <label className="block text-sm font-semibold text-slate-700 mb-1.5">
-              Materi / Topik Perkuliahan Hari Ini
+              Materi / Topik Pembahasan Perkuliahan *
             </label>
             <input
               type="text"
               value={topic}
               onChange={(e) => setTopic(e.target.value)}
-              placeholder="Contoh: Implementasi Algoritma dan Struktur Data"
+              placeholder="Contoh: Implementasi Normalisasi Basis Data dan Relasi Tabel"
               className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-lg text-sm font-medium text-slate-900 focus:outline-none focus:border-slate-500"
             />
+          </div>
+
+          {/* Evaluation */}
+          <div>
+            <label className="block text-sm font-semibold text-slate-700 mb-1.5">
+              Bentuk Evaluasi yang Diberikan
+            </label>
+            <input
+              type="text"
+              value={evaluation}
+              onChange={(e) => setEvaluation(e.target.value)}
+              placeholder="Contoh: Kuis 5 soal singkat & latihan mandiri pembuatan ERD"
+              className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-lg text-sm font-medium text-slate-900 focus:outline-none focus:border-slate-500"
+            />
+            <p className="text-xs text-slate-500 mt-1">
+              Catatan evaluasi ini akan otomatis tercatat ke dalam dokumen <strong>Log Aktivitas Mengajar</strong>.
+            </p>
           </div>
 
           {/* Dynamic QR Toggle */}

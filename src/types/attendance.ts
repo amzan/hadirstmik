@@ -12,9 +12,13 @@ export interface User {
   role: Role;
   avatarUrl?: string;
   title?: string; // e.g. "S.Pd.I., M.Pd." for lecturers
+  nidn?: string;
+  academicRank?: string; // e.g. "Lektor", "Asisten Ahli", "Dosen Tetap"
+  officeRoom?: string; // e.g. "Gedung A Lt. 2 R. Dosen 104"
   prodi?: ProgramStudi;
   rombel?: string; // e.g. "TI 1A", "MI 5A"
   phone?: string;
+  password?: string;
 }
 
 export interface Course {
@@ -43,6 +47,7 @@ export interface ScheduleItem {
   room: string;      // e.g. "RK 2", "LAB 1"
   rombel: string;    // e.g. "TI 3", "TI 1 & 5", "MI 5", "MI 1U"
   prodi: ProgramStudi;
+  meetingDates?: Record<number, string>; // Mapping Pertemuan ke-N -> Tanggal (YYYY-MM-DD)
 }
 
 export interface Student {
@@ -68,6 +73,7 @@ export interface AttendanceSession {
   endTime: string;   // HH:mm
   meetingNumber: number; // Pertemuan ke-1 s/d 16
   topic: string;
+  evaluationMethod?: string; // Bentuk evaluasi: Kuis, Tugas, Praktikum, dll.
   qrToken: string;
   isDynamicQr: boolean; // if true, refreshes token every N seconds
   qrExpiresAt: string; // ISO string

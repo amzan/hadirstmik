@@ -279,6 +279,22 @@ export const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
           </div>
         </div>
 
+        {/* Meeting Details Info Bar */}
+        {activeSession && (
+          <div className="px-6 py-2 bg-slate-100/70 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2 text-xs">
+            <div className="flex items-center gap-2 text-slate-600">
+              <span className="font-semibold text-slate-800">Tanggal: {activeSession.date}</span>
+              <span aria-hidden="true">·</span>
+              <span className="truncate max-w-md">Topik: <strong className="text-slate-900">{activeSession.topic || `Pertemuan ${activeSession.meetingNumber}`}</strong></span>
+            </div>
+            {activeSession.evaluationMethod && (
+              <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-700 font-medium border border-blue-200">
+                Evaluasi: {activeSession.evaluationMethod}
+              </span>
+            )}
+          </div>
+        )}
+
         {/* Search & Status message */}
         <div className="px-6 pt-4 pb-2 flex items-center justify-between gap-3">
           <div className="relative flex-1 max-w-sm">

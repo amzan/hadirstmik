@@ -12,6 +12,8 @@ import { AdminDashboard } from './components/admin/AdminDashboard';
 import { RoleSwitcherModal } from './components/RoleSwitcherModal';
 import { UnifiedLoginPortal } from './components/auth/UnifiedLoginPortal';
 import { StudentLoginPortal } from './components/auth/StudentLoginPortal';
+import { ForgotPasswordModal } from './components/auth/ForgotPasswordModal';
+import { DosenProfileModal } from './components/dosen/DosenProfileModal';
 import { HomePage } from './components/home/HomePage';
 import { CAMPUS_INFO } from './data/initialData';
 
@@ -22,6 +24,10 @@ const AppContent: React.FC = () => {
   const [isRoleSwitcherOpen, setIsRoleSwitcherOpen] = useState(false);
   const [isUnifiedLoginOpen, setIsUnifiedLoginOpen] = useState(false);
   const [isStudentLoginOpen, setIsStudentLoginOpen] = useState(false);
+  const [isDosenProfileOpen, setIsDosenProfileOpen] = useState(false);
+  const [isForgotPasswordOpen, setIsForgotPasswordOpen] = useState(false);
+  const [forgotPasswordRole, setForgotPasswordRole] = useState<'mahasiswa' | 'dosen' | 'admin' | undefined>(undefined);
+  const [forgotPasswordIdentifier, setForgotPasswordIdentifier] = useState<string>('');
   const [unifiedLoginTab, setUnifiedLoginTab] = useState<'dosen' | 'admin'>('dosen');
   const [activeRoleTab, setActiveRoleTab] = useState<'mahasiswa' | 'dosen' | 'admin'>('mahasiswa');
 
@@ -100,7 +106,14 @@ const AppContent: React.FC = () => {
     setIsRoleSwitcherOpen(false);
     setIsUnifiedLoginOpen(false);
     setIsStudentLoginOpen(false);
+    setIsForgotPasswordOpen(false);
     setInactivityNotice(null);
+  }, []);
+
+  const handleOpenForgotPassword = useCallback((role?: 'mahasiswa' | 'dosen' | 'admin', identifier?: string) => {
+    setForgotPasswordRole(role);
+    setForgotPasswordIdentifier(identifier || '');
+    setIsForgotPasswordOpen(true);
   }, []);
 
   return (
@@ -116,6 +129,8 @@ const AppContent: React.FC = () => {
         onOpenStudentLogin={handleOpenStudentLogin}
         onOpenDosenLogin={handleOpenDosenLogin}
         onOpenBaakLogin={handleOpenBaakLogin}
+        onOpenDosenProfile={() => setIsDosenProfileOpen(true)}
+        onOpenForgotPassword={() => handleOpenForgotPassword(activeRoleTab)}
         onLogout={handleLogout}
       />
 
@@ -127,6 +142,7 @@ const AppContent: React.FC = () => {
             onLoginSuccess={handleLoginSuccess}
             activeRoleTab={activeRoleTab}
             onChangeRoleTab={(tab) => setActiveRoleTab(tab)}
+            onOpenForgotPassword={handleOpenForgotPassword}
             inactivityNotice={inactivityNotice}
             onDismissInactivityNotice={() => setInactivityNotice(null)}
           />
@@ -202,6 +218,10 @@ const AppContent: React.FC = () => {
           setIsUnifiedLoginOpen(false);
           setIsStudentLoginOpen(true);
         }}
+        onOpenForgotPassword={(role, id) => {
+          setIsUnifiedLoginOpen(false);
+          handleOpenForgotPassword(role, id);
+        }}
       />
 
       {/* Portal Login Terpisah Mahasiswa (NIM & Password) */}
@@ -219,6 +239,29 @@ const AppContent: React.FC = () => {
           setIsStudentLoginOpen(false);
           setUnifiedLoginTab('dosen');
           setIsUnifiedLoginOpen(true);
+        }}
+        onOpenForgotPassword={(role, id) => {
+          setIsStudentLoginOpen(false);
+          handleOpenForgotPassword(role, id);
+        }}
+      />
+
+      {/* Modal Konfigurasi Profil Dosen Pengampu */}
+      {isAuthenticated && currentUser.role === 'dosen' && (
+        <DosenProfileModal
+          isOpen={isDosenProfileOpen}
+          onClose={() => setIsDosenProfileOpen(false)}
+        />
+      )}
+
+      {/* Modal Atur Ulang Password via Email (Resend API) */}
+      <ForgotPasswordModal
+        isOpen={isForgotPasswordOpen}
+        onClose={() => setIsForgotPasswordOpen(false)}
+        initialRole={forgotPasswordRole}
+        initialIdentifier={forgotPasswordIdentifier}
+        onResetSuccess={(user) => {
+          // Success feedback already displayed in step 4 of modal
         }}
       />
     </div>
