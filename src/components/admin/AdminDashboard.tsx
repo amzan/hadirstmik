@@ -347,21 +347,21 @@ export const AdminDashboard: React.FC = () => {
               <p className="text-sm text-slate-500">Kelola akun Dosen, Mahasiswa, dan Administrator Kampus</p>
             </div>
 
-            <div className="flex items-center gap-3">
-              <div className="relative">
+            <div className="flex flex-wrap sm:flex-nowrap items-center gap-3 w-full sm:w-auto">
+              <div className="relative flex-1 sm:flex-none">
                 <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
                   type="text"
                   placeholder="Cari pengguna..."
                   value={searchUser}
                   onChange={(e) => setSearchUser(e.target.value)}
-                  className="pl-9 pr-3 py-1.5 bg-white border border-slate-300 rounded-md text-sm focus:outline-none focus:border-slate-500"
+                  className="w-full sm:w-auto pl-9 pr-3 py-1.5 bg-white border border-slate-300 rounded-md text-sm focus:outline-none focus:border-slate-500"
                 />
               </div>
 
               <button
                 onClick={() => handleOpenUserModal()}
-                className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-sm font-semibold flex items-center gap-2 transition cursor-pointer"
+                className="w-full sm:w-auto px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-sm font-semibold flex items-center justify-center gap-2 transition cursor-pointer shrink-0"
               >
                 <UserPlus className="w-4 h-4" />
                 <span>Tambah Pengguna</span>
@@ -370,7 +370,7 @@ export const AdminDashboard: React.FC = () => {
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full text-sm text-left border-collapse">
+            <table className="w-full text-sm text-left border-collapse min-w-[640px]">
               <thead>
                 <tr className="border-b border-slate-200 text-slate-600 font-semibold">
                   <th className="py-3 px-3">Pengguna</th>
@@ -463,7 +463,7 @@ export const AdminDashboard: React.FC = () => {
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full text-sm text-left border-collapse">
+            <table className="w-full text-sm text-left border-collapse min-w-[700px]">
               <thead>
                 <tr className="border-b border-slate-200 text-slate-600 font-semibold">
                   <th className="py-3 px-3">Hari & Jam</th>
@@ -544,7 +544,7 @@ export const AdminDashboard: React.FC = () => {
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full text-sm text-left border-collapse">
+            <table className="w-full text-sm text-left border-collapse min-w-[620px]">
               <thead>
                 <tr className="border-b border-slate-200 text-slate-600 font-semibold">
                   <th className="py-3 px-3">No</th>

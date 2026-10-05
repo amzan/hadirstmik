@@ -140,13 +140,8 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     return saved ? JSON.parse(saved) : INITIAL_LEAVE_REQUESTS;
   });
 
-  // Current logged in user (default: Nur Wasito, S.Pd., M.Pd. - Dosen & Wakil Ketua 1)
+  // Current logged in user (in-memory only, no previous session auto-login)
   const [currentUser, setCurrentUser] = useState<User>(() => {
-    const savedId = localStorage.getItem(STORAGE_KEYS.CURRENT_USER_ID);
-    if (savedId) {
-      const found = users.find(u => u.id === savedId);
-      if (found) return found;
-    }
     return users.find(u => u.id === 'dosen-3') || users[0];
   });
 
@@ -208,9 +203,10 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     localStorage.setItem(STORAGE_KEYS.LEAVE, JSON.stringify(leaveRequests));
   }, [leaveRequests]);
 
+  // Clean up any previously persisted user ID so next refresh starts clean on home page
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.CURRENT_USER_ID, currentUser.id);
-  }, [currentUser]);
+    localStorage.removeItem(STORAGE_KEYS.CURRENT_USER_ID);
+  }, []);
 
   // Periodic automatic schedule checker:
   // "Kemudian gunakan jadwal perkuliahan sebagai acuan utama untuk pembaruan status kehadiran secara otomatis."

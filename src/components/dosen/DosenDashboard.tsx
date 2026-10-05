@@ -340,10 +340,10 @@ export const DosenDashboard: React.FC = () => {
       )}
 
       {/* Clean Navigation Tabs */}
-      <div className="flex border-b border-slate-200 gap-8 text-sm sm:text-base font-medium">
+      <div className="flex overflow-x-auto border-b border-slate-200 gap-4 sm:gap-8 text-sm sm:text-base font-medium no-scrollbar whitespace-nowrap">
         <button
           onClick={() => setActiveTab('courses')}
-          className={`pb-3 border-b-2 transition cursor-pointer ${
+          className={`pb-3 border-b-2 shrink-0 transition cursor-pointer ${
             activeTab === 'courses'
               ? 'border-slate-900 text-slate-900 font-bold'
               : 'border-transparent text-slate-500 hover:text-slate-900'
@@ -354,7 +354,7 @@ export const DosenDashboard: React.FC = () => {
 
         <button
           onClick={() => setActiveTab('sessions')}
-          className={`pb-3 border-b-2 transition cursor-pointer ${
+          className={`pb-3 border-b-2 shrink-0 transition cursor-pointer ${
             activeTab === 'sessions'
               ? 'border-slate-900 text-slate-900 font-bold'
               : 'border-transparent text-slate-500 hover:text-slate-900'
@@ -365,7 +365,7 @@ export const DosenDashboard: React.FC = () => {
 
         <button
           onClick={() => setActiveTab('students')}
-          className={`pb-3 border-b-2 transition cursor-pointer ${
+          className={`pb-3 border-b-2 shrink-0 transition cursor-pointer ${
             activeTab === 'students'
               ? 'border-slate-900 text-slate-900 font-bold'
               : 'border-transparent text-slate-500 hover:text-slate-900'
@@ -376,7 +376,7 @@ export const DosenDashboard: React.FC = () => {
 
         <button
           onClick={() => setActiveTab('leave')}
-          className={`pb-3 border-b-2 transition cursor-pointer ${
+          className={`pb-3 border-b-2 shrink-0 transition cursor-pointer ${
             activeTab === 'leave'
               ? 'border-slate-900 text-slate-900 font-bold'
               : 'border-transparent text-slate-500 hover:text-slate-900'
@@ -391,7 +391,7 @@ export const DosenDashboard: React.FC = () => {
         <div className="space-y-4">
           {/* Minimalist Filter Bar */}
           <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
-            <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-lg">
+            <div className="flex overflow-x-auto no-scrollbar whitespace-nowrap items-center gap-1 p-1 bg-slate-100 rounded-lg max-w-full">
               {['ALL', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat'].map(day => (
                 <button
                   key={day}

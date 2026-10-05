@@ -45,10 +45,10 @@ export const ScheduleCalendar: React.FC<ScheduleCalendarProps> = ({ onSelectSche
         </div>
 
         {/* Prodi filter buttons */}
-        <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-lg text-sm font-medium">
+        <div className="flex overflow-x-auto whitespace-nowrap items-center gap-1.5 p-1 bg-slate-100 rounded-lg text-xs sm:text-sm font-medium w-full sm:w-auto no-scrollbar">
           <button
             onClick={() => setSelectedProdi('ALL')}
-            className={`px-3 py-1.5 rounded-md transition cursor-pointer ${
+            className={`px-3 py-1.5 rounded-md transition cursor-pointer shrink-0 ${
               selectedProdi === 'ALL'
                 ? 'bg-white text-slate-900 font-semibold shadow-xs'
                 : 'text-slate-600 hover:text-slate-900'
@@ -58,7 +58,7 @@ export const ScheduleCalendar: React.FC<ScheduleCalendarProps> = ({ onSelectSche
           </button>
           <button
             onClick={() => setSelectedProdi('Teknologi Informasi')}
-            className={`px-3 py-1.5 rounded-md transition cursor-pointer ${
+            className={`px-3 py-1.5 rounded-md transition cursor-pointer shrink-0 ${
               selectedProdi === 'Teknologi Informasi'
                 ? 'bg-white text-slate-900 font-semibold shadow-xs'
                 : 'text-slate-600 hover:text-slate-900'
@@ -68,7 +68,7 @@ export const ScheduleCalendar: React.FC<ScheduleCalendarProps> = ({ onSelectSche
           </button>
           <button
             onClick={() => setSelectedProdi('Manajemen Informatika')}
-            className={`px-3 py-1.5 rounded-md transition cursor-pointer ${
+            className={`px-3 py-1.5 rounded-md transition cursor-pointer shrink-0 ${
               selectedProdi === 'Manajemen Informatika'
                 ? 'bg-white text-slate-900 font-semibold shadow-xs'
                 : 'text-slate-600 hover:text-slate-900'
@@ -80,7 +80,7 @@ export const ScheduleCalendar: React.FC<ScheduleCalendarProps> = ({ onSelectSche
       </div>
 
       {/* Day Tabs */}
-      <div className="flex border-b border-slate-200 overflow-x-auto bg-white px-6">
+      <div className="flex border-b border-slate-200 overflow-x-auto bg-white px-3 sm:px-6 no-scrollbar whitespace-nowrap">
         {DAYS.map((day) => {
           const count = schedules.filter(s => s.day === day && (selectedProdi === 'ALL' || s.prodi === selectedProdi)).length;
           const isToday = day === activeDay;

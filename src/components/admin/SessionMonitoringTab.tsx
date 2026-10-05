@@ -271,10 +271,10 @@ export const SessionMonitoringTab: React.FC = () => {
       {/* Filter Bar & Controls */}
       <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-5 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
         {/* Status Tab Filter */}
-        <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-lg text-xs font-semibold">
+        <div className="flex overflow-x-auto whitespace-nowrap no-scrollbar items-center gap-1.5 p-1 bg-slate-100 rounded-lg text-xs font-semibold max-w-full">
           <button
             onClick={() => setStatusFilter('ALL')}
-            className={`px-3 py-1.5 rounded-md transition cursor-pointer ${
+            className={`px-3 py-1.5 rounded-md transition cursor-pointer shrink-0 ${
               statusFilter === 'ALL'
                 ? 'bg-white text-slate-900 shadow-2xs font-bold'
                 : 'text-slate-600 hover:text-slate-900'
@@ -284,7 +284,7 @@ export const SessionMonitoringTab: React.FC = () => {
           </button>
           <button
             onClick={() => setStatusFilter('OPEN')}
-            className={`px-3 py-1.5 rounded-md flex items-center gap-1.5 transition cursor-pointer ${
+            className={`px-3 py-1.5 rounded-md flex items-center gap-1.5 transition cursor-pointer shrink-0 ${
               statusFilter === 'OPEN'
                 ? 'bg-white text-emerald-800 shadow-2xs font-bold'
                 : 'text-slate-600 hover:text-slate-900'
@@ -295,7 +295,7 @@ export const SessionMonitoringTab: React.FC = () => {
           </button>
           <button
             onClick={() => setStatusFilter('CLOSED')}
-            className={`px-3 py-1.5 rounded-md transition cursor-pointer ${
+            className={`px-3 py-1.5 rounded-md transition cursor-pointer shrink-0 ${
               statusFilter === 'CLOSED'
                 ? 'bg-white text-slate-900 shadow-2xs font-bold'
                 : 'text-slate-600 hover:text-slate-900'
@@ -328,7 +328,7 @@ export const SessionMonitoringTab: React.FC = () => {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm text-left border-collapse">
+            <table className="w-full text-sm text-left border-collapse min-w-[700px]">
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50 text-slate-600 text-xs font-semibold">
                   <th className="py-3 px-4">Status & Pertemuan</th>

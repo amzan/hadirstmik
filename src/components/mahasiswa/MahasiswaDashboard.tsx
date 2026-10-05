@@ -71,10 +71,10 @@ export const MahasiswaDashboard: React.FC = () => {
         </div>
 
         {/* Priority Actions */}
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap sm:flex-nowrap items-center gap-2.5 sm:gap-3 w-full sm:w-auto">
           <button
             onClick={() => setIsScannerOpen(true)}
-            className="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-sm font-semibold flex items-center gap-2 transition cursor-pointer"
+            className="flex-1 sm:flex-none justify-center px-4 sm:px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-sm font-semibold flex items-center gap-2 transition cursor-pointer shadow-xs"
           >
             <QrCode className="w-4 h-4" />
             <span>Scan QR Presensi</span>
@@ -82,7 +82,7 @@ export const MahasiswaDashboard: React.FC = () => {
 
           <button
             onClick={() => setIsLeaveModalOpen(true)}
-            className="px-4 py-2.5 bg-white hover:bg-slate-50 text-slate-800 border border-slate-300 rounded-lg text-sm font-semibold flex items-center gap-2 transition cursor-pointer"
+            className="flex-1 sm:flex-none justify-center px-4 py-2.5 bg-white hover:bg-slate-50 text-slate-800 border border-slate-300 rounded-xl text-sm font-semibold flex items-center gap-2 transition cursor-pointer shadow-xs"
           >
             <FileText className="w-4 h-4 text-slate-600" />
             <span>Ajukan Izin / Sakit</span>
@@ -326,7 +326,7 @@ export const MahasiswaDashboard: React.FC = () => {
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full text-sm text-left border-collapse">
+          <table className="w-full text-sm text-left border-collapse min-w-[580px]">
             <thead>
               <tr className="border-b border-slate-200 text-slate-600 font-semibold">
                 <th className="py-3 px-4">Waktu Presensi</th>
