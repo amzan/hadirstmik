@@ -234,9 +234,12 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     localStorage.setItem(STORAGE_KEYS.LEAVE, JSON.stringify(leaveRequests));
   }, [leaveRequests]);
 
-  // Clean up any previously persisted user ID so next refresh starts clean on home page
+  // Preserve currentUser if authenticated session is active (within 2-hour inactivity rule); otherwise clear
   useEffect(() => {
-    localStorage.removeItem(STORAGE_KEYS.CURRENT_USER_ID);
+    const isAuth = localStorage.getItem('stmik_auth_session_active');
+    if (isAuth !== 'true') {
+      localStorage.removeItem(STORAGE_KEYS.CURRENT_USER_ID);
+    }
   }, []);
 
   // Periodic automatic schedule checker:

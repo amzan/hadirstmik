@@ -193,6 +193,7 @@ const AppContent: React.FC = () => {
     setIsAuthenticated(false);
     localStorage.removeItem(AUTH_SESSION_KEY);
     localStorage.removeItem(LAST_ACTIVITY_KEY);
+    localStorage.removeItem('stmik_current_user_id_v1');
     setIsRoleSwitcherOpen(false);
     setIsUnifiedLoginOpen(false);
     setIsStudentLoginOpen(false);
