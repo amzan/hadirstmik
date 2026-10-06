@@ -410,7 +410,7 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({
                 <label className="block text-xs font-semibold text-slate-700 mb-1.5">
                   Kategori Pengguna:
                 </label>
-                <div className="grid grid-cols-4 gap-1.5 p-1 bg-slate-100 rounded-lg text-xs font-medium">
+                <div className={`grid ${initialRole === 'admin' ? 'grid-cols-4' : 'grid-cols-3'} gap-1.5 p-1 bg-slate-100 rounded-lg text-xs font-medium`}>
                   <button
                     type="button"
                     onClick={() => setSelectedRoleFilter('all')}
@@ -432,13 +432,15 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({
                   >
                     Dosen
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedRoleFilter('admin')}
-                    className={`py-1.5 rounded-md transition cursor-pointer text-center ${selectedRoleFilter === 'admin' ? 'bg-white text-indigo-700 shadow-2xs font-bold' : 'text-slate-600 hover:text-slate-900'}`}
-                  >
-                    BAAK
-                  </button>
+                  {initialRole === 'admin' && (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedRoleFilter('admin')}
+                      className={`py-1.5 rounded-md transition cursor-pointer text-center ${selectedRoleFilter === 'admin' ? 'bg-white text-indigo-700 shadow-2xs font-bold' : 'text-slate-600 hover:text-slate-900'}`}
+                    >
+                      BAAK
+                    </button>
+                  )}
                 </div>
               </div>
 

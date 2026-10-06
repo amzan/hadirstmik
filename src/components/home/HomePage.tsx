@@ -4,14 +4,14 @@ import { CAMPUS_INFO } from '../../data/initialData';
 import { User } from '../../types/attendance';
 import {
   GraduationCap, BookOpen, Shield, ArrowRight,
-  AlertTriangle, Lock, Calendar, Eye, EyeOff,
-  CheckCircle2, Sparkles, UserCheck, KeyRound, Smartphone
+  AlertTriangle, Calendar, Eye, EyeOff,
+  CheckCircle2, Sparkles, KeyRound
 } from 'lucide-react';
 
 interface HomePageProps {
   onLoginSuccess: (user: User) => void;
-  activeRoleTab?: 'mahasiswa' | 'dosen' | 'admin';
-  onChangeRoleTab?: (role: 'mahasiswa' | 'dosen' | 'admin') => void;
+  activeRoleTab?: 'mahasiswa' | 'dosen';
+  onChangeRoleTab?: (role: 'mahasiswa' | 'dosen') => void;
   onOpenForgotPassword?: (role?: 'mahasiswa' | 'dosen' | 'admin', identifier?: string) => void;
   inactivityNotice?: string | null;
   onDismissInactivityNotice?: () => void;
@@ -27,14 +27,18 @@ export const HomePage: React.FC<HomePageProps> = ({
 }) => {
   const { students, users, addUser } = useAttendance();
 
-  const [activeTab, setActiveTab] = useState<'mahasiswa' | 'dosen' | 'admin'>(externalRoleTab);
+  const [activeTab, setActiveTab] = useState<'mahasiswa' | 'dosen'>(
+    externalRoleTab === 'dosen' ? 'dosen' : 'mahasiswa'
+  );
 
   // Sync with external role tab if header button is clicked
   useEffect(() => {
-    setActiveTab(externalRoleTab);
+    if (externalRoleTab === 'dosen' || externalRoleTab === 'mahasiswa') {
+      setActiveTab(externalRoleTab);
+    }
   }, [externalRoleTab]);
 
-  const handleTabChange = (tab: 'mahasiswa' | 'dosen' | 'admin') => {
+  const handleTabChange = (tab: 'mahasiswa' | 'dosen') => {
     setActiveTab(tab);
     if (onChangeRoleTab) {
       onChangeRoleTab(tab);
@@ -82,11 +86,25 @@ export const HomePage: React.FC<HomePageProps> = ({
         const existingUser = users.find(
           u => u.username.toUpperCase() === cleanNim && u.role === 'mahasiswa'
         );
-        const expectedPassword = existingUser?.password || 'pass123';
-        if (passwordInput !== expectedPassword && passwordInput !== 'pass123') {
-          setIsLoading(false);
-          setErrorMessage('Kata sandi salah. Silakan periksa kembali kata sandi Anda atau gunakan fitur Atur Ulang Kata Sandi.');
-          return;
+
+        // Jika user mahasiswa sudah pernah mengganti password via email, password default 'pass123' TIDAK BERLAKU LAGI!
+        if (existingUser?.password) {
+          if (passwordInput !== existingUser.password) {
+            setIsLoading(false);
+            if (passwordInput === 'pass123') {
+              setErrorMessage('Kata sandi default (pass123) sudah tidak berlaku karena Anda telah mengganti kata sandi via email. Silakan gunakan kata sandi baru Anda.');
+            } else {
+              setErrorMessage('Kata sandi salah. Silakan periksa kembali kata sandi baru Anda atau gunakan fitur Lupa Kata Sandi.');
+            }
+            return;
+          }
+        } else {
+          // Belum pernah ganti password: password default mahasiswa adalah 'pass123'
+          if (passwordInput !== 'pass123') {
+            setIsLoading(false);
+            setErrorMessage('Kata sandi salah. Silakan periksa kembali kata sandi Anda atau gunakan fitur Lupa Kata Sandi.');
+            return;
+          }
         }
 
         if (existingUser) {
@@ -144,11 +162,24 @@ export const HomePage: React.FC<HomePageProps> = ({
           return;
         }
 
-        const expectedPassword = matchedDosen.password || 'dosen123';
-        if (passwordInput !== expectedPassword && passwordInput !== 'dosen123' && passwordInput !== matchedDosen.username) {
-          setIsLoading(false);
-          setErrorMessage('Kata sandi dosen salah. Silakan periksa kembali atau gunakan fitur Atur Ulang Kata Sandi.');
-          return;
+        // Jika dosen sudah pernah mengganti password via email, password default 'dosen123' TIDAK BERLAKU LAGI!
+        if (matchedDosen.password) {
+          if (passwordInput !== matchedDosen.password) {
+            setIsLoading(false);
+            if (passwordInput === 'dosen123' || passwordInput === matchedDosen.username) {
+              setErrorMessage('Kata sandi default dosen sudah tidak berlaku karena Anda telah memperbarui kata sandi via email. Silakan gunakan kata sandi baru Anda.');
+            } else {
+              setErrorMessage('Kata sandi salah. Silakan periksa kembali kata sandi baru Anda atau gunakan fitur Lupa Kata Sandi.');
+            }
+            return;
+          }
+        } else {
+          // Belum pernah ganti password: password default dosen adalah 'dosen123' atau username dosen
+          if (passwordInput !== 'dosen123' && passwordInput !== matchedDosen.username) {
+            setIsLoading(false);
+            setErrorMessage('Kata sandi dosen salah. Silakan periksa kembali atau gunakan fitur Lupa Kata Sandi.');
+            return;
+          }
         }
 
         setIsLoading(false);
@@ -177,11 +208,24 @@ export const HomePage: React.FC<HomePageProps> = ({
           return;
         }
 
-        const expectedPassword = adminUser.password || 'baak123';
-        if (passwordInput !== expectedPassword && passwordInput !== 'baak123' && passwordInput !== 'admin123') {
-          setIsLoading(false);
-          setErrorMessage('Kata sandi administrator salah. Silakan periksa kembali atau gunakan fitur Atur Ulang Kata Sandi.');
-          return;
+        // Jika admin sudah pernah mengganti password via email, password default 'baak123' TIDAK BERLAKU LAGI!
+        if (adminUser.password) {
+          if (passwordInput !== adminUser.password) {
+            setIsLoading(false);
+            if (passwordInput === 'baak123' || passwordInput === 'admin123') {
+              setErrorMessage('Kata sandi default administrator (baak123) sudah tidak berlaku karena Anda telah memperbarui kata sandi via email. Silakan gunakan kata sandi baru Anda.');
+            } else {
+              setErrorMessage('Kata sandi administrator salah. Silakan periksa kembali kata sandi baru Anda.');
+            }
+            return;
+          }
+        } else {
+          // Belum pernah ganti password: password default administrator adalah 'baak123'
+          if (passwordInput !== 'baak123' && passwordInput !== 'admin123') {
+            setIsLoading(false);
+            setErrorMessage('Kata sandi administrator salah. Gunakan password resmi: baak123');
+            return;
+          }
         }
 
         setIsLoading(false);
@@ -248,47 +292,33 @@ export const HomePage: React.FC<HomePageProps> = ({
       <div className="max-w-xl mx-auto w-full px-2 sm:px-0">
         <div className="bg-white border border-slate-200 shadow-sm rounded-2xl overflow-hidden transition-all">
           {/* Segmented Tab Bar Switcher */}
-          <div className="p-1.5 bg-slate-100 border-b border-slate-200 grid grid-cols-3 gap-1 text-xs sm:text-sm font-semibold select-none">
+          <div className="p-1.5 bg-slate-100 border-b border-slate-200 grid grid-cols-2 gap-1.5 text-xs sm:text-sm font-semibold select-none">
             {/* Tab 1: Mahasiswa */}
             <button
               type="button"
               onClick={() => handleTabChange('mahasiswa')}
-              className={`py-2.5 px-2 rounded-xl flex items-center justify-center gap-1.5 transition cursor-pointer ${
+              className={`py-2.5 px-3 rounded-xl flex items-center justify-center gap-2 transition cursor-pointer ${
                 activeTab === 'mahasiswa'
                   ? 'bg-blue-600 text-white shadow-xs font-bold'
                   : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
               }`}
             >
               <GraduationCap className={`w-4 h-4 ${activeTab === 'mahasiswa' ? 'text-white' : 'text-blue-600'}`} />
-              <span className="truncate">Mahasiswa</span>
+              <span className="truncate">Portal Mahasiswa</span>
             </button>
 
             {/* Tab 2: Dosen */}
             <button
               type="button"
               onClick={() => handleTabChange('dosen')}
-              className={`py-2.5 px-2 rounded-xl flex items-center justify-center gap-1.5 transition cursor-pointer ${
+              className={`py-2.5 px-3 rounded-xl flex items-center justify-center gap-2 transition cursor-pointer ${
                 activeTab === 'dosen'
                   ? 'bg-slate-900 text-white shadow-xs font-bold'
                   : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
               }`}
             >
               <BookOpen className={`w-4 h-4 ${activeTab === 'dosen' ? 'text-white' : 'text-slate-800'}`} />
-              <span className="truncate">Dosen</span>
-            </button>
-
-            {/* Tab 3: BAAK */}
-            <button
-              type="button"
-              onClick={() => handleTabChange('admin')}
-              className={`py-2.5 px-2 rounded-xl flex items-center justify-center gap-1.5 transition cursor-pointer ${
-                activeTab === 'admin'
-                  ? 'bg-indigo-700 text-white shadow-xs font-bold'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
-              }`}
-            >
-              <Shield className={`w-4 h-4 ${activeTab === 'admin' ? 'text-white' : 'text-indigo-700'}`} />
-              <span className="truncate">BAAK</span>
+              <span className="truncate">Portal Dosen</span>
             </button>
           </div>
 
@@ -298,25 +328,21 @@ export const HomePage: React.FC<HomePageProps> = ({
             <div className="flex items-center justify-between gap-3 pb-3 border-b border-slate-100">
               <div>
                 <h3 className="text-base sm:text-lg font-bold text-slate-900">
-                  {activeTab === 'mahasiswa' && 'Login Portal Mahasiswa'}
-                  {activeTab === 'dosen' && 'Login Dosen Pengampu'}
-                  {activeTab === 'admin' && 'Login Administrator BAAK'}
+                  {activeTab === 'mahasiswa' ? 'Login Portal Mahasiswa' : 'Login Dosen Pengampu'}
                 </h3>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  {activeTab === 'mahasiswa' && 'Akses scan QR presensi mandiri & rekap kehadiran'}
-                  {activeTab === 'dosen' && 'Buka sesi perkuliahan & tayangkan QR Code kelas'}
-                  {activeTab === 'admin' && 'Pusat kendali akademik, jadwal, & monitoring sesi'}
+                  {activeTab === 'mahasiswa'
+                    ? 'Akses scan QR presensi mandiri & rekap kehadiran'
+                    : 'Buka sesi perkuliahan & tayangkan QR Code kelas'}
                 </p>
               </div>
 
               <div className="shrink-0">
                 <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold ${
                   activeTab === 'mahasiswa' ? 'bg-blue-50 text-blue-700 border border-blue-200' :
-                  activeTab === 'dosen' ? 'bg-slate-100 text-slate-800 border border-slate-300' :
-                  'bg-indigo-50 text-indigo-700 border border-indigo-200'
+                  'bg-slate-100 text-slate-800 border border-slate-300'
                 }`}>
-                  {activeTab === 'mahasiswa' ? 'NIM Mahasiswa' :
-                   activeTab === 'dosen' ? 'Akun Dosen' : 'Akun BAAK'}
+                  {activeTab === 'mahasiswa' ? 'NIM Mahasiswa' : 'Akun Dosen'}
                 </span>
               </div>
             </div>
@@ -342,15 +368,11 @@ export const HomePage: React.FC<HomePageProps> = ({
               {/* Field 1: Username / NIM */}
               <div>
                 <label className="block text-xs sm:text-sm font-semibold text-slate-700 mb-1.5">
-                  {activeTab === 'mahasiswa' ? 'Nomor Induk Mahasiswa (NIM)' :
-                   activeTab === 'dosen' ? 'Nama Depan / NIDN Dosen' :
-                   'Username Administrator'}
+                  {activeTab === 'mahasiswa' ? 'Nomor Induk Mahasiswa (NIM)' : 'Nama Depan / NIDN Dosen'}
                 </label>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
-                    {activeTab === 'mahasiswa' ? <GraduationCap className="w-4 h-4" /> :
-                     activeTab === 'dosen' ? <BookOpen className="w-4 h-4" /> :
-                     <Shield className="w-4 h-4" />}
+                    {activeTab === 'mahasiswa' ? <GraduationCap className="w-4 h-4" /> : <BookOpen className="w-4 h-4" />}
                   </div>
                   <input
                     type="text"
@@ -360,9 +382,7 @@ export const HomePage: React.FC<HomePageProps> = ({
                       if (errorMessage) setErrorMessage('');
                     }}
                     placeholder={
-                      activeTab === 'mahasiswa' ? 'Contoh: 26TI0001' :
-                      activeTab === 'dosen' ? 'Contoh: nur / agus / teguh' :
-                      'Contoh: baak'
+                      activeTab === 'mahasiswa' ? 'Contoh: 26TI0001' : 'Contoh: nur / agus / teguh'
                     }
                     className="w-full pl-9 pr-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:border-slate-900 transition"
                     disabled={isLoading}
@@ -419,8 +439,7 @@ export const HomePage: React.FC<HomePageProps> = ({
                 disabled={isLoading}
                 className={`w-full py-3 px-4 rounded-xl text-white text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition cursor-pointer shadow-xs disabled:opacity-70 ${
                   activeTab === 'mahasiswa' ? 'bg-blue-600 hover:bg-blue-700 active:bg-blue-800' :
-                  activeTab === 'dosen' ? 'bg-slate-900 hover:bg-slate-800 active:bg-slate-950' :
-                  'bg-indigo-700 hover:bg-indigo-800 active:bg-indigo-900'
+                  'bg-slate-900 hover:bg-slate-800 active:bg-slate-950'
                 }`}
               >
                 {isLoading ? (
@@ -431,58 +450,14 @@ export const HomePage: React.FC<HomePageProps> = ({
                 ) : (
                   <>
                     <span>
-                      {activeTab === 'mahasiswa' && 'Masuk sebagai Mahasiswa'}
-                      {activeTab === 'dosen' && 'Masuk sebagai Dosen'}
-                      {activeTab === 'admin' && 'Masuk sebagai Administrator BAAK'}
+                      {activeTab === 'mahasiswa' ? 'Masuk sebagai Mahasiswa' : 'Masuk sebagai Dosen'}
                     </span>
                     <ArrowRight className="w-4 h-4" />
                   </>
                 )}
               </button>
-
-              {/* Reset Password Option for All Users */}
-              {onOpenForgotPassword && (
-                <div className="pt-3 text-center border-t border-slate-100 flex items-center justify-center gap-1.5 text-xs text-slate-500">
-                  <span>Lupa kata sandi akun Anda?</span>
-                  <button
-                    type="button"
-                    onClick={() => onOpenForgotPassword(activeTab, usernameInput)}
-                    className="text-blue-600 hover:text-blue-800 font-semibold hover:underline inline-flex items-center gap-1 cursor-pointer"
-                  >
-                    <KeyRound className="w-3.5 h-3.5" />
-                    <span>Atur Ulang via Email (Resend)</span>
-                  </button>
-                </div>
-              )}
             </form>
           </div>
-        </div>
-      </div>
-
-      {/* Lightweight Feature Highlights Below */}
-      <div className="max-w-xl mx-auto grid grid-cols-1 sm:grid-cols-3 gap-3 px-2 sm:px-0 text-center">
-        <div className="p-3 bg-white rounded-xl border border-slate-200/80 shadow-2xs">
-          <div className="flex items-center justify-center gap-1.5 text-xs font-semibold text-slate-800">
-            <Lock className="w-3.5 h-3.5 text-blue-600" />
-            <span>Sesi Terisolasi</span>
-          </div>
-          <p className="text-[11px] text-slate-500 mt-0.5">Logout otomatis saat muat ulang</p>
-        </div>
-
-        <div className="p-3 bg-white rounded-xl border border-slate-200/80 shadow-2xs">
-          <div className="flex items-center justify-center gap-1.5 text-xs font-semibold text-slate-800">
-            <Smartphone className="w-3.5 h-3.5 text-emerald-600" />
-            <span>Scan Kamera HP</span>
-          </div>
-          <p className="text-[11px] text-slate-500 mt-0.5">Presensi QR real-time instan</p>
-        </div>
-
-        <div className="p-3 bg-white rounded-xl border border-slate-200/80 shadow-2xs">
-          <div className="flex items-center justify-center gap-1.5 text-xs font-semibold text-slate-800">
-            <UserCheck className="w-3.5 h-3.5 text-indigo-600" />
-            <span>Multi-Role Kampus</span>
-          </div>
-          <p className="text-[11px] text-slate-500 mt-0.5">Mahasiswa, Dosen & BAAK</p>
         </div>
       </div>
     </div>

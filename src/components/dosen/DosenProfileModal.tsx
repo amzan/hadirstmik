@@ -3,12 +3,15 @@ import { useAttendance } from '../../context/AttendanceContext';
 import { ProgramStudi } from '../../types/attendance';
 import {
   X, User, Mail, Phone, BookOpen, Shield, Check,
-  Camera, Building, FileCheck, CheckCircle2, AlertCircle, Sparkles, Upload, Image as ImageIcon
+  Camera, Building, FileCheck, CheckCircle2, AlertCircle, Sparkles, Upload, Image as ImageIcon,
+  KeyRound
 } from 'lucide-react';
+import { ChangePasswordOtpSection } from '../shared/ChangePasswordOtpSection';
 
 interface DosenProfileModalProps {
   isOpen: boolean;
   onClose: () => void;
+  defaultTab?: 'profil' | 'password';
 }
 
 // Preset professional avatar options for easy one-click selection
@@ -42,8 +45,11 @@ const AVATAR_PRESETS = [
 export const DosenProfileModal: React.FC<DosenProfileModalProps> = ({
   isOpen,
   onClose,
+  defaultTab = 'profil',
 }) => {
   const { currentUser, updateUser, schedules } = useAttendance();
+
+  const [activeTab, setActiveTab] = useState<'profil' | 'password'>(defaultTab);
 
   // Form states initialized from currentUser
   const [name, setName] = useState(currentUser.name || '');
@@ -81,8 +87,9 @@ export const DosenProfileModal: React.FC<DosenProfileModalProps> = ({
       setUploadError('');
       setUploadSuccessInfo('');
       setShowCustomAvatarInput(false);
+      setActiveTab(defaultTab);
     }
-  }, [isOpen, currentUser]);
+  }, [isOpen, currentUser, defaultTab]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setUploadError('');
@@ -242,8 +249,41 @@ export const DosenProfileModal: React.FC<DosenProfileModalProps> = ({
           </button>
         </div>
 
-        {/* Content Body */}
-        <form onSubmit={handleSave} className="p-5 sm:p-6 space-y-5 max-h-[calc(85vh-130px)] overflow-y-auto">
+        {/* Tab Navigation: Profil vs Ganti Password OTP */}
+        <div className="flex border-b border-slate-200 bg-slate-50 px-4 sm:px-6">
+          <button
+            type="button"
+            onClick={() => setActiveTab('profil')}
+            className={`flex items-center gap-2 py-3 px-3 sm:px-4 text-xs sm:text-sm font-semibold border-b-2 transition cursor-pointer ${
+              activeTab === 'profil'
+                ? 'border-blue-600 text-blue-700 bg-white'
+                : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-100/60'
+            }`}
+          >
+            <User className="w-4 h-4" />
+            <span>Data Profil & Mengajar</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('password')}
+            className={`flex items-center gap-2 py-3 px-3 sm:px-4 text-xs sm:text-sm font-semibold border-b-2 transition cursor-pointer ${
+              activeTab === 'password'
+                ? 'border-blue-600 text-blue-700 bg-white'
+                : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-100/60'
+            }`}
+          >
+            <KeyRound className="w-4 h-4" />
+            <span>Ganti Password (OTP Email)</span>
+            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-700">
+              Resend OTP
+            </span>
+          </button>
+        </div>
+
+        {/* Content Body Container */}
+        <div className="p-5 sm:p-6 max-h-[calc(85vh-140px)] overflow-y-auto">
+          {activeTab === 'profil' ? (
+            <form onSubmit={handleSave} className="space-y-5">
           {/* Success Banner */}
           {saveSuccess && (
             <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center gap-2.5 text-emerald-800 text-sm animate-in fade-in duration-150">
@@ -575,24 +615,45 @@ export const DosenProfileModal: React.FC<DosenProfileModalProps> = ({
           )}
 
           {/* Footer Actions */}
-          <div className="pt-3 border-t border-slate-200 flex items-center justify-end gap-2.5">
+          <div className="pt-3 border-t border-slate-200 flex items-center justify-between">
             <button
               type="button"
-              onClick={onClose}
-              className="px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 rounded-lg transition cursor-pointer"
+              onClick={() => setActiveTab('password')}
+              className="text-xs text-blue-600 hover:text-blue-800 font-semibold flex items-center gap-1.5 transition cursor-pointer"
             >
-              Batal
+              <KeyRound className="w-3.5 h-3.5" />
+              <span>Ingin ubah kata sandi dosen? Buka Tab Password</span>
             </button>
-            <button
-              type="submit"
-              className="px-5 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 active:bg-blue-800 rounded-lg transition flex items-center gap-1.5 shadow-xs cursor-pointer"
-            >
-              <Check className="w-4 h-4" />
-              <span>Simpan Perubahan Profil</span>
-            </button>
+            <div className="flex items-center gap-2.5">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 rounded-lg transition cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                type="submit"
+                className="px-5 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 active:bg-blue-800 rounded-lg transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+              >
+                <Check className="w-4 h-4" />
+                <span>Simpan Perubahan Profil</span>
+              </button>
+            </div>
           </div>
         </form>
-      </div>
+      ) : (
+        /* Tab Ganti Password dengan OTP Email */
+        <div className="space-y-4">
+          <ChangePasswordOtpSection
+            currentUser={currentUser}
+            overrideEmail={email}
+            onPasswordChanged={() => {}}
+          />
+        </div>
+      )}
     </div>
+  </div>
+</div>
   );
 };

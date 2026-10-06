@@ -119,11 +119,23 @@ export const UnifiedLoginPortal: React.FC<UnifiedLoginPortalProps> = ({
         return;
       }
 
-      const expectedDosenPassword = matched.password || 'dosen123';
-      if (dosenPassword !== expectedDosenPassword && dosenPassword !== 'dosen123' && dosenPassword !== matched.username) {
-        setIsLoading(false);
-        setErrorMessage('Kata sandi salah. Silakan periksa kembali atau gunakan opsi Lupa Kata Sandi.');
-        return;
+      // Password verification: jika dosen sudah pernah ganti password, password default TIDAK BERLAKU LAGI
+      if (matched.password) {
+        if (dosenPassword !== matched.password) {
+          setIsLoading(false);
+          if (dosenPassword === 'dosen123' || dosenPassword === matched.username) {
+            setErrorMessage('Kata sandi default dosen sudah tidak berlaku karena Anda telah memperbarui kata sandi via email. Silakan gunakan kata sandi baru Anda.');
+          } else {
+            setErrorMessage('Kata sandi salah. Silakan periksa kembali atau gunakan opsi Lupa Kata Sandi.');
+          }
+          return;
+        }
+      } else {
+        if (dosenPassword !== 'dosen123' && dosenPassword !== matched.username) {
+          setIsLoading(false);
+          setErrorMessage('Kata sandi salah. Password default dosen adalah: dosen123');
+          return;
+        }
       }
 
       setIsLoading(false);
@@ -182,11 +194,23 @@ export const UnifiedLoginPortal: React.FC<UnifiedLoginPortalProps> = ({
         return;
       }
 
-      const expectedAdminPassword = adminUser.password || 'baak123';
-      if (adminPassword !== expectedAdminPassword && adminPassword !== 'baak123' && adminPassword !== 'admin123') {
-        setIsLoading(false);
-        setErrorMessage('Kata sandi administrator salah. Silakan periksa kembali atau gunakan opsi Lupa Kata Sandi.');
-        return;
+      // Password verification: jika admin sudah pernah ganti password, password default TIDAK BERLAKU LAGI
+      if (adminUser.password) {
+        if (adminPassword !== adminUser.password) {
+          setIsLoading(false);
+          if (adminPassword === 'baak123' || adminPassword === 'admin123') {
+            setErrorMessage('Kata sandi default administrator (baak123) sudah tidak berlaku karena Anda telah memperbarui kata sandi via email. Silakan gunakan kata sandi baru Anda.');
+          } else {
+            setErrorMessage('Kata sandi administrator salah. Silakan periksa kembali atau gunakan opsi Lupa Kata Sandi.');
+          }
+          return;
+        }
+      } else {
+        if (adminPassword !== 'baak123' && adminPassword !== 'admin123') {
+          setIsLoading(false);
+          setErrorMessage('Kata sandi administrator salah. Gunakan password resmi: baak123');
+          return;
+        }
       }
 
       setIsLoading(false);
@@ -221,11 +245,7 @@ export const UnifiedLoginPortal: React.FC<UnifiedLoginPortalProps> = ({
         <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between border-b border-slate-800">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center text-white shrink-0">
-              {activeTab === 'dosen' ? (
-                <GraduationCap className="w-5 h-5 text-emerald-400" />
-              ) : (
-                <Shield className="w-5 h-5 text-indigo-400" />
-              )}
+              <GraduationCap className="w-5 h-5 text-emerald-400" />
             </div>
             <div>
               <div className="flex items-center gap-2 text-xs text-slate-400 font-medium">
@@ -234,7 +254,7 @@ export const UnifiedLoginPortal: React.FC<UnifiedLoginPortalProps> = ({
                 <span>{CAMPUS_INFO.semester}</span>
               </div>
               <h2 className="text-base sm:text-lg font-bold tracking-tight text-white mt-0.5">
-                Portal Login Presensi Perkuliahan
+                Portal Login Dosen Pengampu
               </h2>
             </div>
           </div>
@@ -257,43 +277,6 @@ export const UnifiedLoginPortal: React.FC<UnifiedLoginPortalProps> = ({
               </button>
             )}
           </div>
-        </div>
-
-        {/* Dual Role Tabs: Dosen vs Administrator */}
-        <div className="grid grid-cols-2 p-1.5 bg-slate-100 border-b border-slate-200 gap-1.5 text-sm font-semibold">
-          <button
-            type="button"
-            onClick={() => {
-              setActiveTab('dosen');
-              setErrorMessage('');
-              setSuccessMessage('');
-            }}
-            className={`py-2.5 px-3 rounded-lg flex items-center justify-center gap-2 transition cursor-pointer ${
-              activeTab === 'dosen'
-                ? 'bg-white text-slate-900 shadow-xs border border-slate-200 font-bold'
-                : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
-            }`}
-          >
-            <GraduationCap className={`w-4 h-4 ${activeTab === 'dosen' ? 'text-slate-900' : 'text-slate-400'}`} />
-            <span>Dosen Pengampu</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              setActiveTab('admin');
-              setErrorMessage('');
-              setSuccessMessage('');
-            }}
-            className={`py-2.5 px-3 rounded-lg flex items-center justify-center gap-2 transition cursor-pointer ${
-              activeTab === 'admin'
-                ? 'bg-white text-slate-900 shadow-xs border border-slate-200 font-bold'
-                : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
-            }`}
-          >
-            <Shield className={`w-4 h-4 ${activeTab === 'admin' ? 'text-indigo-600' : 'text-slate-400'}`} />
-            <span>Administrator (BAAK)</span>
-          </button>
         </div>
 
         {/* Success Banner */}

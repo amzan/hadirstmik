@@ -12,8 +12,9 @@ interface HeaderProps {
   onOpenLoginPortal?: (defaultTab?: 'dosen' | 'admin') => void;
   onOpenStudentLogin?: () => void;
   onOpenDosenLogin?: () => void;
-  onOpenBaakLogin?: () => void;
   onOpenDosenProfile?: () => void;
+  onOpenMahasiswaProfile?: () => void;
+  onOpenBaakProfile?: () => void;
   onOpenForgotPassword?: () => void;
   onLogout?: () => void;
   isLoggedOut?: boolean;
@@ -24,8 +25,9 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenLoginPortal,
   onOpenStudentLogin,
   onOpenDosenLogin,
-  onOpenBaakLogin,
   onOpenDosenProfile,
+  onOpenMahasiswaProfile,
+  onOpenBaakProfile,
   onOpenForgotPassword,
   onLogout,
   isLoggedOut = false
@@ -144,18 +146,6 @@ export const Header: React.FC<HeaderProps> = ({
                 </button>
               )}
 
-              {onOpenBaakLogin && (
-                <button
-                  onClick={onOpenBaakLogin}
-                  className="flex items-center gap-1 px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg bg-indigo-700 hover:bg-indigo-800 text-white text-[11px] sm:text-xs md:text-sm font-semibold transition cursor-pointer shadow-2xs shrink-0"
-                  title="Buka Portal Login Administrator BAAK"
-                >
-                  <Shield className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-indigo-200 shrink-0" />
-                  <span className="hidden sm:inline">Portal BAAK</span>
-                  <span className="sm:hidden">BAAK</span>
-                </button>
-              )}
-
               {onOpenForgotPassword && (
                 <button
                   onClick={onOpenForgotPassword}
@@ -169,28 +159,32 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
           )}
 
-          {/* Mahasiswa: Logged in State - NO portal buttons, replaced with Keluar button */}
+          {/* Mahasiswa: Logged in State with Profile Configuration */}
           {isMahasiswa && (
             <div className="flex items-center gap-1 sm:gap-2 shrink-0">
-              <div
-                className="flex items-center gap-1.5 sm:gap-2.5 px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg bg-blue-50/70 border border-blue-200 text-left select-none max-w-[120px] sm:max-w-[200px]"
-                title={`Akun Mahasiswa Aktif: ${currentUser.name}`}
+              <button
+                type="button"
+                onClick={onOpenMahasiswaProfile}
+                className="flex items-center gap-1.5 sm:gap-2.5 px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg bg-blue-50/70 hover:bg-blue-100 hover:border-blue-300 border border-blue-200 text-left cursor-pointer max-w-[130px] sm:max-w-[220px] transition group"
+                title="Klik untuk konfigurasi profil mahasiswa & ganti password OTP"
               >
                 <img
                   src={currentUser.avatarUrl || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150'}
                   alt={currentUser.name}
-                  className="w-6 h-6 sm:w-7 sm:h-7 rounded-full object-cover border border-blue-300 shrink-0"
+                  className="w-6 h-6 sm:w-7 sm:h-7 rounded-full object-cover border border-blue-300 group-hover:border-blue-500 shrink-0"
                 />
 
-                <div className="min-w-0">
-                  <span className="text-[11px] sm:text-xs font-semibold text-slate-900 truncate block leading-tight">
+                <div className="min-w-0 flex-1">
+                  <span className="text-[11px] sm:text-xs font-semibold text-slate-900 group-hover:text-blue-700 truncate block leading-tight">
                     {currentUser.name}
                   </span>
                   <span className="text-[9px] sm:text-[10px] text-blue-700 font-mono font-medium truncate block leading-tight mt-0.5">
                     {currentUser.username}
                   </span>
                 </div>
-              </div>
+
+                <UserCog className="w-3.5 h-3.5 text-blue-400 group-hover:text-blue-600 hidden sm:block shrink-0" />
+              </button>
 
               {onLogout && (
                 <button
@@ -212,7 +206,7 @@ export const Header: React.FC<HeaderProps> = ({
                 type="button"
                 onClick={onOpenDosenProfile}
                 className="flex items-center gap-1.5 sm:gap-2.5 px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 hover:border-blue-300 border border-slate-200 text-left cursor-pointer max-w-[130px] sm:max-w-[220px] transition group"
-                title="Klik untuk melihat dan konfigurasi profil dosen"
+                title="Klik untuk melihat dan konfigurasi profil dosen & ganti password OTP"
               >
                 <img
                   src={currentUser.avatarUrl || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150'}
@@ -245,28 +239,32 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
           )}
 
-          {/* Administrator BAAK: Strictly Locked Profile */}
+          {/* Administrator BAAK: Profile with Configuration */}
           {isAdmin && (
             <div className="flex items-center gap-1 sm:gap-2 shrink-0">
-              <div
-                className="flex items-center gap-1.5 sm:gap-2.5 px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg bg-indigo-50/60 border border-indigo-200 text-left select-none max-w-[120px] sm:max-w-[200px]"
-                title="Akun Administrator BAAK Aktif (Terisolasi dari ruang Dosen)"
+              <button
+                type="button"
+                onClick={onOpenBaakProfile}
+                className="flex items-center gap-1.5 sm:gap-2.5 px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg bg-indigo-50/70 hover:bg-indigo-100 hover:border-indigo-300 border border-indigo-200 text-left cursor-pointer max-w-[130px] sm:max-w-[220px] transition group"
+                title="Klik untuk konfigurasi profil administrator BAAK & ganti password OTP"
               >
                 <img
                   src={currentUser.avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150'}
                   alt={currentUser.name}
-                  className="w-6 h-6 sm:w-7 sm:h-7 rounded-full object-cover border border-indigo-300 shrink-0"
+                  className="w-6 h-6 sm:w-7 sm:h-7 rounded-full object-cover border border-indigo-300 group-hover:border-indigo-500 shrink-0"
                 />
 
-                <div className="min-w-0">
-                  <span className="text-[11px] sm:text-xs font-semibold text-slate-900 truncate block leading-tight">
+                <div className="min-w-0 flex-1">
+                  <span className="text-[11px] sm:text-xs font-semibold text-slate-900 group-hover:text-indigo-800 truncate block leading-tight">
                     {currentUser.name}
                   </span>
                   <span className="text-[9px] sm:text-[10px] text-indigo-700 font-medium truncate block leading-tight mt-0.5">
                     BAAK
                   </span>
                 </div>
-              </div>
+
+                <UserCog className="w-3.5 h-3.5 text-indigo-400 group-hover:text-indigo-600 hidden sm:block shrink-0" />
+              </button>
 
               {onLogout && (
                 <button

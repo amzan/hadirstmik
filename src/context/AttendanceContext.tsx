@@ -159,10 +159,22 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     return saved ? JSON.parse(saved) : INITIAL_LEAVE_REQUESTS;
   });
 
-  // Current logged in user (in-memory only, no previous session auto-login)
+  // Current logged in user (restored from saved user ID if available)
   const [currentUser, setCurrentUser] = useState<User>(() => {
+    const savedUserId = localStorage.getItem(STORAGE_KEYS.CURRENT_USER_ID);
+    if (savedUserId) {
+      const found = users.find(u => u.id === savedUserId);
+      if (found) return found;
+    }
     return users.find(u => u.id === 'dosen-3') || users[0];
   });
+
+  // Sync currentUser changes to localStorage
+  useEffect(() => {
+    if (currentUser?.id) {
+      localStorage.setItem(STORAGE_KEYS.CURRENT_USER_ID, currentUser.id);
+    }
+  }, [currentUser]);
 
   // Live real-time clock and academic day state
   const getInitialDay = (): DayOfWeek => {
@@ -756,13 +768,40 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   }, []);
 
   const updateUser = useCallback((id: string, updated: Partial<User>) => {
-    setUsers(prev => prev.map(u => u.id === id ? { ...u, ...updated } : u));
+    setUsers(prev => {
+      const exists = prev.some(u => u.id === id);
+      if (exists) {
+        return prev.map(u => u.id === id ? { ...u, ...updated } : u);
+      }
+      return [...prev, { ...currentUser, ...updated, id }];
+    });
     setCurrentUser(prev => (prev.id === id ? { ...prev, ...updated } : prev));
+
+    // Sync master students list if student profile was updated
+    if (id.startsWith('mhs-') || updated.role === 'mahasiswa' || currentUser.role === 'mahasiswa') {
+      const targetNim = (updated.username || currentUser.username || (id.startsWith('mhs-') ? id.replace('mhs-', '') : '')).toUpperCase();
+      if (targetNim) {
+        setStudents(prev => prev.map(s => {
+          if (s.nim.toUpperCase() === targetNim) {
+            return {
+              ...s,
+              name: updated.name || s.name,
+              email: updated.email || s.email,
+              phone: updated.phone || s.phone,
+              prodi: updated.prodi || s.prodi,
+              rombel: updated.rombel || s.rombel,
+            };
+          }
+          return s;
+        }));
+      }
+    }
+
     if (updated.name) {
       setSchedules(prev => prev.map(s => s.lecturerId === id ? { ...s, lecturerName: updated.name! } : s));
       setSessions(prev => prev.map(ses => ses.lecturerId === id ? { ...ses, lecturerName: updated.name! } : ses));
     }
-  }, []);
+  }, [currentUser]);
 
   const deleteUser = useCallback((id: string) => {
     setUsers(prev => prev.filter(u => u.id !== id));

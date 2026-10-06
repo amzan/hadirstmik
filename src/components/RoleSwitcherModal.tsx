@@ -30,7 +30,7 @@ export const RoleSwitcherModal: React.FC<RoleSwitcherModalProps> = ({
   const currentUser = propCurrentUser || context.currentUser;
   const setCurrentUser = onSelectUser || context.setCurrentUser;
 
-  const [selectedRoleTab, setSelectedRoleTab] = useState<Role>('mahasiswa');
+  const [selectedRoleTab, setSelectedRoleTab] = useState<'mahasiswa' | 'dosen'>('mahasiswa');
   const [searchQuery, setSearchQuery] = useState('');
 
   if (!isOpen) return null;
@@ -70,20 +70,8 @@ export const RoleSwitcherModal: React.FC<RoleSwitcherModalProps> = ({
           </button>
         </div>
 
-        {/* Role Tabs */}
+        {/* Role Tabs: Mahasiswa & Dosen */}
         <div className="flex border-b border-slate-200 gap-6 px-6 pt-3 text-sm font-semibold">
-          <button
-            onClick={() => setSelectedRoleTab('dosen')}
-            className={`pb-3 border-b-2 flex items-center gap-2 transition cursor-pointer ${
-              selectedRoleTab === 'dosen'
-                ? 'border-slate-900 text-slate-900 font-bold'
-                : 'border-transparent text-slate-500 hover:text-slate-900'
-            }`}
-          >
-            <GraduationCap className="w-4 h-4" />
-            <span>Dosen ({users.filter(u => u.role === 'dosen').length})</span>
-          </button>
-
           <button
             onClick={() => setSelectedRoleTab('mahasiswa')}
             className={`pb-3 border-b-2 flex items-center gap-2 transition cursor-pointer ${
@@ -97,15 +85,15 @@ export const RoleSwitcherModal: React.FC<RoleSwitcherModalProps> = ({
           </button>
 
           <button
-            onClick={() => setSelectedRoleTab('admin')}
+            onClick={() => setSelectedRoleTab('dosen')}
             className={`pb-3 border-b-2 flex items-center gap-2 transition cursor-pointer ${
-              selectedRoleTab === 'admin'
+              selectedRoleTab === 'dosen'
                 ? 'border-slate-900 text-slate-900 font-bold'
                 : 'border-transparent text-slate-500 hover:text-slate-900'
             }`}
           >
-            <Shield className="w-4 h-4" />
-            <span>Administrator ({users.filter(u => u.role === 'admin').length})</span>
+            <GraduationCap className="w-4 h-4" />
+            <span>Dosen ({users.filter(u => u.role === 'dosen').length})</span>
           </button>
         </div>
 
@@ -118,7 +106,7 @@ export const RoleSwitcherModal: React.FC<RoleSwitcherModalProps> = ({
             <div className="max-w-md">
               <h4 className="text-lg font-bold text-slate-900">Portal Login Dosen Pengampu</h4>
               <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-                Akun dosen terproteksi dengan autentikasi nama depan dan kata sandi default (dosen123). Sesuai aturan, akun dosen terisolasi dan tidak dapat login ke sistem BAAK.
+                Akun dosen terproteksi dengan autentikasi nama depan dan kata sandi dosen. Silakan buka portal login dosen untuk autentikasi.
               </p>
             </div>
             <button
@@ -129,28 +117,6 @@ export const RoleSwitcherModal: React.FC<RoleSwitcherModalProps> = ({
               className="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-sm font-semibold flex items-center gap-2 cursor-pointer shadow-xs transition"
             >
               <span>Buka Portal Login Dosen</span>
-              <ArrowRight className="w-4 h-4" />
-            </button>
-          </div>
-        ) : selectedRoleTab === 'admin' ? (
-          <div className="p-8 text-center flex-1 flex flex-col items-center justify-center space-y-4">
-            <div className="w-14 h-14 rounded-2xl bg-indigo-50 text-indigo-700 border border-indigo-100 flex items-center justify-center">
-              <Shield className="w-8 h-8" />
-            </div>
-            <div className="max-w-md">
-              <h4 className="text-lg font-bold text-slate-900">Portal Login Administrator (BAAK)</h4>
-              <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-                Akun administrator terproteksi dengan kredensial resmi BAAK (username: baak, password: baak123). Administrator tidak dapat login sebagai dosen.
-              </p>
-            </div>
-            <button
-              onClick={() => {
-                onClose();
-                onOpenLoginPortal?.('admin');
-              }}
-              className="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-sm font-semibold flex items-center gap-2 cursor-pointer shadow-xs transition"
-            >
-              <span>Buka Portal Login Administrator</span>
               <ArrowRight className="w-4 h-4" />
             </button>
           </div>

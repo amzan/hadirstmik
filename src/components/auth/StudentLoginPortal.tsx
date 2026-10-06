@@ -54,12 +54,23 @@ export const StudentLoginPortal: React.FC<StudentLoginPortalProps> = ({
     const existingUser = users.find(
       u => u.username.toUpperCase() === cleanNim && u.role === 'mahasiswa'
     );
-    const expectedPassword = existingUser?.password || 'pass123';
 
-    // Password validation rule
-    if (password !== expectedPassword && password !== 'pass123') {
-      setErrorMessage('Password salah! Silakan periksa kembali password Anda atau klik Lupa Kata Sandi.');
-      return;
+    // Password validation rule: jika sudah ada penggantian password, password default 'pass123' TIDAK BERLAKU LAGI
+    if (existingUser?.password) {
+      if (password !== existingUser.password) {
+        if (password === 'pass123') {
+          setErrorMessage('Password default (pass123) sudah tidak berlaku karena Anda telah mengganti password via email. Silakan gunakan password baru Anda.');
+        } else {
+          setErrorMessage('Password salah! Silakan periksa kembali password baru Anda atau klik Lupa Kata Sandi.');
+        }
+        return;
+      }
+    } else {
+      // Belum pernah ganti password: password default mahasiswa adalah 'pass123'
+      if (password !== 'pass123') {
+        setErrorMessage('Password salah! Silakan periksa kembali password Anda atau klik Lupa Kata Sandi.');
+        return;
+      }
     }
 
     setIsLoading(true);
@@ -241,7 +252,7 @@ export const StudentLoginPortal: React.FC<StudentLoginPortalProps> = ({
                 }}
                 className="font-semibold text-slate-900 hover:underline cursor-pointer inline-flex items-center gap-1"
               >
-                <span>Portal Login Dosen & Administrator BAAK</span>
+                <span>Portal Login Dosen Pengampu</span>
                 <ArrowRight className="w-3 h-3" />
               </button>
             </div>

@@ -7,10 +7,16 @@ import { ScheduleModal } from './ScheduleModal';
 import { SessionMonitoringTab } from './SessionMonitoringTab';
 import {
   Shield, Users, Calendar, BookOpen, UserPlus, Plus,
-  Trash2, Edit2, Search, Download, RefreshCw, GraduationCap, Clock, Radio
+  Trash2, Edit2, Search, Download, RefreshCw, GraduationCap, Clock, Radio, UserCog
 } from 'lucide-react';
 
-export const AdminDashboard: React.FC = () => {
+interface AdminDashboardProps {
+  onOpenProfile?: () => void;
+}
+
+export const AdminDashboard: React.FC<AdminDashboardProps> = ({
+  onOpenProfile
+}) => {
   const {
     users,
     students,
@@ -162,6 +168,17 @@ export const AdminDashboard: React.FC = () => {
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
+            {onOpenProfile && (
+              <button
+                onClick={onOpenProfile}
+                className="px-4 py-2.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-800 font-semibold text-sm flex items-center gap-2 transition cursor-pointer shadow-2xs"
+                title="Konfigurasi Profil Petugas BAAK & Ganti Password dengan OTP Email"
+              >
+                <UserCog className="w-4 h-4 text-indigo-600" />
+                <span>Profil BAAK</span>
+              </button>
+            )}
+
             <button
               onClick={() => setIsExportModalOpen(true)}
               className="px-4 py-2.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-semibold text-sm flex items-center gap-2 transition cursor-pointer"

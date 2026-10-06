@@ -4,10 +4,16 @@ import { QrScannerModal } from './QrScannerModal';
 import { LeaveRequestModal } from './LeaveRequestModal';
 import { isStudentInRombel } from '../../data/initialData';
 import {
-  QrCode, FileText, Calendar, UserCheck, Clock
+  QrCode, FileText, Calendar, UserCheck, Clock, UserCog
 } from 'lucide-react';
 
-export const MahasiswaDashboard: React.FC = () => {
+interface MahasiswaDashboardProps {
+  onOpenProfile?: () => void;
+}
+
+export const MahasiswaDashboard: React.FC<MahasiswaDashboardProps> = ({
+  onOpenProfile
+}) => {
   const {
     currentUser,
     records,
@@ -87,6 +93,17 @@ export const MahasiswaDashboard: React.FC = () => {
             <FileText className="w-4 h-4 text-slate-600" />
             <span>Ajukan Izin / Sakit</span>
           </button>
+
+          {onOpenProfile && (
+            <button
+              onClick={onOpenProfile}
+              className="flex-1 sm:flex-none justify-center px-3.5 sm:px-4 py-2.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-xl text-sm font-semibold flex items-center gap-2 transition cursor-pointer shadow-xs"
+              title="Konfigurasi Profil & Ganti Password dengan OTP Email"
+            >
+              <UserCog className="w-4 h-4 text-blue-600" />
+              <span>Profil Saya</span>
+            </button>
+          )}
         </div>
       </div>
 

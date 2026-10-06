@@ -74,7 +74,7 @@ export const CreateSessionModal: React.FC<CreateSessionModalProps> = ({
       room,
       meetingNumber: Number(meetingNumber),
       topic: topic || `Pertemuan ke-${meetingNumber}: Pembahasan Materi Perkuliahan`,
-      evaluation: evaluation || 'Kuis singkat & tanya jawab pemahaman materi',
+      evaluationMethod: evaluation || 'Kuis singkat & tanya jawab pemahaman materi',
       isDynamicQr,
     });
 
