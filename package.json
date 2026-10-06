@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
-    "build": "vite build",
+    "build": "vite build && node -e \"const fs=require('fs'),p=require('path');const d=p.resolve('dist');if(fs.existsSync(p.join(d,'index.html'))){fs.mkdirSync(p.join(d,'portaladmin'),{recursive:true});fs.copyFileSync(p.join(d,'index.html'),p.join(d,'portaladmin/index.html'));fs.copyFileSync(p.join(d,'index.html'),p.join(d,'portaladmin.html'));}\"",
     "preview": "vite preview",
     "start": "node server.ts",
     "clean": "rm -rf dist server.js",

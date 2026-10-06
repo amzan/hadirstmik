@@ -13,6 +13,7 @@ interface HomePageProps {
   activeRoleTab?: 'mahasiswa' | 'dosen';
   onChangeRoleTab?: (role: 'mahasiswa' | 'dosen') => void;
   onOpenForgotPassword?: (role?: 'mahasiswa' | 'dosen' | 'admin', identifier?: string) => void;
+  onNavigateToAdmin?: () => void;
   inactivityNotice?: string | null;
   onDismissInactivityNotice?: () => void;
 }
@@ -22,6 +23,7 @@ export const HomePage: React.FC<HomePageProps> = ({
   activeRoleTab: externalRoleTab = 'mahasiswa',
   onChangeRoleTab,
   onOpenForgotPassword,
+  onNavigateToAdmin,
   inactivityNotice,
   onDismissInactivityNotice,
 }) => {
@@ -456,6 +458,20 @@ export const HomePage: React.FC<HomePageProps> = ({
                   </>
                 )}
               </button>
+
+              {/* Akses Terpisah Khusus Administrator BAAK */}
+              {onNavigateToAdmin && (
+                <div className="pt-2 text-center border-t border-slate-100 mt-2">
+                  <button
+                    type="button"
+                    onClick={onNavigateToAdmin}
+                    className="inline-flex items-center gap-1.5 text-xs text-slate-500 hover:text-indigo-600 transition font-medium cursor-pointer py-1 px-2 rounded-lg hover:bg-slate-50 group"
+                  >
+                    <Shield className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-600 transition" />
+                    <span>Petugas BAAK? Akses Konsol Admin di <strong className="font-mono text-slate-700 group-hover:text-indigo-600">/portaladmin</strong></span>
+                  </button>
+                </div>
+              )}
             </form>
           </div>
         </div>

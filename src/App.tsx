@@ -19,6 +19,7 @@ import { MahasiswaProfileModal } from './components/mahasiswa/MahasiswaProfileMo
 import { BaakProfileModal } from './components/admin/BaakProfileModal';
 import { HomePage } from './components/home/HomePage';
 import { CAMPUS_INFO } from './data/initialData';
+import { Shield } from 'lucide-react';
 
 const INACTIVITY_TIMEOUT_MS = 2 * 60 * 60 * 1000; // 2 hours (7,200,000 ms)
 const AUTH_SESSION_KEY = 'stmik_auth_session_active';
@@ -51,10 +52,25 @@ const AppContent: React.FC = () => {
     setCurrentPath(path);
   }, []);
 
+  const checkIsAdminPath = (str: string): boolean => {
+    if (!str) return false;
+    const lower = str.toLowerCase();
+    return (
+      lower.includes('portaladmin') ||
+      lower.includes('portal-admin') ||
+      lower.includes('/admin') ||
+      lower.includes('admin=true') ||
+      lower.includes('portal=admin')
+    );
+  };
+
   const isAdminRoute = 
-    currentPath.toLowerCase().includes('portaladmin') ||
-    window.location.pathname.toLowerCase().includes('portaladmin') ||
-    window.location.hash.toLowerCase().includes('portaladmin');
+    checkIsAdminPath(currentPath) ||
+    (typeof window !== 'undefined' && (
+      checkIsAdminPath(window.location.pathname) ||
+      checkIsAdminPath(window.location.hash) ||
+      checkIsAdminPath(window.location.search)
+    ));
 
   // Modal open states
   const [isRoleSwitcherOpen, setIsRoleSwitcherOpen] = useState(false);
@@ -263,6 +279,7 @@ const AppContent: React.FC = () => {
             activeRoleTab={activeRoleTab}
             onChangeRoleTab={(tab) => setActiveRoleTab(tab)}
             onOpenForgotPassword={handleOpenForgotPassword}
+            onNavigateToAdmin={() => navigateTo('/portaladmin')}
             inactivityNotice={inactivityNotice}
             onDismissInactivityNotice={() => setInactivityNotice(null)}
           />
@@ -291,10 +308,20 @@ const AppContent: React.FC = () => {
               {CAMPUS_INFO.address}
             </p>
           </div>
-          <div className="flex items-center gap-3 text-slate-500 font-medium">
+          <div className="flex flex-wrap items-center justify-center sm:justify-end gap-3 text-slate-500 font-medium text-xs sm:text-sm">
             <span>Sistem Presensi Berbasis QR Real-Time</span>
             <span>·</span>
             <span className="text-slate-900 font-semibold">{CAMPUS_INFO.semester}</span>
+            <span>·</span>
+            <button
+              type="button"
+              onClick={() => navigateTo('/portaladmin')}
+              className="inline-flex items-center gap-1 text-slate-500 hover:text-indigo-600 font-medium transition cursor-pointer"
+              title="Akses Konsol Administrator BAAK (/portaladmin)"
+            >
+              <Shield className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+              <span>Portal Admin</span>
+            </button>
           </div>
         </div>
       </footer>

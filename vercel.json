@@ -1,8 +1,6 @@
 {
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
-  "cleanUrls": true,
-  "trailingSlash": false,
   "rewrites": [
     {
       "source": "/api/(.*)",
@@ -10,11 +8,11 @@
     },
     {
       "source": "/portaladmin",
-      "destination": "/index.html"
+      "destination": "/portaladmin/index.html"
     },
     {
       "source": "/portaladmin/(.*)",
-      "destination": "/index.html"
+      "destination": "/portaladmin/index.html"
     },
     {
       "source": "/(.*)",
