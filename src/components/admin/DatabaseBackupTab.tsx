@@ -8,6 +8,7 @@ import {
   formatBytes
 } from '../../utils/databaseBackupService';
 import { DatabaseBackup, DatabaseSnapshot } from '../../types/attendance';
+import { BulkExcelImportModal } from './BulkExcelImportModal';
 import {
   Database, Download, Upload, Shield, RefreshCw, FileText,
   CheckCircle2, AlertTriangle, Clock, HardDrive, Trash2,
@@ -38,6 +39,8 @@ export const DatabaseBackupTab: React.FC<DatabaseBackupTabProps> = ({
     deleteSnapshot,
     snapshots,
   } = useAttendance();
+
+  const [isBulkImportOpen, setIsBulkImportOpen] = useState(false);
 
   // Snapshot form state
   const [snapshotName, setSnapshotName] = useState('');
@@ -183,6 +186,14 @@ export const DatabaseBackupTab: React.FC<DatabaseBackupTabProps> = ({
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+            <button
+              onClick={() => setIsBulkImportOpen(true)}
+              className="px-4 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-xs sm:text-sm flex items-center gap-2 transition shadow-sm cursor-pointer"
+              title="Unggah dan perbarui data jadwal, pengguna, mahasiswa, atau mata kuliah dari file Excel"
+            >
+              <FileSpreadsheet className="w-4 h-4" />
+              <span>Impor Excel Massal</span>
+            </button>
             <button
               onClick={() => downloadDatabaseBackupFile(currentBackupData, currentUser)}
               className="px-4 py-2.5 rounded-xl bg-white text-indigo-950 font-bold text-xs sm:text-sm flex items-center gap-2 hover:bg-indigo-50 active:bg-indigo-100 transition shadow-sm cursor-pointer"
@@ -666,6 +677,12 @@ export const DatabaseBackupTab: React.FC<DatabaseBackupTabProps> = ({
           </div>
         </div>
       )}
+
+      {/* Bulk Excel Importer Modal */}
+      <BulkExcelImportModal
+        isOpen={isBulkImportOpen}
+        onClose={() => setIsBulkImportOpen(false)}
+      />
     </div>
   );
 };

@@ -116,6 +116,13 @@ interface AttendanceContextType {
   deleteSnapshot: (snapshotId: string) => void;
   snapshots: DatabaseSnapshot[];
   reloadSnapshots: () => void;
+
+  // Bulk Excel import & updates
+  bulkUpdateSchedules: (items: ScheduleItem[], mode?: 'merge' | 'replace') => { added: number; updated: number; total: number };
+  bulkUpdateUsers: (items: User[], mode?: 'merge' | 'replace') => { added: number; updated: number; total: number };
+  bulkUpdateStudents: (items: Student[], mode?: 'merge' | 'replace') => { added: number; updated: number; total: number };
+  bulkUpdateCourses: (items: Course[], mode?: 'merge' | 'replace') => { added: number; updated: number; total: number };
+  bulkImportAll: (data: { schedules?: ScheduleItem[]; users?: User[]; students?: Student[]; courses?: Course[] }, mode?: 'merge' | 'replace') => { schedulesCount: number; usersCount: number; studentsCount: number; coursesCount: number };
 }
 
 const AttendanceContext = createContext<AttendanceContextType | undefined>(undefined);
@@ -882,6 +889,178 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     setStudents(prev => prev.filter(s => s.nim !== nim));
   }, []);
 
+  // Bulk Excel import & update implementations
+  const bulkUpdateStudents = useCallback((incoming: Student[], mode: 'merge' | 'replace' = 'merge') => {
+    let added = 0;
+    let updated = 0;
+    setStudents(prev => {
+      if (mode === 'replace') {
+        added = incoming.length;
+        localStorage.setItem(STORAGE_KEYS.STUDENTS, JSON.stringify(incoming));
+        return incoming;
+      }
+      const result = [...prev];
+      incoming.forEach(newItem => {
+        const idx = result.findIndex(s => s.nim.toUpperCase() === newItem.nim.toUpperCase());
+        if (idx >= 0) {
+          result[idx] = { ...result[idx], ...newItem };
+          updated++;
+        } else {
+          result.push(newItem);
+          added++;
+        }
+      });
+      localStorage.setItem(STORAGE_KEYS.STUDENTS, JSON.stringify(result));
+      return result;
+    });
+    return { added, updated, total: added + updated };
+  }, []);
+
+  const bulkUpdateUsers = useCallback((incoming: User[], mode: 'merge' | 'replace' = 'merge') => {
+    let added = 0;
+    let updated = 0;
+    setUsers(prev => {
+      if (mode === 'replace') {
+        added = incoming.length;
+        localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(incoming));
+        return incoming;
+      }
+      const result = [...prev];
+      incoming.forEach(newItem => {
+        const idx = result.findIndex(u =>
+          (newItem.id && u.id === newItem.id) ||
+          (u.username && newItem.username && u.username.toLowerCase() === newItem.username.toLowerCase())
+        );
+        if (idx >= 0) {
+          result[idx] = {
+            ...result[idx],
+            ...newItem,
+            password: newItem.password || result[idx].password,
+            avatarUrl: newItem.avatarUrl || result[idx].avatarUrl,
+          };
+          updated++;
+        } else {
+          result.push(newItem);
+          added++;
+        }
+      });
+      localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(result));
+      return result;
+    });
+    return { added, updated, total: added + updated };
+  }, []);
+
+  const bulkUpdateCourses = useCallback((incoming: Course[], mode: 'merge' | 'replace' = 'merge') => {
+    let added = 0;
+    let updated = 0;
+    setCourses(prev => {
+      if (mode === 'replace') {
+        added = incoming.length;
+        localStorage.setItem(STORAGE_KEYS.COURSES, JSON.stringify(incoming));
+        return incoming;
+      }
+      const result = [...prev];
+      incoming.forEach(newItem => {
+        const idx = result.findIndex(c =>
+          (newItem.id && c.id === newItem.id) ||
+          (c.code && newItem.code && c.code.toUpperCase() === newItem.code.toUpperCase())
+        );
+        if (idx >= 0) {
+          result[idx] = { ...result[idx], ...newItem };
+          updated++;
+        } else {
+          result.push(newItem);
+          added++;
+        }
+      });
+      localStorage.setItem(STORAGE_KEYS.COURSES, JSON.stringify(result));
+      return result;
+    });
+    return { added, updated, total: added + updated };
+  }, []);
+
+  const bulkUpdateSchedules = useCallback((incoming: ScheduleItem[], mode: 'merge' | 'replace' = 'merge') => {
+    let added = 0;
+    let updated = 0;
+    setSchedules(prev => {
+      if (mode === 'replace') {
+        added = incoming.length;
+        localStorage.setItem(STORAGE_KEYS.SCHEDULES, JSON.stringify(incoming));
+        return incoming;
+      }
+      const result = [...prev];
+      incoming.forEach(newItem => {
+        const idx = result.findIndex(s =>
+          (newItem.id && s.id === newItem.id) ||
+          (
+            s.courseCode.toUpperCase() === newItem.courseCode.toUpperCase() &&
+            s.rombel.toUpperCase() === newItem.rombel.toUpperCase() &&
+            s.day === newItem.day &&
+            s.startTime === newItem.startTime
+          )
+        );
+        if (idx >= 0) {
+          result[idx] = {
+            ...result[idx],
+            ...newItem,
+            meetingDates: {
+              ...(result[idx].meetingDates || {}),
+              ...(newItem.meetingDates || {}),
+            },
+          };
+          updated++;
+        } else {
+          result.push(newItem);
+          added++;
+        }
+      });
+      localStorage.setItem(STORAGE_KEYS.SCHEDULES, JSON.stringify(result));
+      return result;
+    });
+    return { added, updated, total: added + updated };
+  }, []);
+
+  const bulkImportAll = useCallback((data: {
+    schedules?: ScheduleItem[];
+    users?: User[];
+    students?: Student[];
+    courses?: Course[];
+  }, mode: 'merge' | 'replace' = 'merge') => {
+    try {
+      saveLocalSnapshot(
+        `Auto Backup Sebelum Import Excel (${new Date().toLocaleTimeString('id-ID')})`,
+        'Cadangan otomatis yang dibuat oleh sistem sesaat sebelum data Excel massal diterapkan.',
+        { users, students, courses, schedules, sessions, records, leaveRequests }
+      );
+    } catch {}
+
+    let schedulesCount = 0;
+    let usersCount = 0;
+    let studentsCount = 0;
+    let coursesCount = 0;
+
+    if (data.students && data.students.length > 0) {
+      const res = bulkUpdateStudents(data.students, mode);
+      studentsCount = res.total;
+    }
+    if (data.users && data.users.length > 0) {
+      const res = bulkUpdateUsers(data.users, mode);
+      usersCount = res.total;
+    }
+    if (data.courses && data.courses.length > 0) {
+      const res = bulkUpdateCourses(data.courses, mode);
+      coursesCount = res.total;
+    }
+    if (data.schedules && data.schedules.length > 0) {
+      const res = bulkUpdateSchedules(data.schedules, mode);
+      schedulesCount = res.total;
+    }
+
+    setSnapshots(loadLocalSnapshots());
+
+    return { schedulesCount, usersCount, studentsCount, coursesCount };
+  }, [users, students, courses, schedules, sessions, records, leaveRequests, bulkUpdateStudents, bulkUpdateUsers, bulkUpdateCourses, bulkUpdateSchedules]);
+
   // Reset to default
   const resetToDefaultData = useCallback(() => {
     localStorage.clear();
@@ -1240,6 +1419,11 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     deleteSnapshot,
     snapshots,
     reloadSnapshots,
+    bulkUpdateSchedules,
+    bulkUpdateUsers,
+    bulkUpdateStudents,
+    bulkUpdateCourses,
+    bulkImportAll,
   }), [
     currentUser, users, students, courses, schedules, sessions, records, leaveRequests,
     activeDay, simulatedTime, useSimulatedTime, createSession, closeSession, refreshQrToken,
@@ -1251,7 +1435,8 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     getMeetingDateForSchedule, getStudentsForRombel, getActiveScheduleNow,
     getSchedulesForDay, getAttendanceRateForStudent, findUserByIdentifier, resetUserPassword,
     getDatabaseBackupData, restoreDatabase, createSnapshot, restoreSnapshot, deleteSnapshot,
-    snapshots, reloadSnapshots
+    snapshots, reloadSnapshots,
+    bulkUpdateSchedules, bulkUpdateUsers, bulkUpdateStudents, bulkUpdateCourses, bulkImportAll
   ]);
 
   return (

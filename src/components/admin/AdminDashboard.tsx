@@ -7,10 +7,12 @@ import { ScheduleModal } from './ScheduleModal';
 import { SessionMonitoringTab } from './SessionMonitoringTab';
 import { DatabaseBackupTab } from './DatabaseBackupTab';
 import { DatabaseBackupModal } from './DatabaseBackupModal';
+import { BulkExcelImportModal } from './BulkExcelImportModal';
+import { ImportCategory } from '../../utils/excelBulkService';
 import {
   Shield, Users, Calendar, BookOpen, UserPlus, Plus,
   Trash2, Edit2, Search, Download, RefreshCw, GraduationCap, Clock, Radio, UserCog,
-  Database
+  Database, FileSpreadsheet
 } from 'lucide-react';
 
 interface AdminDashboardProps {
@@ -41,6 +43,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [activeTab, setActiveTab] = useState<'sessions' | 'schedules' | 'users' | 'students' | 'courses' | 'database'>('sessions');
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [isBackupModalOpen, setIsBackupModalOpen] = useState(false);
+  const [isBulkImportOpen, setIsBulkImportOpen] = useState(false);
+  const [bulkImportCategory, setBulkImportCategory] = useState<ImportCategory>('all');
+
+  const handleOpenBulkImport = (cat: ImportCategory = 'all') => {
+    setBulkImportCategory(cat);
+    setIsBulkImportOpen(true);
+  };
 
   // Confirm dialog state (replaces window.confirm)
   const [confirmConfig, setConfirmConfig] = useState<{
@@ -182,6 +191,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <span>Profil BAAK</span>
               </button>
             )}
+
+            <button
+              onClick={() => handleOpenBulkImport('all')}
+              className="px-4 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-semibold text-sm flex items-center gap-2 transition cursor-pointer shadow-xs"
+              title="Unggah dan perbarui data massal dari file Excel (Jadwal, Pengguna, Mahasiswa, Mata Kuliah)"
+            >
+              <FileSpreadsheet className="w-4 h-4 text-emerald-200" />
+              <span>Impor Excel Massal</span>
+            </button>
 
             <button
               onClick={() => setIsBackupModalOpen(true)}
@@ -402,6 +420,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
 
               <button
+                onClick={() => handleOpenBulkImport('users')}
+                className="w-full sm:w-auto px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-800 rounded-lg text-sm font-semibold flex items-center justify-center gap-1.5 transition cursor-pointer shrink-0"
+                title="Impor pengguna dari file Excel (.xlsx)"
+              >
+                <FileSpreadsheet className="w-4 h-4 text-emerald-700" />
+                <span>Import Excel</span>
+              </button>
+
+              <button
                 onClick={() => handleOpenUserModal()}
                 className="w-full sm:w-auto px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-sm font-semibold flex items-center justify-center gap-2 transition cursor-pointer shrink-0"
               >
@@ -495,13 +522,24 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </p>
             </div>
 
-            <button
-              onClick={() => handleOpenScheduleModal()}
-              className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-sm font-semibold flex items-center gap-2 transition cursor-pointer"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Tambah Jadwal Baru</span>
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                onClick={() => handleOpenBulkImport('schedules')}
+                className="px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-800 rounded-lg text-sm font-semibold flex items-center gap-1.5 transition cursor-pointer"
+                title="Impor jadwal perkuliahan dari file Excel (.xlsx)"
+              >
+                <FileSpreadsheet className="w-4 h-4 text-emerald-700" />
+                <span>Import Excel Jadwal</span>
+              </button>
+
+              <button
+                onClick={() => handleOpenScheduleModal()}
+                className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-sm font-semibold flex items-center gap-2 transition cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Tambah Jadwal Baru</span>
+              </button>
+            </div>
           </div>
 
           <div className="overflow-x-auto">
@@ -583,6 +621,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 Berdasarkan arsip resmi Semester Ganjil 2026/2027 STMIK PGRI Arungbinang Kebumen
               </p>
             </div>
+
+            <button
+              onClick={() => handleOpenBulkImport('students')}
+              className="px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-800 rounded-lg text-sm font-semibold flex items-center gap-1.5 transition cursor-pointer"
+              title="Impor rombel mahasiswa dari file Excel (.xlsx)"
+            >
+              <FileSpreadsheet className="w-4 h-4 text-emerald-700" />
+              <span>Import Excel Mahasiswa</span>
+            </button>
           </div>
 
           <div className="overflow-x-auto">
@@ -626,6 +673,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 Katalog mata kuliah kurikulum STMIK PGRI Arungbinang Kebumen
               </p>
             </div>
+
+            <button
+              onClick={() => handleOpenBulkImport('courses')}
+              className="px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-800 rounded-lg text-sm font-semibold flex items-center gap-1.5 transition cursor-pointer"
+              title="Impor master mata kuliah dari file Excel (.xlsx)"
+            >
+              <FileSpreadsheet className="w-4 h-4 text-emerald-700" />
+              <span>Import Excel Mata Kuliah</span>
+            </button>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -809,6 +865,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         isOpen={isBackupModalOpen}
         onClose={() => setIsBackupModalOpen(false)}
         onNavigateToTab={() => setActiveTab('database')}
+      />
+
+      {/* Bulk Excel Importer Modal */}
+      <BulkExcelImportModal
+        isOpen={isBulkImportOpen}
+        onClose={() => setIsBulkImportOpen(false)}
+        initialCategory={bulkImportCategory}
+        onSuccess={() => {}}
       />
 
       {/* Confirmation Modal */}
