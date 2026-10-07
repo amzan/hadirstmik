@@ -5,9 +5,12 @@ import { ReportExportModal } from '../shared/ReportExportModal';
 import { ConfirmDialog } from '../shared/ConfirmDialog';
 import { ScheduleModal } from './ScheduleModal';
 import { SessionMonitoringTab } from './SessionMonitoringTab';
+import { DatabaseBackupTab } from './DatabaseBackupTab';
+import { DatabaseBackupModal } from './DatabaseBackupModal';
 import {
   Shield, Users, Calendar, BookOpen, UserPlus, Plus,
-  Trash2, Edit2, Search, Download, RefreshCw, GraduationCap, Clock, Radio, UserCog
+  Trash2, Edit2, Search, Download, RefreshCw, GraduationCap, Clock, Radio, UserCog,
+  Database
 } from 'lucide-react';
 
 interface AdminDashboardProps {
@@ -35,8 +38,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     resetToDefaultData
   } = useAttendance();
 
-  const [activeTab, setActiveTab] = useState<'sessions' | 'schedules' | 'users' | 'students' | 'courses'>('sessions');
+  const [activeTab, setActiveTab] = useState<'sessions' | 'schedules' | 'users' | 'students' | 'courses' | 'database'>('sessions');
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [isBackupModalOpen, setIsBackupModalOpen] = useState(false);
 
   // Confirm dialog state (replaces window.confirm)
   const [confirmConfig, setConfirmConfig] = useState<{
@@ -178,6 +182,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <span>Profil BAAK</span>
               </button>
             )}
+
+            <button
+              onClick={() => setIsBackupModalOpen(true)}
+              className="px-4 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-semibold text-sm flex items-center gap-2 transition cursor-pointer shadow-xs"
+              title="Cadangkan, Ekspor, dan Pulihkan Database Proyek"
+            >
+              <Database className="w-4 h-4" />
+              <span>Backup & Pulihkan DB</span>
+            </button>
 
             <button
               onClick={() => setIsExportModalOpen(true)}
@@ -349,6 +362,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           }`}
         >
           Master Mata Kuliah ({courses.length})
+        </button>
+
+        <button
+          onClick={() => setActiveTab('database')}
+          className={`pb-3 border-b-2 shrink-0 flex items-center gap-1.5 transition cursor-pointer ${
+            activeTab === 'database'
+              ? 'border-indigo-600 text-indigo-700 font-bold'
+              : 'border-transparent text-slate-500 hover:text-slate-900'
+          }`}
+        >
+          <Database className="w-4 h-4 text-indigo-600" />
+          <span>Cadangan & Database</span>
         </button>
       </div>
 
@@ -625,6 +650,25 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         </div>
       )}
 
+      {/* TAB 5: DATABASE BACKUP & RESTORE */}
+      {activeTab === 'database' && (
+        <DatabaseBackupTab
+          onOpenResetConfirm={() => {
+            setConfirmConfig({
+              isOpen: true,
+              title: 'Reset ke Data Default?',
+              message: 'Tindakan ini akan mengembalikan seluruh jadwal, pengguna, sesi presensi, dan data mahasiswa ke kondisi bawaan STMIK PGRI Arungbinang Kebumen.',
+              confirmLabel: 'Ya, Reset Data',
+              isDestructive: true,
+              onConfirm: () => {
+                resetToDefaultData();
+                setConfirmConfig(prev => ({ ...prev, isOpen: false }));
+              },
+            });
+          }}
+        />
+      )}
+
       {/* User Modal */}
       {isUserModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fadeIn">
@@ -758,6 +802,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       <ReportExportModal
         isOpen={isExportModalOpen}
         onClose={() => setIsExportModalOpen(false)}
+      />
+
+      {/* Database Backup & Restore Center Modal */}
+      <DatabaseBackupModal
+        isOpen={isBackupModalOpen}
+        onClose={() => setIsBackupModalOpen(false)}
+        onNavigateToTab={() => setActiveTab('database')}
       />
 
       {/* Confirmation Modal */}

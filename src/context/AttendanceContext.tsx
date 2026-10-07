@@ -1,13 +1,17 @@
 import React, { createContext, useContext, useState, useEffect, useMemo, useCallback } from 'react';
 import {
   User, Course, ScheduleItem, Student, AttendanceSession,
-  AttendanceRecord, LeaveRequest, AttendanceStatus, DayOfWeek
+  AttendanceRecord, LeaveRequest, AttendanceStatus, DayOfWeek,
+  DatabaseBackupData, DatabaseBackup, DatabaseSnapshot
 } from '../types/attendance';
 import {
   INITIAL_USERS, INITIAL_STUDENTS, INITIAL_COURSES, INITIAL_SCHEDULES,
   INITIAL_SESSIONS, INITIAL_RECORDS, INITIAL_LEAVE_REQUESTS,
   isStudentInRombel, CAMPUS_INFO
 } from '../data/initialData';
+import {
+  loadLocalSnapshots, saveLocalSnapshot, deleteLocalSnapshot
+} from '../utils/databaseBackupService';
 
 interface AttendanceContextType {
   currentUser: User;
@@ -91,6 +95,27 @@ interface AttendanceContextType {
   // Password reset helpers across all users
   findUserByIdentifier: (identifier: string) => User | null;
   resetUserPassword: (identifier: string, newPassword: string) => { success: boolean; message: string; user?: User };
+
+  // Database Backup, Export, Restore & Snapshot Management
+  getDatabaseBackupData: () => DatabaseBackupData;
+  restoreDatabase: (backupData: any) => {
+    success: boolean;
+    message: string;
+    restoredCounts?: {
+      users: number;
+      students: number;
+      courses: number;
+      schedules: number;
+      sessions: number;
+      records: number;
+      leaveRequests: number;
+    };
+  };
+  createSnapshot: (name?: string, note?: string) => DatabaseSnapshot;
+  restoreSnapshot: (snapshotId: string) => { success: boolean; message: string };
+  deleteSnapshot: (snapshotId: string) => void;
+  snapshots: DatabaseSnapshot[];
+  reloadSnapshots: () => void;
 }
 
 const AttendanceContext = createContext<AttendanceContextType | undefined>(undefined);
@@ -870,6 +895,151 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     setCurrentUser(INITIAL_USERS.find(u => u.id === 'dosen-3') || INITIAL_USERS[0]);
   }, []);
 
+  // Database Backup, Export, Restore & Snapshot Management
+  const [snapshots, setSnapshots] = useState<DatabaseSnapshot[]>(() => loadLocalSnapshots());
+
+  const reloadSnapshots = useCallback(() => {
+    setSnapshots(loadLocalSnapshots());
+  }, []);
+
+  const getDatabaseBackupData = useCallback((): DatabaseBackupData => {
+    return {
+      users,
+      students,
+      courses,
+      schedules,
+      sessions,
+      records,
+      leaveRequests,
+    };
+  }, [users, students, courses, schedules, sessions, records, leaveRequests]);
+
+  const restoreDatabase = useCallback((backupPayload: any): {
+    success: boolean;
+    message: string;
+    restoredCounts?: {
+      users: number;
+      students: number;
+      courses: number;
+      schedules: number;
+      sessions: number;
+      records: number;
+      leaveRequests: number;
+    };
+  } => {
+    try {
+      if (!backupPayload || typeof backupPayload !== 'object') {
+        return { success: false, message: 'Data cadangan tidak valid.' };
+      }
+
+      const data: DatabaseBackupData = backupPayload.data || backupPayload;
+
+      // Buat backup snapshot otomatis sebelum restorasi agar admin selalu punya rollback
+      try {
+        saveLocalSnapshot(
+          `Auto Backup Sebelum Restore (${new Date().toLocaleTimeString('id-ID')})`,
+          'Dibuat otomatis oleh sistem sesaat sebelum proses pemulihan database diterapkan.',
+          { users, students, courses, schedules, sessions, records, leaveRequests }
+        );
+      } catch (e) {
+        console.warn('Auto snapshot before restore failed', e);
+      }
+
+      const counts = {
+        users: 0,
+        students: 0,
+        courses: 0,
+        schedules: 0,
+        sessions: 0,
+        records: 0,
+        leaveRequests: 0,
+      };
+
+      if (Array.isArray(data.users) && data.users.length > 0) {
+        setUsers(data.users);
+        localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(data.users));
+        counts.users = data.users.length;
+      }
+
+      if (Array.isArray(data.students) && data.students.length > 0) {
+        setStudents(data.students);
+        localStorage.setItem(STORAGE_KEYS.STUDENTS, JSON.stringify(data.students));
+        counts.students = data.students.length;
+      }
+
+      if (Array.isArray(data.courses) && data.courses.length > 0) {
+        setCourses(data.courses);
+        localStorage.setItem(STORAGE_KEYS.COURSES, JSON.stringify(data.courses));
+        counts.courses = data.courses.length;
+      }
+
+      if (Array.isArray(data.schedules) && data.schedules.length > 0) {
+        setSchedules(data.schedules);
+        localStorage.setItem(STORAGE_KEYS.SCHEDULES, JSON.stringify(data.schedules));
+        counts.schedules = data.schedules.length;
+      }
+
+      if (Array.isArray(data.sessions)) {
+        setSessions(data.sessions);
+        localStorage.setItem(STORAGE_KEYS.SESSIONS, JSON.stringify(data.sessions));
+        counts.sessions = data.sessions.length;
+      }
+
+      if (Array.isArray(data.records)) {
+        setRecords(data.records);
+        localStorage.setItem(STORAGE_KEYS.RECORDS, JSON.stringify(data.records));
+        counts.records = data.records.length;
+      }
+
+      if (Array.isArray(data.leaveRequests)) {
+        setLeaveRequests(data.leaveRequests);
+        localStorage.setItem(STORAGE_KEYS.LEAVE, JSON.stringify(data.leaveRequests));
+        counts.leaveRequests = data.leaveRequests.length;
+      }
+
+      setSnapshots(loadLocalSnapshots());
+
+      return {
+        success: true,
+        message: 'Basis data berhasil dipulihkan dengan sukses! Seluruh data telah disinkronkan kembali.',
+        restoredCounts: counts,
+      };
+    } catch (err: any) {
+      return {
+        success: false,
+        message: `Gagal memulihkan database: ${err?.message || 'Terjadi kesalahan sistem.'}`,
+      };
+    }
+  }, [users, students, courses, schedules, sessions, records, leaveRequests]);
+
+  const createSnapshot = useCallback((name?: string, note?: string): DatabaseSnapshot => {
+    const snap = saveLocalSnapshot(
+      name || `Snapshot ${new Date().toLocaleString('id-ID')}`,
+      note,
+      { users, students, courses, schedules, sessions, records, leaveRequests }
+    );
+    setSnapshots(loadLocalSnapshots());
+    return snap;
+  }, [users, students, courses, schedules, sessions, records, leaveRequests]);
+
+  const restoreSnapshot = useCallback((snapshotId: string): { success: boolean; message: string } => {
+    const snaps = loadLocalSnapshots();
+    const target = snaps.find(s => s.id === snapshotId);
+    if (!target) {
+      return { success: false, message: 'Snapshot tidak ditemukan.' };
+    }
+    const res = restoreDatabase(target.data);
+    return {
+      success: res.success,
+      message: res.success ? `Snapshot "${target.name}" berhasil dipulihkan!` : res.message,
+    };
+  }, [restoreDatabase]);
+
+  const deleteSnapshot = useCallback((snapshotId: string) => {
+    const updated = deleteLocalSnapshot(snapshotId);
+    setSnapshots(updated);
+  }, []);
+
   // Helpers
   const getStudentsForRombel = useCallback((rombel: string): Student[] => {
     return students.filter(s => isStudentInRombel(s.rombel, rombel));
@@ -1063,6 +1233,13 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     getAttendanceRateForStudent,
     findUserByIdentifier,
     resetUserPassword,
+    getDatabaseBackupData,
+    restoreDatabase,
+    createSnapshot,
+    restoreSnapshot,
+    deleteSnapshot,
+    snapshots,
+    reloadSnapshots,
   }), [
     currentUser, users, students, courses, schedules, sessions, records, leaveRequests,
     activeDay, simulatedTime, useSimulatedTime, createSession, closeSession, refreshQrToken,
@@ -1072,7 +1249,9 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     deleteSchedule, addCourse, updateCourse, deleteCourse, addStudent, updateStudent,
     deleteStudent, resetToDefaultData, setScheduleMeetingDate, setScheduleAllMeetingDates,
     getMeetingDateForSchedule, getStudentsForRombel, getActiveScheduleNow,
-    getSchedulesForDay, getAttendanceRateForStudent, findUserByIdentifier, resetUserPassword
+    getSchedulesForDay, getAttendanceRateForStudent, findUserByIdentifier, resetUserPassword,
+    getDatabaseBackupData, restoreDatabase, createSnapshot, restoreSnapshot, deleteSnapshot,
+    snapshots, reloadSnapshots
   ]);
 
   return (

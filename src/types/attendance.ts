@@ -114,3 +114,53 @@ export interface LeaveRequest {
   proofDocumentUrl?: string;
   createdAt: string;
 }
+
+export interface DatabaseBackupData {
+  users: User[];
+  students: Student[];
+  courses: Course[];
+  schedules: ScheduleItem[];
+  sessions: AttendanceSession[];
+  records: AttendanceRecord[];
+  leaveRequests: LeaveRequest[];
+}
+
+export interface DatabaseBackup {
+  version: string;
+  timestamp: string;
+  appName: string;
+  campusName: string;
+  semester: string;
+  exportedBy: {
+    userId?: string;
+    userName?: string;
+    role?: string;
+  };
+  summary: {
+    totalUsers: number;
+    totalStudents: number;
+    totalCourses: number;
+    totalSchedules: number;
+    totalSessions: number;
+    totalRecords: number;
+    totalLeaveRequests: number;
+  };
+  data: DatabaseBackupData;
+}
+
+export interface DatabaseSnapshot {
+  id: string;
+  name: string;
+  note?: string;
+  timestamp: string;
+  summary: {
+    totalUsers: number;
+    totalStudents: number;
+    totalCourses: number;
+    totalSchedules: number;
+    totalSessions: number;
+    totalRecords: number;
+    totalLeaveRequests: number;
+  };
+  data: DatabaseBackupData;
+}
