@@ -16,9 +16,12 @@ export interface User {
   academicRank?: string; // e.g. "Lektor", "Asisten Ahli", "Dosen Tetap"
   officeRoom?: string; // e.g. "Gedung A Lt. 2 R. Dosen 104"
   prodi?: ProgramStudi;
-  rombel?: string; // e.g. "TI 1A", "MI 5A"
+  rombel?: string; // e.g. "TI 1A", "MI 5A" or "TI 1A, TI 3"
+  rombels?: string[]; // Array of assigned rombels for multi-rombel support
   phone?: string;
   password?: string;
+  excludedScheduleIds?: string[]; // IDs of schedules excluded/dropped to manage SKS limit
+  customScheduleIds?: string[];   // Additional schedule IDs explicitly enrolled
 }
 
 export interface Course {
@@ -30,6 +33,9 @@ export interface Course {
   semester: number;
   defaultLecturerId: string;
   defaultLecturerName: string;
+  description?: string;
+  isArchived?: boolean;
+  archivedAt?: string;
 }
 
 export type DayOfWeek = 'Senin' | 'Selasa' | 'Rabu' | 'Kamis' | 'Jumat' | 'Sabtu';
@@ -48,15 +54,34 @@ export interface ScheduleItem {
   rombel: string;    // e.g. "TI 3", "TI 1 & 5", "MI 5", "MI 1U"
   prodi: ProgramStudi;
   meetingDates?: Record<number, string>; // Mapping Pertemuan ke-N -> Tanggal (YYYY-MM-DD)
+  isArchived?: boolean;
+  archivedAt?: string;
+}
+
+export interface Rombel {
+  id: string; // e.g. "rombel-ti-1a"
+  code: string; // e.g. "TI 1A", "TI 1B", "TI 3", "TI 5", "MI 1A", "MI 1U", "MI 5A"
+  name: string; // e.g. "Teknologi Informasi Kelas 1A"
+  prodi: ProgramStudi;
+  semester: number;
+  academicYear?: string; // e.g. "2026/2027 Ganjil"
+  description?: string;
+  scheduleIds?: string[]; // IDs of connected course schedules
+  createdAt?: string;
+  isArchived?: boolean;
+  archivedAt?: string;
 }
 
 export interface Student {
   nim: string;
   name: string;
   prodi: ProgramStudi;
-  rombel: string; // e.g. "TI 1A", "MI 1A", "TI 3", "TI 5", "MI 5A"
+  rombel: string; // e.g. "TI 1A", "MI 1A", "TI 3", "TI 5", "MI 5A" or "TI 1A, TI 3"
+  rombels?: string[]; // Array of rombels: e.g. ["TI 1A", "TI 3"]
   email: string;
   phone?: string;
+  excludedScheduleIds?: string[]; // IDs of schedules excluded/dropped to manage SKS limit (e.g. <= 20 SKS)
+  customScheduleIds?: string[];   // Additional schedule IDs explicitly enrolled
 }
 
 export interface AttendanceSession {
@@ -145,6 +170,7 @@ export interface DatabaseBackupData {
   records: AttendanceRecord[];
   leaveRequests: LeaveRequest[];
   deviceSessions?: DeviceSession[];
+  rombels?: Rombel[];
 }
 
 export interface DatabaseBackup {

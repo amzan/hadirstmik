@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useAttendance } from '../../context/AttendanceContext';
 import { QrScannerModal } from './QrScannerModal';
 import { LeaveRequestModal } from './LeaveRequestModal';
-import { isStudentInRombel } from '../../data/initialData';
+import { isStudentInRombel, getStudentRombelList, getStudentEnrolledSchedules } from '../../data/initialData';
 import {
   QrCode, FileText, Calendar, UserCheck, Clock, UserCog
 } from 'lucide-react';
@@ -18,6 +18,7 @@ export const MahasiswaDashboard: React.FC<MahasiswaDashboardProps> = ({
     currentUser,
     records,
     schedules,
+    students,
     activeDay,
     simulatedTime,
     getAttendanceRateForStudent
@@ -28,7 +29,9 @@ export const MahasiswaDashboard: React.FC<MahasiswaDashboardProps> = ({
   const [selectedCourseTab, setSelectedCourseTab] = useState<string>('ALL');
 
   const studentNim = currentUser.username;
-  const studentRombel = currentUser.rombel || 'TI 3';
+  const studentRombelList = (currentUser.rombels && currentUser.rombels.length > 0)
+    ? currentUser.rombels
+    : getStudentRombelList(currentUser.rombel || 'TI 3');
 
   // Overall attendance rate
   const overallRate = getAttendanceRateForStudent(studentNim);
@@ -36,8 +39,9 @@ export const MahasiswaDashboard: React.FC<MahasiswaDashboardProps> = ({
   // Filter personal attendance records (STRICT: only their own records)
   const myRecords = records.filter(r => r.studentNim === studentNim);
   
-  // Enrolled schedules for this student's rombel
-  const mySchedules = schedules.filter(s => isStudentInRombel(studentRombel, s.rombel));
+  // Enrolled schedules for this student, respecting any individual exclusions
+  const matchedStudent = students.find(s => s.nim.toUpperCase() === studentNim.toUpperCase());
+  const mySchedules = getStudentEnrolledSchedules(matchedStudent || currentUser, schedules);
 
   // Today's classes
   const todayClasses = mySchedules.filter(s => s.day === activeDay);
@@ -53,12 +57,24 @@ export const MahasiswaDashboard: React.FC<MahasiswaDashboardProps> = ({
       {/* Clean Minimalist Header: Profile, Rate & Primary Action */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-5 border-b border-slate-200">
         <div>
-          <div className="flex items-center gap-2 text-sm text-slate-500 font-medium">
+          <div className="flex flex-wrap items-center gap-2 text-sm text-slate-500 font-medium">
             <span>Mahasiswa</span>
             <span aria-hidden="true">·</span>
             <span className="font-mono text-slate-700 font-semibold">NIM {studentNim}</span>
             <span aria-hidden="true">·</span>
-            <span>Rombel {studentRombel}</span>
+            <div className="inline-flex items-center gap-1.5 flex-wrap">
+              <span>Rombel:</span>
+              {studentRombelList.map(r => (
+                <span key={r} className="px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 font-bold text-xs border border-indigo-200">
+                  {r}
+                </span>
+              ))}
+              {studentRombelList.length > 1 && (
+                <span className="px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 font-semibold text-[10px]">
+                  Multi-Rombel
+                </span>
+              )}
+            </div>
           </div>
           <h2 className="text-2xl sm:text-3xl font-bold text-slate-900 mt-1 tracking-tight">
             {currentUser.name}

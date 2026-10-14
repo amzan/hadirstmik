@@ -1,4 +1,4 @@
-import { Course, ScheduleItem, Student, User, AttendanceSession, AttendanceRecord, LeaveRequest } from '../types/attendance';
+import { Course, ScheduleItem, Student, User, AttendanceSession, AttendanceRecord, LeaveRequest, Rombel } from '../types/attendance';
 
 export const CAMPUS_INFO = {
   name: 'STMIK PERSATUAN GURU REPUBLIK INDONESIA (PGRI) ARUNGBINANG KEBUMEN',
@@ -2771,18 +2771,167 @@ export const INITIAL_LEAVE_REQUESTS: LeaveRequest[] = [
   }
 ];
 
-// Helper to determine whether a student belongs to a schedule's rombel
-export function isStudentInRombel(studentRombel: string, scheduleRombel: string): boolean {
-  if (!studentRombel || !scheduleRombel) return false;
-  const sRombel = studentRombel.trim().toUpperCase();
-  const schRombel = scheduleRombel.trim().toUpperCase();
-  if (sRombel === schRombel) return true;
-  if (schRombel.includes('&')) {
-    const parts = schRombel.split('&').map(p => p.trim());
-    return parts.some(p => sRombel.startsWith(p) || sRombel === p);
+// Helper to parse student's rombel(s) into an array of individual rombel strings
+export function getStudentRombelList(studentRombel: string | string[] | undefined): string[] {
+  if (!studentRombel) return [];
+  if (Array.isArray(studentRombel)) {
+    return studentRombel.map(r => r.trim()).filter(Boolean);
   }
-  if (sRombel.startsWith(schRombel) || schRombel.startsWith(sRombel)) {
-    return true;
-  }
-  return false;
+  return String(studentRombel)
+    .split(/[,;&]+/)
+    .map(r => r.trim())
+    .filter(Boolean);
 }
+
+export function isStudentInRombel(
+  studentRombel: string | string[] | undefined,
+  scheduleRombel: string,
+  studentRombelsArray?: string[]
+): boolean {
+  if (!studentRombel && (!studentRombelsArray || studentRombelsArray.length === 0)) return false;
+  if (!scheduleRombel) return false;
+  const list = studentRombelsArray && studentRombelsArray.length > 0
+    ? studentRombelsArray
+    : getStudentRombelList(studentRombel);
+  if (list.length === 0) return false;
+
+  const schRombel = scheduleRombel.trim().toUpperCase();
+  const schParts = schRombel
+    .split(/[,;&/]+/)
+    .map(p => p.trim())
+    .filter(Boolean);
+
+  return list.some(rawR => {
+    const sR = rawR.trim().toUpperCase();
+    if (!sR) return false;
+
+    // Direct exact match
+    if (sR === schRombel) return true;
+
+    // Matching against composite schedule parts (e.g. "TI 1 & 5", "TI 1A, TI 1B")
+    for (const part of schParts) {
+      if (sR === part) return true;
+      if (sR.startsWith(part) || part.startsWith(sR)) return true;
+      if (part === '5' && sR.includes('5')) return true;
+      if (part === '1' && sR.includes('1')) return true;
+    }
+
+    // Specific rombel matching for standard campus aliases
+    if (schRombel.includes('MI 1U') && (sR.startsWith('MI 1') || sR === 'MI 1A' || sR === 'MI 1')) return true;
+    if (schRombel.includes('MI 5') && (sR.startsWith('MI 5') || sR === 'MI 5A')) return true;
+
+    if (sR.startsWith(schRombel) || schRombel.startsWith(sR)) return true;
+
+    return false;
+  });
+}
+
+// Maximum SKS limit per semester standard
+export const MAX_STANDARD_SKS = 20;
+
+/**
+ * Returns all active schedules enrolled for a given student, taking into account
+ * their rombels, any custom included schedule IDs, and excluded schedule IDs.
+ */
+export function getStudentEnrolledSchedules(
+  student: Student | User | { rombel?: string; rombels?: string[]; excludedScheduleIds?: string[]; customScheduleIds?: string[] } | null | undefined,
+  allSchedules: ScheduleItem[]
+): ScheduleItem[] {
+  if (!student) return [];
+  const rombelList = student.rombels && student.rombels.length > 0
+    ? student.rombels
+    : getStudentRombelList(student.rombel);
+
+  const excludedSet = new Set(student.excludedScheduleIds || []);
+  const customSet = new Set(student.customScheduleIds || []);
+
+  return allSchedules.filter(sch => {
+    // If explicitly excluded by admin/student, omit
+    if (excludedSet.has(sch.id)) return false;
+    // If explicitly included via custom schedules, include
+    if (customSet.has(sch.id)) return true;
+    // Otherwise check rombel match
+    return isStudentInRombel(rombelList, sch.rombel);
+  });
+}
+
+/**
+ * Calculates the total SKS for a student across all active enrolled schedules.
+ */
+export function getStudentTotalSks(
+  student: Student | User | { rombel?: string; rombels?: string[]; excludedScheduleIds?: string[]; customScheduleIds?: string[] } | null | undefined,
+  allSchedules: ScheduleItem[]
+): number {
+  const enrolled = getStudentEnrolledSchedules(student, allSchedules);
+  return enrolled.reduce((acc, sch) => acc + (sch.sks || 0), 0);
+}
+
+// Initial registered campus rombels
+export const INITIAL_ROMBELS: Rombel[] = [
+  {
+    id: 'rombel-ti-1a',
+    code: 'TI 1A',
+    name: 'Teknologi Informasi 1A',
+    prodi: 'Teknologi Informasi',
+    semester: 1,
+    academicYear: '2026/2027 Ganjil',
+    description: 'Rombel Reguler Semester 1 Program Studi Teknologi Informasi',
+    scheduleIds: INITIAL_SCHEDULES.filter(s => isStudentInRombel('TI 1A', s.rombel)).map(s => s.id),
+    createdAt: '2026-09-01T08:00:00Z',
+  },
+  {
+    id: 'rombel-ti-3',
+    code: 'TI 3',
+    name: 'Teknologi Informasi 3',
+    prodi: 'Teknologi Informasi',
+    semester: 3,
+    academicYear: '2026/2027 Ganjil',
+    description: 'Rombel Reguler Semester 3 Program Studi Teknologi Informasi',
+    scheduleIds: INITIAL_SCHEDULES.filter(s => isStudentInRombel('TI 3', s.rombel)).map(s => s.id),
+    createdAt: '2026-09-01T08:00:00Z',
+  },
+  {
+    id: 'rombel-ti-5',
+    code: 'TI 5',
+    name: 'Teknologi Informasi 5',
+    prodi: 'Teknologi Informasi',
+    semester: 5,
+    academicYear: '2026/2027 Ganjil',
+    description: 'Rombel Reguler Semester 5 Program Studi Teknologi Informasi',
+    scheduleIds: INITIAL_SCHEDULES.filter(s => isStudentInRombel('TI 5', s.rombel)).map(s => s.id),
+    createdAt: '2026-09-01T08:00:00Z',
+  },
+  {
+    id: 'rombel-mi-1a',
+    code: 'MI 1A',
+    name: 'Manajemen Informatika 1A',
+    prodi: 'Manajemen Informatika',
+    semester: 1,
+    academicYear: '2026/2027 Ganjil',
+    description: 'Rombel Reguler Semester 1 Program Studi Manajemen Informatika',
+    scheduleIds: INITIAL_SCHEDULES.filter(s => isStudentInRombel('MI 1A', s.rombel)).map(s => s.id),
+    createdAt: '2026-09-01T08:00:00Z',
+  },
+  {
+    id: 'rombel-mi-1u',
+    code: 'MI 1U',
+    name: 'Manajemen Informatika 1 Umum',
+    prodi: 'Manajemen Informatika',
+    semester: 1,
+    academicYear: '2026/2027 Ganjil',
+    description: 'Rombel Kelas Umum Semester 1 Program Studi Manajemen Informatika',
+    scheduleIds: INITIAL_SCHEDULES.filter(s => isStudentInRombel('MI 1U', s.rombel)).map(s => s.id),
+    createdAt: '2026-09-01T08:00:00Z',
+  },
+  {
+    id: 'rombel-mi-5a',
+    code: 'MI 5A',
+    name: 'Manajemen Informatika 5A',
+    prodi: 'Manajemen Informatika',
+    semester: 5,
+    academicYear: '2026/2027 Ganjil',
+    description: 'Rombel Reguler Semester 5 Program Studi Manajemen Informatika',
+    scheduleIds: INITIAL_SCHEDULES.filter(s => isStudentInRombel('MI 5A', s.rombel)).map(s => s.id),
+    createdAt: '2026-09-01T08:00:00Z',
+  },
+];

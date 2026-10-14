@@ -2,12 +2,12 @@ import React, { createContext, useContext, useState, useEffect, useMemo, useCall
 import {
   User, Course, ScheduleItem, Student, AttendanceSession,
   AttendanceRecord, LeaveRequest, AttendanceStatus, DayOfWeek,
-  DatabaseBackupData, DatabaseBackup, DatabaseSnapshot, DeviceSession
+  DatabaseBackupData, DatabaseBackup, DatabaseSnapshot, DeviceSession, Rombel
 } from '../types/attendance';
 import {
   INITIAL_USERS, INITIAL_STUDENTS, INITIAL_COURSES, INITIAL_SCHEDULES,
-  INITIAL_SESSIONS, INITIAL_RECORDS, INITIAL_LEAVE_REQUESTS,
-  isStudentInRombel, CAMPUS_INFO
+  INITIAL_SESSIONS, INITIAL_RECORDS, INITIAL_LEAVE_REQUESTS, INITIAL_ROMBELS,
+  isStudentInRombel, getStudentRombelList, CAMPUS_INFO
 } from '../data/initialData';
 import {
   loadLocalSnapshots, saveLocalSnapshot, deleteLocalSnapshot,
@@ -83,6 +83,33 @@ interface AttendanceContextType {
   addStudent: (student: Student) => void;
   updateStudent: (nim: string, student: Partial<Student>) => void;
   deleteStudent: (nim: string) => void;
+
+  // Rombel & Schedule link management
+  rombels: Rombel[];
+  addRombel: (rombelData: Omit<Rombel, 'id'>, connectedScheduleIds?: string[]) => { success: boolean; message: string; rombel?: Rombel };
+  updateRombel: (id: string, rombelData: Partial<Rombel>, connectedScheduleIds?: string[], previousCode?: string) => { success: boolean; message: string; rombel?: Rombel };
+  deleteRombel: (id: string) => { success: boolean; message: string };
+  linkSchedulesToRombel: (rombelCode: string, scheduleIds: string[]) => void;
+  archiveRombel: (idOrCode: string) => { success: boolean; message: string };
+  restoreRombel: (idOrCode: string) => { success: boolean; message: string };
+  archiveCourse: (idOrCode: string) => { success: boolean; message: string };
+  restoreCourse: (idOrCode: string) => { success: boolean; message: string };
+  checkRombelRelations: (rombelCode: string) => {
+    canDelete: boolean;
+    scheduleCount: number;
+    studentCount: number;
+    sessionCount: number;
+    schedules: ScheduleItem[];
+    students: Student[];
+    sessions: AttendanceSession[];
+  };
+  checkCourseRelations: (courseCode: string) => {
+    canDelete: boolean;
+    scheduleCount: number;
+    sessionCount: number;
+    schedules: ScheduleItem[];
+    sessions: AttendanceSession[];
+  };
   
   resetToDefaultData: () => void;
   
@@ -181,6 +208,7 @@ const STORAGE_KEYS = {
   STUDENTS: 'stmik_students_v1',
   COURSES: 'stmik_courses_v1',
   SCHEDULES: 'stmik_schedules_v1',
+  ROMBELS: 'stmik_rombels_v1',
   SESSIONS: 'stmik_sessions_v1',
   RECORDS: 'stmik_records_v1',
   LEAVE: 'stmik_leave_v1',
@@ -313,6 +341,19 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEYS.LEAVE);
     return saved ? JSON.parse(saved) : INITIAL_LEAVE_REQUESTS;
+  });
+
+  const [rombels, setRombels] = useState<Rombel[]>(() => {
+    const saved = localStorage.getItem(STORAGE_KEYS.ROMBELS);
+    if (saved) {
+      try {
+        const parsed: Rombel[] = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
+        }
+      } catch {}
+    }
+    return INITIAL_ROMBELS;
   });
 
   // Device Sessions state (tracking all logged-in devices across campus)
@@ -851,7 +892,7 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }
 
     // 3. Verify student belongs to this rombel/class
-    const isEnrolled = isStudentInRombel(student.rombel, session.rombel);
+    const isEnrolled = isStudentInRombel(student.rombel, session.rombel, student.rombels);
     if (!isEnrolled) {
       return {
         success: false,
@@ -1110,48 +1151,683 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     setSchedules(prev => prev.filter(s => s.id !== id));
   }, []);
 
-  // Course management
+  // Course management with persistence, schedule sync, archive & relation integrity
   const addCourse = useCallback((newC: Omit<Course, 'id'>) => {
     const c: Course = {
       ...newC,
       id: `c-${Date.now()}`,
     };
-    setCourses(prev => [...prev, c]);
+    setCourses(prev => {
+      const next = [...prev, c];
+      localStorage.setItem(STORAGE_KEYS.COURSES, JSON.stringify(next));
+      return next;
+    });
   }, []);
 
   const updateCourse = useCallback((id: string, updated: Partial<Course>) => {
-    setCourses(prev => prev.map(c => c.id === id ? { ...c, ...updated } : c));
+    let oldCode = '';
+    const newCode = updated.code ? updated.code.trim().toUpperCase() : '';
+
+    setCourses(prev => {
+      const target = prev.find(c => c.id === id);
+      if (target) {
+        oldCode = target.code.trim().toUpperCase();
+      }
+      const next = prev.map(c => c.id === id ? { ...c, ...updated, ...(newCode ? { code: newCode } : {}) } : c);
+      localStorage.setItem(STORAGE_KEYS.COURSES, JSON.stringify(next));
+      return next;
+    });
+
+    // If course code or name changed, synchronize schedules referencing old code
+    if (oldCode && (newCode || updated.name)) {
+      setSchedules(prev => {
+        const next = prev.map(sch => {
+          if (sch.courseCode.trim().toUpperCase() === oldCode) {
+            return {
+              ...sch,
+              courseCode: newCode || sch.courseCode,
+              courseName: updated.name || sch.courseName,
+              sks: updated.sks !== undefined ? updated.sks : sch.sks,
+              prodi: updated.prodi || sch.prodi,
+            };
+          }
+          return sch;
+        });
+        localStorage.setItem(STORAGE_KEYS.SCHEDULES, JSON.stringify(next));
+        return next;
+      });
+    }
   }, []);
 
   const deleteCourse = useCallback((id: string) => {
-    setCourses(prev => prev.filter(c => c.id !== id));
+    setCourses(prev => {
+      const next = prev.filter(c => c.id !== id);
+      localStorage.setItem(STORAGE_KEYS.COURSES, JSON.stringify(next));
+      return next;
+    });
   }, []);
 
-  // Student management
-  const addStudent = useCallback((newStudent: Student) => {
-    setStudents(prev => [...prev, newStudent]);
+  const archiveCourse = useCallback((idOrCode: string) => {
+    let courseName = '';
+    const clean = idOrCode.trim().toUpperCase();
+    setCourses(prev => {
+      const next = prev.map(c => {
+        if (c.id === idOrCode || c.code.trim().toUpperCase() === clean) {
+          courseName = c.name;
+          return { ...c, isArchived: true, archivedAt: new Date().toISOString() };
+        }
+        return c;
+      });
+      localStorage.setItem(STORAGE_KEYS.COURSES, JSON.stringify(next));
+      return next;
+    });
+    return { success: true, message: `Mata kuliah "${courseName || idOrCode}" berhasil diarsipkan.` };
+  }, []);
+
+  const restoreCourse = useCallback((idOrCode: string) => {
+    let courseName = '';
+    const clean = idOrCode.trim().toUpperCase();
+    setCourses(prev => {
+      const next = prev.map(c => {
+        if (c.id === idOrCode || c.code.trim().toUpperCase() === clean) {
+          courseName = c.name;
+          return { ...c, isArchived: false, archivedAt: undefined };
+        }
+        return c;
+      });
+      localStorage.setItem(STORAGE_KEYS.COURSES, JSON.stringify(next));
+      return next;
+    });
+    return { success: true, message: `Mata kuliah "${courseName || idOrCode}" berhasil dipulihkan dari arsip.` };
+  }, []);
+
+  const checkCourseRelations = useCallback((courseCode: string) => {
+    const code = (courseCode || '').trim().toUpperCase();
+    if (!code) {
+      return { canDelete: true, scheduleCount: 0, sessionCount: 0, schedules: [], sessions: [] };
+    }
+    const relatedSchedules = schedules.filter(s => s.courseCode.trim().toUpperCase() === code);
+    const relatedSessions = sessions.filter(sess => sess.courseCode.trim().toUpperCase() === code);
+
+    const canDelete = relatedSchedules.length === 0 && relatedSessions.length === 0;
+
+    return {
+      canDelete,
+      scheduleCount: relatedSchedules.length,
+      sessionCount: relatedSessions.length,
+      schedules: relatedSchedules,
+      sessions: relatedSessions,
+    };
+  }, [schedules, sessions]);
+
+  // Student management with multi-rombel persistence & user synchronization
+  const addStudent = useCallback((rawStudent: Student) => {
+    const rombelList = rawStudent.rombels && rawStudent.rombels.length > 0
+      ? rawStudent.rombels
+      : getStudentRombelList(rawStudent.rombel);
+    const joinedRombel = rombelList.join(', ');
+
+    const newStudent: Student = {
+      ...rawStudent,
+      rombel: joinedRombel || rawStudent.rombel,
+      rombels: rombelList,
+      email: rawStudent.email || `${rawStudent.nim.toLowerCase()}@student.stmik-arungbinang.ac.id`,
+    };
+
+    setStudents(prev => {
+      const idx = prev.findIndex(s => s.nim.toUpperCase() === newStudent.nim.toUpperCase());
+      const updated = idx >= 0
+        ? prev.map((s, i) => i === idx ? { ...s, ...newStudent } : s)
+        : [...prev, newStudent];
+      localStorage.setItem(STORAGE_KEYS.STUDENTS, JSON.stringify(updated));
+      return updated;
+    });
+
+    // Also sync or create user account for this student so login works smoothly
+    setUsers(prev => {
+      const existingIdx = prev.findIndex(u => u.username.toUpperCase() === newStudent.nim.toUpperCase());
+      let updatedUsers: User[];
+      if (existingIdx >= 0) {
+        updatedUsers = prev.map((u, i) => i === existingIdx ? {
+          ...u,
+          name: newStudent.name,
+          email: newStudent.email,
+          prodi: newStudent.prodi,
+          rombel: newStudent.rombel,
+          rombels: newStudent.rombels,
+          phone: newStudent.phone || u.phone,
+        } : u);
+      } else {
+        const newUser: User = {
+          id: `mhs-${newStudent.nim}`,
+          username: newStudent.nim,
+          name: newStudent.name,
+          email: newStudent.email,
+          role: 'mahasiswa',
+          prodi: newStudent.prodi,
+          rombel: newStudent.rombel,
+          rombels: newStudent.rombels,
+          phone: newStudent.phone,
+          avatarUrl: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150',
+        };
+        updatedUsers = [...prev, newUser];
+      }
+      localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(updatedUsers));
+      return updatedUsers;
+    });
   }, []);
 
   const updateStudent = useCallback((nim: string, updated: Partial<Student>) => {
-    setStudents(prev => prev.map(s => s.nim === nim ? { ...s, ...updated } : s));
+    setStudents(prev => {
+      const next = prev.map(s => {
+        if (s.nim.toUpperCase() === nim.toUpperCase()) {
+          const merged = { ...s, ...updated };
+          const rombelList = merged.rombels && merged.rombels.length > 0
+            ? merged.rombels
+            : getStudentRombelList(merged.rombel);
+          return {
+            ...merged,
+            rombel: rombelList.join(', '),
+            rombels: rombelList,
+          };
+        }
+        return s;
+      });
+      localStorage.setItem(STORAGE_KEYS.STUDENTS, JSON.stringify(next));
+      return next;
+    });
+
+    // Sync to users
+    setUsers(prev => {
+      const nextUsers = prev.map(u => {
+        if (u.username.toUpperCase() === nim.toUpperCase()) {
+          const rombelList = updated.rombels || (updated.rombel ? getStudentRombelList(updated.rombel) : u.rombels);
+          return {
+            ...u,
+            name: updated.name || u.name,
+            email: updated.email || u.email,
+            prodi: updated.prodi || u.prodi,
+            rombel: updated.rombel || (rombelList ? rombelList.join(', ') : u.rombel),
+            rombels: rombelList || u.rombels,
+            phone: updated.phone !== undefined ? updated.phone : u.phone,
+            excludedScheduleIds: updated.excludedScheduleIds !== undefined ? updated.excludedScheduleIds : u.excludedScheduleIds,
+            customScheduleIds: updated.customScheduleIds !== undefined ? updated.customScheduleIds : u.customScheduleIds,
+          };
+        }
+        return u;
+      });
+      localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(nextUsers));
+      return nextUsers;
+    });
   }, []);
 
   const deleteStudent = useCallback((nim: string) => {
-    setStudents(prev => prev.filter(s => s.nim !== nim));
+    setStudents(prev => {
+      const next = prev.filter(s => s.nim.toUpperCase() !== nim.toUpperCase());
+      localStorage.setItem(STORAGE_KEYS.STUDENTS, JSON.stringify(next));
+      return next;
+    });
+    setUsers(prev => {
+      const nextUsers = prev.filter(u => !(u.role === 'mahasiswa' && u.username.toUpperCase() === nim.toUpperCase()));
+      localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(nextUsers));
+      return nextUsers;
+    });
   }, []);
+
+  // Rombel & Schedule link management
+  const addRombel = useCallback((rawRombel: Omit<Rombel, 'id'>, connectedScheduleIds: string[] = []) => {
+    const cleanCode = rawRombel.code.trim().toUpperCase();
+    if (!cleanCode) {
+      return { success: false, message: 'Kode Rombel tidak boleh kosong.' };
+    }
+
+    let isDuplicate = false;
+    setRombels(prev => {
+      if (prev.some(r => r.code.toUpperCase() === cleanCode)) {
+        isDuplicate = true;
+      }
+      return prev;
+    });
+
+    if (isDuplicate) {
+      return { success: false, message: `Rombel dengan kode "${cleanCode}" sudah terdaftar.` };
+    }
+
+    const newRombel: Rombel = {
+      ...rawRombel,
+      id: `rombel-${cleanCode.toLowerCase().replace(/[^a-z0-9]/g, '-')}-${Date.now()}`,
+      code: cleanCode,
+      name: rawRombel.name.trim() || `Rombel ${cleanCode}`,
+      scheduleIds: connectedScheduleIds,
+      createdAt: new Date().toISOString(),
+    };
+
+    setRombels(prev => {
+      const updated = [...prev, newRombel];
+      localStorage.setItem(STORAGE_KEYS.ROMBELS, JSON.stringify(updated));
+      return updated;
+    });
+
+    // Automatically connect this rombel to the chosen schedules
+    if (connectedScheduleIds.length > 0) {
+      setSchedules(prev => {
+        const updatedSchedules = prev.map(sch => {
+          if (connectedScheduleIds.includes(sch.id)) {
+            const currentParts = sch.rombel ? sch.rombel.split(/[,;&/]+/).map(p => p.trim()).filter(Boolean) : [];
+            if (!currentParts.some(p => p.toUpperCase() === cleanCode)) {
+              currentParts.push(cleanCode);
+              return { ...sch, rombel: currentParts.join(', ') };
+            }
+          }
+          return sch;
+        });
+        localStorage.setItem(STORAGE_KEYS.SCHEDULES, JSON.stringify(updatedSchedules));
+        return updatedSchedules;
+      });
+    }
+
+    return {
+      success: true,
+      message: `Rombel "${cleanCode}" berhasil ditambahkan dan dihubungkan ke ${connectedScheduleIds.length} jadwal mata kuliah!`,
+      rombel: newRombel,
+    };
+  }, []);
+
+  const updateRombel = useCallback((id: string, updated: Partial<Rombel>, connectedScheduleIds?: string[], previousCode?: string) => {
+    const cleanId = (id || '').trim();
+    const cleanNewCode = updated.code ? updated.code.trim().toUpperCase() : '';
+    const cleanNewName = updated.name !== undefined ? updated.name.trim() : '';
+
+    // Determine oldCode reliably
+    let oldCode = (previousCode || '').trim().toUpperCase();
+    if (!oldCode) {
+      const fromCurrent = rombels.find(r => 
+        (cleanId && r.id === cleanId) || 
+        (cleanId && r.code.toUpperCase() === cleanId.toUpperCase())
+      );
+      if (fromCurrent) {
+        oldCode = fromCurrent.code.trim().toUpperCase();
+      } else {
+        oldCode = cleanId.replace(/^rombel-/, '').trim().toUpperCase();
+      }
+    }
+
+    const targetCode = cleanNewCode || oldCode;
+    let finalUpdatedRombel: Rombel | null = null;
+
+    // 1. Update Rombels state & localStorage
+    setRombels(prev => {
+      const target = prev.find(r => 
+        (cleanId && r.id === cleanId) || 
+        (oldCode && r.code.toUpperCase() === oldCode) || 
+        (cleanId && r.code.toUpperCase() === cleanId.toUpperCase())
+      );
+
+      if (target) {
+        finalUpdatedRombel = {
+          ...target,
+          ...updated,
+          code: targetCode,
+          name: cleanNewName || target.name,
+          scheduleIds: connectedScheduleIds !== undefined ? connectedScheduleIds : target.scheduleIds,
+          academicYear: updated.academicYear !== undefined ? updated.academicYear : target.academicYear,
+          description: updated.description !== undefined ? updated.description : target.description,
+          isArchived: updated.isArchived !== undefined ? updated.isArchived : target.isArchived,
+          archivedAt: updated.archivedAt !== undefined ? updated.archivedAt : target.archivedAt,
+        };
+        const next = prev.map(r => r.id === target.id ? finalUpdatedRombel! : r);
+        localStorage.setItem(STORAGE_KEYS.ROMBELS, JSON.stringify(next));
+        return next;
+      } else {
+        finalUpdatedRombel = {
+          id: cleanId || `rombel-${targetCode.toLowerCase().replace(/[^a-z0-9]/g, '-')}-${Date.now()}`,
+          code: targetCode,
+          name: cleanNewName || `Rombel ${targetCode}`,
+          prodi: updated.prodi || (targetCode.startsWith('TI') ? 'Teknologi Informasi' : 'Manajemen Informatika'),
+          semester: updated.semester || 1,
+          academicYear: updated.academicYear || '2026/2027 Ganjil',
+          description: updated.description,
+          scheduleIds: connectedScheduleIds || [],
+          createdAt: new Date().toISOString(),
+          isArchived: updated.isArchived,
+          archivedAt: updated.archivedAt,
+        };
+        const next = [...prev, finalUpdatedRombel];
+        localStorage.setItem(STORAGE_KEYS.ROMBELS, JSON.stringify(next));
+        return next;
+      }
+    });
+
+    const isCodeRenamed = Boolean(oldCode && targetCode && oldCode !== targetCode);
+
+    // 2. Cascade update to Schedules
+    setSchedules(prev => {
+      let changed = false;
+      const nextSchedules = prev.map(sch => {
+        const currentParts = sch.rombel ? sch.rombel.split(/[,;&/]+/).map(p => p.trim()).filter(Boolean) : [];
+        const hadOldCode = oldCode ? currentParts.some(p => p.toUpperCase() === oldCode) : false;
+        const hadTargetCode = currentParts.some(p => p.toUpperCase() === targetCode);
+
+        if (connectedScheduleIds !== undefined) {
+          const isSelected = connectedScheduleIds.includes(sch.id);
+          if (isSelected) {
+            let parts = [...currentParts];
+            if (isCodeRenamed && hadOldCode) {
+              parts = parts.filter(p => p.toUpperCase() !== oldCode);
+            }
+            if (!parts.some(p => p.toUpperCase() === targetCode)) {
+              parts.push(targetCode);
+              changed = true;
+            }
+            return { ...sch, rombel: parts.join(', ') };
+          } else {
+            if (hadOldCode || hadTargetCode) {
+              changed = true;
+              const filtered = currentParts.filter(p => p.toUpperCase() !== oldCode && p.toUpperCase() !== targetCode);
+              return { ...sch, rombel: filtered.join(', ') || 'Unassigned' };
+            }
+          }
+        } else if (isCodeRenamed && hadOldCode) {
+          changed = true;
+          const replaced = currentParts.map(p => p.toUpperCase() === oldCode ? targetCode : p);
+          return { ...sch, rombel: replaced.join(', ') };
+        }
+        return sch;
+      });
+
+      if (changed) {
+        localStorage.setItem(STORAGE_KEYS.SCHEDULES, JSON.stringify(nextSchedules));
+      }
+      return nextSchedules;
+    });
+
+    // 3. Cascade update to Students
+    if (isCodeRenamed) {
+      setStudents(prev => {
+        let changed = false;
+        const nextStudents = prev.map(st => {
+          const list = st.rombels && st.rombels.length > 0 ? st.rombels : getStudentRombelList(st.rombel);
+          const hasOld = list.some(r => r.toUpperCase() === oldCode);
+          if (hasOld) {
+            changed = true;
+            const updatedList = list.map(r => r.toUpperCase() === oldCode ? targetCode : r);
+            return {
+              ...st,
+              rombels: updatedList,
+              rombel: updatedList.join(', '),
+            };
+          }
+          return st;
+        });
+
+        if (changed) {
+          localStorage.setItem(STORAGE_KEYS.STUDENTS, JSON.stringify(nextStudents));
+        }
+        return nextStudents;
+      });
+
+      // 4. Cascade update to Users (login accounts)
+      setUsers(prev => {
+        let changed = false;
+        const nextUsers = prev.map(u => {
+          const list = u.rombels && u.rombels.length > 0 ? u.rombels : (u.rombel ? getStudentRombelList(u.rombel) : []);
+          const hasOld = list.some(r => r.toUpperCase() === oldCode);
+          if (hasOld) {
+            changed = true;
+            const updatedList = list.map(r => r.toUpperCase() === oldCode ? targetCode : r);
+            return {
+              ...u,
+              rombels: updatedList,
+              rombel: updatedList.join(', '),
+            };
+          }
+          return u;
+        });
+
+        if (changed) {
+          localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(nextUsers));
+        }
+        return nextUsers;
+      });
+
+      // 5. Cascade update to Attendance Sessions
+      setSessions(prev => {
+        let changed = false;
+        const nextSessions = prev.map(sess => {
+          const parts = sess.rombel ? sess.rombel.split(/[,;&/]+/).map(p => p.trim()).filter(Boolean) : [];
+          if (parts.some(p => p.toUpperCase() === oldCode)) {
+            changed = true;
+            const updatedParts = parts.map(p => p.toUpperCase() === oldCode ? targetCode : p);
+            return {
+              ...sess,
+              rombel: updatedParts.join(', '),
+            };
+          }
+          return sess;
+        });
+
+        if (changed) {
+          localStorage.setItem(STORAGE_KEYS.SESSIONS, JSON.stringify(nextSessions));
+        }
+        return nextSessions;
+      });
+
+      // 6. Cascade update to Attendance Records
+      setRecords(prev => {
+        let changed = false;
+        const nextRecords = prev.map(rec => {
+          if (rec.rombel && rec.rombel.toUpperCase().includes(oldCode)) {
+            changed = true;
+            const parts = rec.rombel.split(/[,;&/]+/).map(p => p.trim()).filter(Boolean);
+            const updatedParts = parts.map(p => p.toUpperCase() === oldCode ? targetCode : p);
+            return {
+              ...rec,
+              rombel: updatedParts.join(', ') || targetCode,
+            };
+          }
+          return rec;
+        });
+
+        if (changed) {
+          localStorage.setItem(STORAGE_KEYS.RECORDS, JSON.stringify(nextRecords));
+        }
+        return nextRecords;
+      });
+
+      // 7. Cascade update to Leave Requests
+      setLeaveRequests(prev => {
+        let changed = false;
+        const nextLeaves = prev.map(l => {
+          if (l.rombel && l.rombel.toUpperCase().includes(oldCode)) {
+            changed = true;
+            const parts = l.rombel.split(/[,;&/]+/).map(p => p.trim()).filter(Boolean);
+            const updatedParts = parts.map(p => p.toUpperCase() === oldCode ? targetCode : p);
+            return {
+              ...l,
+              rombel: updatedParts.join(', ') || targetCode,
+            };
+          }
+          return l;
+        });
+
+        if (changed) {
+          localStorage.setItem(STORAGE_KEYS.LEAVE, JSON.stringify(nextLeaves));
+        }
+        return nextLeaves;
+      });
+
+      // 8. Cascade update to Current Authenticated User (if active session belongs to this rombel)
+      setCurrentUser(prev => {
+        if (!prev) return prev;
+        const list = prev.rombels && prev.rombels.length > 0 ? prev.rombels : (prev.rombel ? getStudentRombelList(prev.rombel) : []);
+        if (list.some(r => r.toUpperCase() === oldCode)) {
+          const updatedList = list.map(r => r.toUpperCase() === oldCode ? targetCode : r);
+          const updatedUser = {
+            ...prev,
+            rombels: updatedList,
+            rombel: updatedList.join(', '),
+          };
+          localStorage.setItem(SESSION_KEYS.ACTIVE_USER, JSON.stringify(updatedUser));
+          return updatedUser;
+        }
+        return prev;
+      });
+    }
+
+    const relationsInfo = [];
+    if (isCodeRenamed) {
+      relationsInfo.push('Jadwal', 'Mahasiswa', 'Akun Pengguna', 'Presensi');
+    } else if (connectedScheduleIds !== undefined) {
+      relationsInfo.push(`${connectedScheduleIds.length} Jadwal Terhubung`);
+    }
+
+    return {
+      success: true,
+      message: `Rombel "${targetCode}" berhasil disimpan${relationsInfo.length > 0 ? ` & relasi (${relationsInfo.join(', ')}) otomatis diperbarui` : ''}!`,
+      rombel: finalUpdatedRombel || undefined,
+    };
+  }, [rombels]);
+
+  const deleteRombel = useCallback((id: string) => {
+    let deletedCode = '';
+    setRombels(prev => {
+      const target = prev.find(r => r.id === id);
+      if (target) deletedCode = target.code.trim().toUpperCase();
+      const next = prev.filter(r => r.id !== id);
+      localStorage.setItem(STORAGE_KEYS.ROMBELS, JSON.stringify(next));
+      return next;
+    });
+
+    if (deletedCode) {
+      setSchedules(prev => {
+        const nextSchedules = prev.map(sch => {
+          const currentParts = sch.rombel ? sch.rombel.split(/[,;&/]+/).map(p => p.trim()).filter(Boolean) : [];
+          if (currentParts.some(p => p.toUpperCase() === deletedCode)) {
+            const filtered = currentParts.filter(p => p.toUpperCase() !== deletedCode);
+            return { ...sch, rombel: filtered.join(', ') || 'Unassigned' };
+          }
+          return sch;
+        });
+        localStorage.setItem(STORAGE_KEYS.SCHEDULES, JSON.stringify(nextSchedules));
+        return nextSchedules;
+      });
+    }
+
+    return { success: true, message: `Rombel "${deletedCode}" berhasil dihapus.` };
+  }, []);
+
+  const linkSchedulesToRombel = useCallback((rombelCode: string, scheduleIds: string[]) => {
+    const cleanCode = rombelCode.trim().toUpperCase();
+    if (!cleanCode) return;
+
+    setRombels(prev => {
+      const next = prev.map(r => {
+        if (r.code.toUpperCase() === cleanCode) {
+          return { ...r, scheduleIds };
+        }
+        return r;
+      });
+      localStorage.setItem(STORAGE_KEYS.ROMBELS, JSON.stringify(next));
+      return next;
+    });
+
+    setSchedules(prev => {
+      const nextSchedules = prev.map(sch => {
+        const currentParts = sch.rombel ? sch.rombel.split(/[,;&/]+/).map(p => p.trim()).filter(Boolean) : [];
+        const isSelected = scheduleIds.includes(sch.id);
+        const hasCode = currentParts.some(p => p.toUpperCase() === cleanCode);
+
+        if (isSelected && !hasCode) {
+          currentParts.push(cleanCode);
+          return { ...sch, rombel: currentParts.join(', ') };
+        } else if (!isSelected && hasCode) {
+          const filtered = currentParts.filter(p => p.toUpperCase() !== cleanCode);
+          return { ...sch, rombel: filtered.join(', ') || 'Unassigned' };
+        }
+        return sch;
+      });
+      localStorage.setItem(STORAGE_KEYS.SCHEDULES, JSON.stringify(nextSchedules));
+      return nextSchedules;
+    });
+  }, []);
+
+  const archiveRombel = useCallback((idOrCode: string) => {
+    let rombelCode = '';
+    const clean = idOrCode.trim().toUpperCase();
+    setRombels(prev => {
+      const next = prev.map(r => {
+        if (r.id === idOrCode || r.code.trim().toUpperCase() === clean) {
+          rombelCode = r.code;
+          return { ...r, isArchived: true, archivedAt: new Date().toISOString() };
+        }
+        return r;
+      });
+      localStorage.setItem(STORAGE_KEYS.ROMBELS, JSON.stringify(next));
+      return next;
+    });
+    return { success: true, message: `Rombel "${rombelCode || idOrCode}" berhasil diarsipkan.` };
+  }, []);
+
+  const restoreRombel = useCallback((idOrCode: string) => {
+    let rombelCode = '';
+    const clean = idOrCode.trim().toUpperCase();
+    setRombels(prev => {
+      const next = prev.map(r => {
+        if (r.id === idOrCode || r.code.trim().toUpperCase() === clean) {
+          rombelCode = r.code;
+          return { ...r, isArchived: false, archivedAt: undefined };
+        }
+        return r;
+      });
+      localStorage.setItem(STORAGE_KEYS.ROMBELS, JSON.stringify(next));
+      return next;
+    });
+    return { success: true, message: `Rombel "${rombelCode || idOrCode}" berhasil dipulihkan dari arsip.` };
+  }, []);
+
+  const checkRombelRelations = useCallback((rombelCode: string) => {
+    const code = (rombelCode || '').trim().toUpperCase();
+    if (!code) {
+      return { canDelete: true, scheduleCount: 0, studentCount: 0, sessionCount: 0, schedules: [], students: [], sessions: [] };
+    }
+    const relatedSchedules = schedules.filter(s => isStudentInRombel(code, s.rombel));
+    const relatedStudents = students.filter(st => isStudentInRombel(st.rombels || st.rombel, code));
+    const relatedSessions = sessions.filter(sess => isStudentInRombel(code, sess.rombel));
+
+    const canDelete = relatedSchedules.length === 0 && relatedStudents.length === 0 && relatedSessions.length === 0;
+
+    return {
+      canDelete,
+      scheduleCount: relatedSchedules.length,
+      studentCount: relatedStudents.length,
+      sessionCount: relatedSessions.length,
+      schedules: relatedSchedules,
+      students: relatedStudents,
+      sessions: relatedSessions,
+    };
+  }, [schedules, students, sessions]);
 
   // Bulk Excel import & update implementations
   const bulkUpdateStudents = useCallback((incoming: Student[], mode: 'merge' | 'replace' = 'merge') => {
     let added = 0;
     let updated = 0;
+    const normalizedIncoming = incoming.map(st => {
+      const list = st.rombels && st.rombels.length > 0 ? st.rombels : getStudentRombelList(st.rombel);
+      return {
+        ...st,
+        rombel: list.join(', ') || st.rombel,
+        rombels: list,
+      };
+    });
+
     setStudents(prev => {
       if (mode === 'replace') {
-        added = incoming.length;
-        localStorage.setItem(STORAGE_KEYS.STUDENTS, JSON.stringify(incoming));
-        return incoming;
+        added = normalizedIncoming.length;
+        localStorage.setItem(STORAGE_KEYS.STUDENTS, JSON.stringify(normalizedIncoming));
+        return normalizedIncoming;
       }
       const result = [...prev];
-      incoming.forEach(newItem => {
+      normalizedIncoming.forEach(newItem => {
         const idx = result.findIndex(s => s.nim.toUpperCase() === newItem.nim.toUpperCase());
         if (idx >= 0) {
           result[idx] = { ...result[idx], ...newItem };
@@ -1352,6 +2028,7 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     setSessions(INITIAL_SESSIONS);
     setRecords(INITIAL_RECORDS);
     setLeaveRequests(INITIAL_LEAVE_REQUESTS);
+    setRombels(INITIAL_ROMBELS);
     setCurrentUser(GUEST_USER);
   }, []);
 
@@ -1487,8 +2164,9 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       records,
       leaveRequests,
       deviceSessions,
+      rombels,
     };
-  }, [users, students, courses, schedules, sessions, records, leaveRequests, deviceSessions]);
+  }, [users, students, courses, schedules, sessions, records, leaveRequests, deviceSessions, rombels]);
 
   const restoreDatabase = useCallback((backupPayload: any): {
     success: boolean;
@@ -1575,6 +2253,11 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         counts.leaveRequests = data.leaveRequests.length;
       }
 
+      if (Array.isArray(data.rombels) && data.rombels.length > 0) {
+        setRombels(data.rombels);
+        localStorage.setItem(STORAGE_KEYS.ROMBELS, JSON.stringify(data.rombels));
+      }
+
       setSnapshots(loadLocalSnapshots());
 
       return {
@@ -1588,7 +2271,7 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         message: `Gagal memulihkan database: ${err?.message || 'Terjadi kesalahan sistem.'}`,
       };
     }
-  }, [users, students, courses, schedules, sessions, records, leaveRequests]);
+  }, [users, students, courses, schedules, sessions, records, leaveRequests, rombels]);
 
   const restoreMasterDatabase = useCallback((): {
     success: boolean;
@@ -1818,6 +2501,17 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     addStudent,
     updateStudent,
     deleteStudent,
+    rombels,
+    addRombel,
+    updateRombel,
+    deleteRombel,
+    linkSchedulesToRombel,
+    archiveRombel,
+    restoreRombel,
+    archiveCourse,
+    restoreCourse,
+    checkRombelRelations,
+    checkCourseRelations,
     resetToDefaultData,
     setScheduleMeetingDate,
     setScheduleAllMeetingDates,
@@ -1857,7 +2551,9 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     scanQrCode, manualUpdateAttendance, markStudentAttendanceDirectly, batchMarkAttendance, submitLeaveRequest,
     reviewLeaveRequest, addUser, updateUser, deleteUser, addSchedule, updateSchedule,
     deleteSchedule, addCourse, updateCourse, deleteCourse, addStudent, updateStudent,
-    deleteStudent, resetToDefaultData, logoutSession, setScheduleMeetingDate, setScheduleAllMeetingDates,
+    deleteStudent, rombels, addRombel, updateRombel, deleteRombel, linkSchedulesToRombel,
+    archiveRombel, restoreRombel, archiveCourse, restoreCourse, checkRombelRelations, checkCourseRelations,
+    resetToDefaultData, logoutSession, setScheduleMeetingDate, setScheduleAllMeetingDates,
     getMeetingDateForSchedule, getStudentsForRombel, getActiveScheduleNow,
     getSchedulesForDay, getAttendanceRateForStudent, findUserByIdentifier, resetUserPassword,
     getDatabaseBackupData, restoreDatabase, restoreMasterDatabase, createSnapshot, restoreSnapshot, deleteSnapshot,
