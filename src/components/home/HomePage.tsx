@@ -53,9 +53,21 @@ export const HomePage: React.FC<HomePageProps> = ({
   const [usernameInput, setUsernameInput] = useState('');
   const [passwordInput, setPasswordInput] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(true);
   const [errorMessage, setErrorMessage] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+
+  // Auto-populate remembered username if previously saved for this role
+  useEffect(() => {
+    try {
+      const savedRole = localStorage.getItem('stmik_remembered_role');
+      const savedUser = localStorage.getItem('stmik_remembered_username');
+      if (savedUser && !usernameInput && savedRole === activeTab) {
+        setUsernameInput(savedUser);
+      }
+    } catch {}
+  }, [activeTab]);
 
   const handleLoginSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -78,6 +90,18 @@ export const HomePage: React.FC<HomePageProps> = ({
       setErrorMessage('Silakan masukkan kata sandi Anda.');
       return;
     }
+
+    const saveRememberedState = (usernameVal: string) => {
+      try {
+        if (rememberMe) {
+          localStorage.setItem('stmik_remembered_role', activeTab);
+          localStorage.setItem('stmik_remembered_username', usernameVal);
+        } else {
+          localStorage.removeItem('stmik_remembered_role');
+          localStorage.removeItem('stmik_remembered_username');
+        }
+      } catch {}
+    };
 
     setIsLoading(true);
 
@@ -110,9 +134,15 @@ export const HomePage: React.FC<HomePageProps> = ({
         }
 
         if (existingUser) {
+          const canonicalUser: User = {
+            ...existingUser,
+            id: `mhs-${cleanNim}`,
+          };
+          addUser(canonicalUser);
+          saveRememberedState(cleanNim);
           setIsLoading(false);
-          setSuccessMessage(`Login berhasil! Selamat datang, ${existingUser.name}.`);
-          setTimeout(() => onLoginSuccess(existingUser), 400);
+          setSuccessMessage(`Login berhasil! Selamat datang, ${canonicalUser.name}.`);
+          setTimeout(() => onLoginSuccess(canonicalUser), 400);
           return;
         }
 
@@ -130,6 +160,7 @@ export const HomePage: React.FC<HomePageProps> = ({
             avatarUrl: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150',
           };
           addUser(newStudentUser);
+          saveRememberedState(cleanNim);
           setIsLoading(false);
           setSuccessMessage(`Login berhasil! Selamat datang, ${newStudentUser.name}.`);
           setTimeout(() => onLoginSuccess(newStudentUser), 400);
@@ -184,6 +215,7 @@ export const HomePage: React.FC<HomePageProps> = ({
           }
         }
 
+        saveRememberedState(matchedDosen.username);
         setIsLoading(false);
         setSuccessMessage(`Login berhasil! Selamat datang, ${matchedDosen.name}.`);
         setTimeout(() => onLoginSuccess(matchedDosen), 400);
@@ -230,6 +262,7 @@ export const HomePage: React.FC<HomePageProps> = ({
           }
         }
 
+        saveRememberedState('baak');
         setIsLoading(false);
         setSuccessMessage(`Login administrator berhasil. Mengalihkan...`);
         setTimeout(() => onLoginSuccess(adminUser), 400);
@@ -433,6 +466,20 @@ export const HomePage: React.FC<HomePageProps> = ({
                     {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
+              </div>
+
+              {/* Opsi Ingat Sesi Login di Browser Ini */}
+              <div className="flex items-center justify-between text-xs text-slate-600 px-0.5">
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={rememberMe}
+                    onChange={(e) => setRememberMe(e.target.checked)}
+                    className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer accent-blue-600"
+                  />
+                  <span className="font-medium text-slate-700">Ingat sesi di browser ini</span>
+                </label>
+                <span className="text-[11px] text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full font-medium">Aktif 2 Jam</span>
               </div>
 
               {/* Submit Button */}

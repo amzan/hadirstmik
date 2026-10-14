@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useMemo, useCall
 import {
   User, Course, ScheduleItem, Student, AttendanceSession,
   AttendanceRecord, LeaveRequest, AttendanceStatus, DayOfWeek,
-  DatabaseBackupData, DatabaseBackup, DatabaseSnapshot
+  DatabaseBackupData, DatabaseBackup, DatabaseSnapshot, DeviceSession
 } from '../types/attendance';
 import {
   INITIAL_USERS, INITIAL_STUDENTS, INITIAL_COURSES, INITIAL_SCHEDULES,
@@ -10,8 +10,13 @@ import {
   isStudentInRombel, CAMPUS_INFO
 } from '../data/initialData';
 import {
-  loadLocalSnapshots, saveLocalSnapshot, deleteLocalSnapshot
+  loadLocalSnapshots, saveLocalSnapshot, deleteLocalSnapshot,
+  sanitizeAlgoritmaCourseAndSchedules, getLatestMasterBackup
 } from '../utils/databaseBackupService';
+import {
+  loadDeviceSessions, saveDeviceSessions, createOrUpdateDeviceSession,
+  getOrCreateDeviceId, getCurrentSessionToken, clearCurrentSessionToken
+} from '../utils/deviceSessionService';
 
 interface AttendanceContextType {
   currentUser: User;
@@ -111,11 +116,37 @@ interface AttendanceContextType {
       leaveRequests: number;
     };
   };
+  restoreMasterDatabase: () => {
+    success: boolean;
+    message: string;
+    restoredCounts?: {
+      users: number;
+      students: number;
+      courses: number;
+      schedules: number;
+      sessions: number;
+      records: number;
+      leaveRequests: number;
+    };
+  };
   createSnapshot: (name?: string, note?: string) => DatabaseSnapshot;
   restoreSnapshot: (snapshotId: string) => { success: boolean; message: string };
   deleteSnapshot: (snapshotId: string) => void;
   snapshots: DatabaseSnapshot[];
   reloadSnapshots: () => void;
+
+  // Session & Auth isolation helpers
+  logoutSession: () => void;
+
+  // Device Sessions & Anti-Hijacking Security
+  deviceSessions: DeviceSession[];
+  currentDeviceId: string;
+  currentDeviceSession: DeviceSession | null;
+  getUserDeviceSessions: (userId?: string) => DeviceSession[];
+  registerDeviceSession: (user: User) => DeviceSession;
+  terminateDeviceSession: (sessionId: string) => { success: boolean; message: string };
+  terminateOtherDeviceSessions: (userId: string) => { count: number; message: string };
+  validateCurrentDeviceSession: () => { valid: boolean; reason?: string };
 
   // Bulk Excel import & updates
   bulkUpdateSchedules: (items: ScheduleItem[], mode?: 'merge' | 'replace') => { added: number; updated: number; total: number };
@@ -127,6 +158,24 @@ interface AttendanceContextType {
 
 const AttendanceContext = createContext<AttendanceContextType | undefined>(undefined);
 
+export const SESSION_KEYS = {
+  AUTH_ACTIVE: 'stmik_auth_session_active',
+  ACTIVE_USER: 'stmik_active_user_session',
+  LAST_ACTIVITY: 'stmik_last_activity_timestamp',
+  CURRENT_USER_ID: 'stmik_current_user_id_v1',
+  REMEMBERED_ROLE: 'stmik_remembered_role',
+  REMEMBERED_USERNAME: 'stmik_remembered_username',
+};
+
+export const GUEST_USER: User = {
+  id: 'guest',
+  username: '',
+  name: 'Pengunjung',
+  email: '',
+  role: 'mahasiswa',
+  avatarUrl: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150',
+};
+
 const STORAGE_KEYS = {
   USERS: 'stmik_users_v1',
   STUDENTS: 'stmik_students_v1',
@@ -135,7 +184,7 @@ const STORAGE_KEYS = {
   SESSIONS: 'stmik_sessions_v1',
   RECORDS: 'stmik_records_v1',
   LEAVE: 'stmik_leave_v1',
-  CURRENT_USER_ID: 'stmik_current_user_id_v1',
+  CURRENT_USER_ID: SESSION_KEYS.CURRENT_USER_ID,
 };
 
 export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -163,27 +212,102 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   const [students, setStudents] = useState<Student[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEYS.STUDENTS);
-    return saved ? JSON.parse(saved) : INITIAL_STUDENTS;
+    if (saved) {
+      try {
+        const parsed: Student[] = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length >= INITIAL_STUDENTS.length) {
+          return parsed;
+        }
+      } catch {}
+    }
+    return INITIAL_STUDENTS;
   });
 
   const [courses, setCourses] = useState<Course[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEYS.COURSES);
-    return saved ? JSON.parse(saved) : INITIAL_COURSES;
+    if (saved) {
+      try {
+        const parsed: Course[] = JSON.parse(saved);
+        return parsed.map(c => {
+          if (c.code === 'MKMI0105' || c.name.toLowerCase().includes('algoritma dan pemrograman')) {
+            return {
+              ...c,
+              name: 'Algoritma dan Pemrograman',
+              sks: 2,
+              defaultLecturerId: 'dosen-10',
+              defaultLecturerName: 'Ammar Fauzan, S.Pd., M.Kom.',
+            };
+          }
+          return c;
+        });
+      } catch {
+        return INITIAL_COURSES;
+      }
+    }
+    return INITIAL_COURSES;
   });
 
   const [schedules, setSchedules] = useState<ScheduleItem[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEYS.SCHEDULES);
-    return saved ? JSON.parse(saved) : INITIAL_SCHEDULES;
+    if (saved) {
+      try {
+        const parsed: ScheduleItem[] = JSON.parse(saved);
+        return parsed.map(s => {
+          if (s.courseCode === 'MKMI0105' || s.courseName.toLowerCase().includes('algoritma dan pemrograman')) {
+            return {
+              ...s,
+              day: 'Rabu',
+              startTime: '18:00',
+              endTime: '19:40',
+              sks: 2,
+              lecturerId: 'dosen-10',
+              lecturerName: 'Ammar Fauzan, S.Pd., M.Kom.',
+            };
+          }
+          return s;
+        });
+      } catch {
+        return INITIAL_SCHEDULES;
+      }
+    }
+    return INITIAL_SCHEDULES;
   });
 
   const [sessions, setSessions] = useState<AttendanceSession[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEYS.SESSIONS);
-    return saved ? JSON.parse(saved) : INITIAL_SESSIONS;
+    if (saved) {
+      try {
+        const parsed: AttendanceSession[] = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length >= INITIAL_SESSIONS.length) {
+          return parsed.map(sess => {
+            if (sess.courseCode === 'MKMI0105' || sess.courseName.toLowerCase().includes('algoritma dan pemrograman')) {
+              return {
+                ...sess,
+                startTime: '18:00',
+                endTime: '19:40',
+                lecturerId: 'dosen-10',
+                lecturerName: 'Ammar Fauzan, S.Pd., M.Kom.',
+              };
+            }
+            return sess;
+          });
+        }
+      } catch {}
+    }
+    return INITIAL_SESSIONS;
   });
 
   const [records, setRecords] = useState<AttendanceRecord[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEYS.RECORDS);
-    return saved ? JSON.parse(saved) : INITIAL_RECORDS;
+    if (saved) {
+      try {
+        const parsed: AttendanceRecord[] = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length >= INITIAL_RECORDS.length) {
+          return parsed;
+        }
+      } catch {}
+    }
+    return INITIAL_RECORDS;
   });
 
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>(() => {
@@ -191,22 +315,118 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     return saved ? JSON.parse(saved) : INITIAL_LEAVE_REQUESTS;
   });
 
-  // Current logged in user (restored from saved user ID if available)
+  // Device Sessions state (tracking all logged-in devices across campus)
+  const [deviceSessions, setDeviceSessions] = useState<DeviceSession[]>(() => loadDeviceSessions());
+
+  useEffect(() => {
+    saveDeviceSessions(deviceSessions);
+  }, [deviceSessions]);
+
+  const currentDeviceId = useMemo(() => getOrCreateDeviceId(), []);
+
+  // Current logged in user (restored safely and strictly from saved active user session)
   const [currentUser, setCurrentUser] = useState<User>(() => {
-    const savedUserId = localStorage.getItem(STORAGE_KEYS.CURRENT_USER_ID);
-    if (savedUserId) {
-      const found = users.find(u => u.id === savedUserId);
-      if (found) return found;
+    try {
+      const isAuth = localStorage.getItem(SESSION_KEYS.AUTH_ACTIVE) === 'true';
+      const lastAct = Number(localStorage.getItem(SESSION_KEYS.LAST_ACTIVITY));
+      const isSessionValid = isAuth && !isNaN(lastAct) && (Date.now() - lastAct < 2 * 60 * 60 * 1000);
+
+      if (isSessionValid) {
+        // 1. Try reading the full serialized active user object
+        const activeUserJson = localStorage.getItem(SESSION_KEYS.ACTIVE_USER);
+        if (activeUserJson) {
+          const parsed = JSON.parse(activeUserJson) as User;
+          if (parsed && parsed.id && parsed.role) {
+            // Check if this user exists in loaded users
+            const inUsers = users.find(u => 
+              u.id === parsed.id ||
+              (u.username && parsed.username && u.username.toLowerCase() === parsed.username.toLowerCase() && u.role === parsed.role)
+            );
+            if (inUsers) return inUsers;
+
+            // If it's a student, cross-reference with master students
+            if (parsed.role === 'mahasiswa' && parsed.username) {
+              const matchedStudent = students.find(s => s.nim.toUpperCase() === parsed.username.toUpperCase());
+              if (matchedStudent) {
+                return {
+                  ...parsed,
+                  id: `mhs-${matchedStudent.nim}`,
+                  name: matchedStudent.name || parsed.name,
+                  prodi: matchedStudent.prodi || parsed.prodi,
+                  rombel: matchedStudent.rombel || parsed.rombel,
+                  email: matchedStudent.email || parsed.email,
+                  phone: matchedStudent.phone || parsed.phone,
+                };
+              }
+            }
+            return parsed;
+          }
+        }
+
+        // 2. Check saved user ID
+        const savedUserId = localStorage.getItem(SESSION_KEYS.CURRENT_USER_ID);
+        if (savedUserId) {
+          const found = users.find(u => u.id === savedUserId);
+          if (found) return found;
+
+          // If student ID or NIM
+          if (savedUserId.startsWith('mhs-')) {
+            const nim = savedUserId.replace('mhs-', '').toUpperCase();
+            const foundStu = students.find(s => s.nim.toUpperCase() === nim);
+            if (foundStu) {
+              return {
+                id: `mhs-${foundStu.nim}`,
+                username: foundStu.nim,
+                name: foundStu.name,
+                email: foundStu.email,
+                role: 'mahasiswa',
+                prodi: foundStu.prodi,
+                rombel: foundStu.rombel,
+                phone: foundStu.phone,
+                avatarUrl: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150',
+              };
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.error('Error initializing user session:', e);
     }
-    return users.find(u => u.id === 'dosen-3') || users[0];
+
+    // Default neutral guest user when unauthenticated — NEVER default to Dosen Nur ('dosen-3')!
+    return GUEST_USER;
   });
 
-  // Sync currentUser changes to localStorage
+  // Sync currentUser changes to localStorage ONLY for active authenticated sessions
   useEffect(() => {
-    if (currentUser?.id) {
-      localStorage.setItem(STORAGE_KEYS.CURRENT_USER_ID, currentUser.id);
+    const isAuth = localStorage.getItem(SESSION_KEYS.AUTH_ACTIVE) === 'true';
+    if (isAuth && currentUser && currentUser.id !== 'guest') {
+      localStorage.setItem(SESSION_KEYS.CURRENT_USER_ID, currentUser.id);
+      localStorage.setItem(SESSION_KEYS.ACTIVE_USER, JSON.stringify(currentUser));
     }
   }, [currentUser]);
+
+  // Ensure active session student is included in users list
+  useEffect(() => {
+    try {
+      const activeUserJson = localStorage.getItem(SESSION_KEYS.ACTIVE_USER);
+      if (activeUserJson) {
+        const activeUser = JSON.parse(activeUserJson) as User;
+        if (activeUser && activeUser.id && activeUser.id !== 'guest') {
+          setUsers(prev => {
+            const exists = prev.some(u => 
+              u.id === activeUser.id || 
+              (u.username && activeUser.username && u.username.toLowerCase() === activeUser.username.toLowerCase() && u.role === activeUser.role)
+            );
+            if (!exists) {
+              return [...prev, activeUser];
+            }
+            return prev;
+          });
+        }
+      }
+    } catch {}
+  }, []);
 
   // Live real-time clock and academic day state
   const getInitialDay = (): DayOfWeek => {
@@ -268,9 +488,17 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   // Preserve currentUser if authenticated session is active (within 2-hour inactivity rule); otherwise clear
   useEffect(() => {
-    const isAuth = localStorage.getItem('stmik_auth_session_active');
-    if (isAuth !== 'true') {
-      localStorage.removeItem(STORAGE_KEYS.CURRENT_USER_ID);
+    const isAuth = localStorage.getItem(SESSION_KEYS.AUTH_ACTIVE);
+    const lastAct = Number(localStorage.getItem(SESSION_KEYS.LAST_ACTIVITY));
+    const isSessionValid = isAuth === 'true' && !isNaN(lastAct) && (Date.now() - lastAct < 2 * 60 * 60 * 1000);
+    if (!isSessionValid) {
+      localStorage.removeItem(SESSION_KEYS.CURRENT_USER_ID);
+      localStorage.removeItem(SESSION_KEYS.ACTIVE_USER);
+      localStorage.removeItem(SESSION_KEYS.AUTH_ACTIVE);
+      localStorage.removeItem(SESSION_KEYS.LAST_ACTIVITY);
+      if (currentUser.id !== 'guest') {
+        setCurrentUser(GUEST_USER);
+      }
     }
   }, []);
 
@@ -793,13 +1021,26 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }));
   }, [sessions, markStudentAttendanceDirectly]);
 
-  // Admin user management
-  const addUser = useCallback((newUser: Omit<User, 'id'>) => {
+  // Admin & auth user management: preserves custom IDs (e.g. mhs-26TI0001) and updates existing user
+  const addUser = useCallback((newUser: (Omit<User, 'id'> & { id?: string }) | User) => {
+    const id = newUser.id || `user-${Date.now()}`;
     const user: User = {
       ...newUser,
-      id: `user-${Date.now()}`,
+      id,
     };
-    setUsers(prev => [...prev, user]);
+    setUsers(prev => {
+      const idx = prev.findIndex(u =>
+        u.id === id ||
+        (u.username && user.username && u.username.toLowerCase() === user.username.toLowerCase() && u.role === user.role)
+      );
+      if (idx >= 0) {
+        const next = [...prev];
+        next[idx] = { ...next[idx], ...user, id: next[idx].id || id };
+        return next;
+      }
+      return [...prev, user];
+    });
+    return user;
   }, []);
 
   const updateUser = useCallback((id: string, updated: Partial<User>) => {
@@ -810,7 +1051,17 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       }
       return [...prev, { ...currentUser, ...updated, id }];
     });
-    setCurrentUser(prev => (prev.id === id ? { ...prev, ...updated } : prev));
+    setCurrentUser(prev => {
+      if (prev.id === id) {
+        const nextUser = { ...prev, ...updated };
+        const isAuth = localStorage.getItem(SESSION_KEYS.AUTH_ACTIVE) === 'true';
+        if (isAuth) {
+          localStorage.setItem(SESSION_KEYS.ACTIVE_USER, JSON.stringify(nextUser));
+        }
+        return nextUser;
+      }
+      return prev;
+    });
 
     // Sync master students list if student profile was updated
     if (id.startsWith('mhs-') || updated.role === 'mahasiswa' || currentUser.role === 'mahasiswa') {
@@ -953,14 +1204,28 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const bulkUpdateCourses = useCallback((incoming: Course[], mode: 'merge' | 'replace' = 'merge') => {
     let added = 0;
     let updated = 0;
+    // Pengecualian khusus: pastikan MKMI0105 Algoritma tetap milik Ammar Fauzan
+    const protectedIncoming = incoming.map(c => {
+      if (c.code === 'MKMI0105' || c.name.toLowerCase().includes('algoritma dan pemrograman')) {
+        return {
+          ...c,
+          name: 'Algoritma dan Pemrograman',
+          sks: 2,
+          defaultLecturerId: 'dosen-10',
+          defaultLecturerName: 'Ammar Fauzan, S.Pd., M.Kom.',
+        };
+      }
+      return c;
+    });
+
     setCourses(prev => {
       if (mode === 'replace') {
-        added = incoming.length;
-        localStorage.setItem(STORAGE_KEYS.COURSES, JSON.stringify(incoming));
-        return incoming;
+        added = protectedIncoming.length;
+        localStorage.setItem(STORAGE_KEYS.COURSES, JSON.stringify(protectedIncoming));
+        return protectedIncoming;
       }
       const result = [...prev];
-      incoming.forEach(newItem => {
+      protectedIncoming.forEach(newItem => {
         const idx = result.findIndex(c =>
           (newItem.id && c.id === newItem.id) ||
           (c.code && newItem.code && c.code.toUpperCase() === newItem.code.toUpperCase())
@@ -982,14 +1247,30 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const bulkUpdateSchedules = useCallback((incoming: ScheduleItem[], mode: 'merge' | 'replace' = 'merge') => {
     let added = 0;
     let updated = 0;
+    // Pengecualian khusus: pastikan jadwal Algoritma selalu Rabu 18.00 WIB Ammar Fauzan
+    const protectedIncoming = incoming.map(s => {
+      if (s.courseCode === 'MKMI0105' || s.courseName.toLowerCase().includes('algoritma dan pemrograman')) {
+        return {
+          ...s,
+          day: 'Rabu' as DayOfWeek,
+          startTime: '18:00',
+          endTime: '19:40',
+          sks: 2,
+          lecturerId: 'dosen-10',
+          lecturerName: 'Ammar Fauzan, S.Pd., M.Kom.',
+        };
+      }
+      return s;
+    });
+
     setSchedules(prev => {
       if (mode === 'replace') {
-        added = incoming.length;
-        localStorage.setItem(STORAGE_KEYS.SCHEDULES, JSON.stringify(incoming));
-        return incoming;
+        added = protectedIncoming.length;
+        localStorage.setItem(STORAGE_KEYS.SCHEDULES, JSON.stringify(protectedIncoming));
+        return protectedIncoming;
       }
       const result = [...prev];
-      incoming.forEach(newItem => {
+      protectedIncoming.forEach(newItem => {
         const idx = result.findIndex(s =>
           (newItem.id && s.id === newItem.id) ||
           (
@@ -1071,8 +1352,123 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     setSessions(INITIAL_SESSIONS);
     setRecords(INITIAL_RECORDS);
     setLeaveRequests(INITIAL_LEAVE_REQUESTS);
-    setCurrentUser(INITIAL_USERS.find(u => u.id === 'dosen-3') || INITIAL_USERS[0]);
+    setCurrentUser(GUEST_USER);
   }, []);
+
+  // Clear user session cleanly
+  const logoutSession = useCallback(() => {
+    const currentToken = getCurrentSessionToken();
+    if (currentToken) {
+      setDeviceSessions(prev =>
+        prev.map(s => s.sessionToken === currentToken ? { ...s, status: 'TERMINATED' as const } : s)
+      );
+    }
+    clearCurrentSessionToken();
+    localStorage.removeItem(SESSION_KEYS.AUTH_ACTIVE);
+    localStorage.removeItem(SESSION_KEYS.LAST_ACTIVITY);
+    localStorage.removeItem(SESSION_KEYS.CURRENT_USER_ID);
+    localStorage.removeItem(SESSION_KEYS.ACTIVE_USER);
+    setCurrentUser(GUEST_USER);
+  }, []);
+
+  // Current active device session memo
+  const currentDeviceSession = useMemo(() => {
+    const token = getCurrentSessionToken();
+    if (!token) return null;
+    return deviceSessions.find(s => s.sessionToken === token && s.status === 'ACTIVE') || null;
+  }, [deviceSessions]);
+
+  // Get device sessions for a user (identifying current device)
+  const getUserDeviceSessions = useCallback((userId?: string): DeviceSession[] => {
+    const targetId = userId || currentUser.id;
+    const devId = getOrCreateDeviceId();
+    const token = getCurrentSessionToken();
+    return deviceSessions
+      .filter(s => s.userId === targetId)
+      .map(s => ({
+        ...s,
+        isCurrentDevice: s.deviceId === devId && (token ? s.sessionToken === token : true),
+      }))
+      .sort((a, b) => b.lastActiveTimestamp - a.lastActiveTimestamp);
+  }, [deviceSessions, currentUser.id]);
+
+  // Register device session on login
+  const registerDeviceSession = useCallback((user: User): DeviceSession => {
+    const { session, allSessions } = createOrUpdateDeviceSession(user);
+    setDeviceSessions(allSessions);
+    return session;
+  }, []);
+
+  // Terminate a single device session
+  const terminateDeviceSession = useCallback((sessionId: string): { success: boolean; message: string } => {
+    const target = deviceSessions.find(s => s.id === sessionId);
+    if (!target) {
+      return { success: false, message: 'Sesi perangkat tidak ditemukan.' };
+    }
+    const currentToken = getCurrentSessionToken();
+    const isTerminatingCurrent = target.sessionToken === currentToken;
+
+    const updated = deviceSessions.map(s => s.id === sessionId ? { ...s, status: 'TERMINATED' as const } : s);
+    setDeviceSessions(updated);
+    saveDeviceSessions(updated);
+
+    if (isTerminatingCurrent) {
+      logoutSession();
+    }
+
+    return {
+      success: true,
+      message: `Sesi pada perangkat "${target.deviceName}" berhasil diputuskan.`
+    };
+  }, [deviceSessions, logoutSession]);
+
+  // Terminate all other device sessions for the user
+  const terminateOtherDeviceSessions = useCallback((userId: string): { count: number; message: string } => {
+    const currentToken = getCurrentSessionToken();
+    let count = 0;
+    const updated = deviceSessions.map(s => {
+      if (s.userId === userId && s.sessionToken !== currentToken && s.status === 'ACTIVE') {
+        count++;
+        return { ...s, status: 'TERMINATED' as const };
+      }
+      return s;
+    });
+    setDeviceSessions(updated);
+    saveDeviceSessions(updated);
+    return {
+      count,
+      message: `${count} sesi perangkat lain berhasil diputuskan. Akun kini hanya aktif di perangkat ini.`
+    };
+  }, [deviceSessions]);
+
+  // Validate active device session to prevent account tampering and hijacking
+  const validateCurrentDeviceSession = useCallback((): { valid: boolean; reason?: string } => {
+    const isAuth = localStorage.getItem(SESSION_KEYS.AUTH_ACTIVE) === 'true';
+    if (!isAuth || currentUser.id === 'guest') {
+      return { valid: true };
+    }
+    const currentToken = getCurrentSessionToken();
+    if (!currentToken) {
+      // Auto register if token missing but valid auth
+      registerDeviceSession(currentUser);
+      return { valid: true };
+    }
+
+    const matched = deviceSessions.find(s => s.sessionToken === currentToken);
+    if (matched) {
+      if (matched.status === 'TERMINATED') {
+        logoutSession();
+        return { valid: false, reason: 'Sesi perangkat ini telah diakhiri dari perangkat lain.' };
+      }
+      // Anti-hijacking check: does device session owner match current user?
+      if (matched.userId !== currentUser.id) {
+        // Mismatch detected: unauthorized switch attempt!
+        logoutSession();
+        return { valid: false, reason: 'Peralihan akun tidak sah terdeteksi. Sesi direset demi keamanan data.' };
+      }
+    }
+    return { valid: true };
+  }, [currentUser, deviceSessions, logoutSession, registerDeviceSession]);
 
   // Database Backup, Export, Restore & Snapshot Management
   const [snapshots, setSnapshots] = useState<DatabaseSnapshot[]>(() => loadLocalSnapshots());
@@ -1090,8 +1486,9 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       sessions,
       records,
       leaveRequests,
+      deviceSessions,
     };
-  }, [users, students, courses, schedules, sessions, records, leaveRequests]);
+  }, [users, students, courses, schedules, sessions, records, leaveRequests, deviceSessions]);
 
   const restoreDatabase = useCallback((backupPayload: any): {
     success: boolean;
@@ -1111,7 +1508,9 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         return { success: false, message: 'Data cadangan tidak valid.' };
       }
 
-      const data: DatabaseBackupData = backupPayload.data || backupPayload;
+      const rawData: DatabaseBackupData = backupPayload.data || backupPayload;
+      // Pengecualian mutlak: matakuliah Algoritma dan Pemrograman tetap milik Ammar Fauzan, Rabu 18.00 WIB, 2 SKS
+      const data: DatabaseBackupData = sanitizeAlgoritmaCourseAndSchedules(rawData);
 
       // Buat backup snapshot otomatis sebelum restorasi agar admin selalu punya rollback
       try {
@@ -1190,6 +1589,23 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       };
     }
   }, [users, students, courses, schedules, sessions, records, leaveRequests]);
+
+  const restoreMasterDatabase = useCallback((): {
+    success: boolean;
+    message: string;
+    restoredCounts?: {
+      users: number;
+      students: number;
+      courses: number;
+      schedules: number;
+      sessions: number;
+      records: number;
+      leaveRequests: number;
+    };
+  } => {
+    const masterBackup = getLatestMasterBackup();
+    return restoreDatabase(masterBackup.data);
+  }, [restoreDatabase]);
 
   const createSnapshot = useCallback((name?: string, note?: string): DatabaseSnapshot => {
     const snap = saveLocalSnapshot(
@@ -1414,11 +1830,21 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     resetUserPassword,
     getDatabaseBackupData,
     restoreDatabase,
+    restoreMasterDatabase,
     createSnapshot,
     restoreSnapshot,
     deleteSnapshot,
     snapshots,
     reloadSnapshots,
+    logoutSession,
+    deviceSessions,
+    currentDeviceId,
+    currentDeviceSession,
+    getUserDeviceSessions,
+    registerDeviceSession,
+    terminateDeviceSession,
+    terminateOtherDeviceSessions,
+    validateCurrentDeviceSession,
     bulkUpdateSchedules,
     bulkUpdateUsers,
     bulkUpdateStudents,
@@ -1431,11 +1857,13 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     scanQrCode, manualUpdateAttendance, markStudentAttendanceDirectly, batchMarkAttendance, submitLeaveRequest,
     reviewLeaveRequest, addUser, updateUser, deleteUser, addSchedule, updateSchedule,
     deleteSchedule, addCourse, updateCourse, deleteCourse, addStudent, updateStudent,
-    deleteStudent, resetToDefaultData, setScheduleMeetingDate, setScheduleAllMeetingDates,
+    deleteStudent, resetToDefaultData, logoutSession, setScheduleMeetingDate, setScheduleAllMeetingDates,
     getMeetingDateForSchedule, getStudentsForRombel, getActiveScheduleNow,
     getSchedulesForDay, getAttendanceRateForStudent, findUserByIdentifier, resetUserPassword,
-    getDatabaseBackupData, restoreDatabase, createSnapshot, restoreSnapshot, deleteSnapshot,
+    getDatabaseBackupData, restoreDatabase, restoreMasterDatabase, createSnapshot, restoreSnapshot, deleteSnapshot,
     snapshots, reloadSnapshots,
+    deviceSessions, currentDeviceId, currentDeviceSession, getUserDeviceSessions,
+    registerDeviceSession, terminateDeviceSession, terminateOtherDeviceSessions, validateCurrentDeviceSession,
     bulkUpdateSchedules, bulkUpdateUsers, bulkUpdateStudents, bulkUpdateCourses, bulkImportAll
   ]);
 

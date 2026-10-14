@@ -3,7 +3,7 @@ import { useAttendance } from '../context/AttendanceContext';
 import { CAMPUS_INFO } from '../data/initialData';
 import { getStmikLogoDataUrl } from '../utils/logoStmik';
 import {
-  Clock, ChevronDown, GraduationCap, LogOut, Shield, LogIn, BookOpen, UserCog, KeyRound
+  Clock, ChevronDown, GraduationCap, LogOut, Shield, LogIn, BookOpen, UserCog, KeyRound, ShieldCheck, Laptop
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -15,6 +15,7 @@ interface HeaderProps {
   onOpenDosenProfile?: () => void;
   onOpenMahasiswaProfile?: () => void;
   onOpenBaakProfile?: () => void;
+  onOpenDeviceSessions?: () => void;
   onOpenForgotPassword?: () => void;
   onLogout?: () => void;
   isLoggedOut?: boolean;
@@ -28,6 +29,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenDosenProfile,
   onOpenMahasiswaProfile,
   onOpenBaakProfile,
+  onOpenDeviceSessions,
   onOpenForgotPassword,
   onLogout,
   isLoggedOut = false
@@ -186,6 +188,18 @@ export const Header: React.FC<HeaderProps> = ({
                 <UserCog className="w-3.5 h-3.5 text-blue-400 group-hover:text-blue-600 hidden sm:block shrink-0" />
               </button>
 
+              {onOpenDeviceSessions && (
+                <button
+                  type="button"
+                  onClick={onOpenDeviceSessions}
+                  className="flex items-center gap-1 px-2 sm:px-2.5 py-1 sm:py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-[11px] sm:text-xs font-semibold transition cursor-pointer shrink-0"
+                  title="Lihat status sesi dan perangkat terhubung"
+                >
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                  <span className="hidden xl:inline">Sesi Perangkat</span>
+                </button>
+              )}
+
               {onLogout && (
                 <button
                   onClick={onLogout}
@@ -226,6 +240,18 @@ export const Header: React.FC<HeaderProps> = ({
                 <UserCog className="w-3.5 h-3.5 text-slate-400 group-hover:text-blue-600 hidden sm:block shrink-0" />
               </button>
 
+              {onOpenDeviceSessions && (
+                <button
+                  type="button"
+                  onClick={onOpenDeviceSessions}
+                  className="flex items-center gap-1 px-2 sm:px-2.5 py-1 sm:py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-[11px] sm:text-xs font-semibold transition cursor-pointer shrink-0"
+                  title="Lihat status sesi dan perangkat terhubung"
+                >
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                  <span className="hidden xl:inline">Sesi Perangkat</span>
+                </button>
+              )}
+
               {onLogout && (
                 <button
                   onClick={onLogout}
@@ -265,6 +291,18 @@ export const Header: React.FC<HeaderProps> = ({
 
                 <UserCog className="w-3.5 h-3.5 text-indigo-400 group-hover:text-indigo-600 hidden sm:block shrink-0" />
               </button>
+
+              {onOpenDeviceSessions && (
+                <button
+                  type="button"
+                  onClick={onOpenDeviceSessions}
+                  className="flex items-center gap-1 px-2 sm:px-2.5 py-1 sm:py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-[11px] sm:text-xs font-semibold transition cursor-pointer shrink-0"
+                  title="Lihat status sesi dan perangkat terhubung"
+                >
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                  <span className="hidden xl:inline">Sesi Perangkat</span>
+                </button>
+              )}
 
               {onLogout && (
                 <button

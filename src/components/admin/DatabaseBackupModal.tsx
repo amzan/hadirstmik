@@ -5,7 +5,8 @@ import {
   downloadDatabaseExcelFile,
   validateAndParseBackupFile,
   calculateDatabaseSizeEstimate,
-  formatBytes
+  formatBytes,
+  getLatestMasterBackup,
 } from '../../utils/databaseBackupService';
 import { DatabaseBackup } from '../../types/attendance';
 import {
@@ -36,6 +37,7 @@ export const DatabaseBackupModal: React.FC<DatabaseBackupModalProps> = ({
     leaveRequests,
     getDatabaseBackupData,
     restoreDatabase,
+    restoreMasterDatabase,
     createSnapshot,
   } = useAttendance();
 
@@ -52,6 +54,26 @@ export const DatabaseBackupModal: React.FC<DatabaseBackupModalProps> = ({
   const [snapshotSuccess, setSnapshotSuccess] = useState('');
 
   if (!isOpen) return null;
+
+  const masterBackupObj = getLatestMasterBackup();
+
+  const handleRestoreMaster = () => {
+    setIsRestoring(true);
+    setParseError('');
+    setRestoreSuccess('');
+
+    setTimeout(() => {
+      const res = restoreMasterDatabase();
+      setIsRestoring(false);
+      if (res.success) {
+        setRestoreSuccess(
+          'Berhasil memulihkan ke Master Database Terkini! (Algoritma dan Pemrograman tetap milik Dosen Ammar Fauzan, Rabu 18.00 WIB, 2 SKS).'
+        );
+      } else {
+        setParseError(res.message);
+      }
+    }, 400);
+  };
 
   const currentData = getDatabaseBackupData();
   const estimatedSize = calculateDatabaseSizeEstimate(currentData);
@@ -280,6 +302,52 @@ export const DatabaseBackupModal: React.FC<DatabaseBackupModalProps> = ({
                   <span>{parseError}</span>
                 </div>
               )}
+
+              {/* Quick Master Database Restore Box */}
+              <div className="p-3.5 bg-indigo-50/70 border border-indigo-200 rounded-xl space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Database className="w-4 h-4 text-indigo-700" />
+                    <span className="text-xs font-bold text-indigo-950">
+                      Master Backup Database Terkini
+                    </span>
+                  </div>
+                  <span className="text-[10px] bg-indigo-200 text-indigo-900 font-bold px-2 py-0.5 rounded-full">
+                    Resmi BAAK
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-600 leading-relaxed">
+                  Muat basis data teranyar (17 Akun, 64 Mahasiswa, 35 Jadwal, 84 Presensi). Matakuliah Algoritma dan Pemrograman tetap dialihkan ke <strong>Dosen Ammar Fauzan, S.Pd., M.Kom.</strong> (Rabu 18.00 WIB, 2 SKS).
+                </p>
+                <div className="pt-1 flex gap-2">
+                  <button
+                    type="button"
+                    onClick={handleRestoreMaster}
+                    disabled={isRestoring}
+                    className="w-full py-2 px-3 rounded-lg bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 disabled:opacity-40 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer shadow-2xs"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isRestoring ? 'animate-spin' : ''}`} />
+                    <span>Terapkan Master Backup Terkini</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => downloadDatabaseBackupFile(masterBackupObj.data, currentUser)}
+                    className="py-2 px-3 rounded-lg bg-white border border-indigo-200 text-indigo-900 hover:bg-indigo-50 text-xs font-semibold flex items-center justify-center gap-1 transition cursor-pointer"
+                    title="Unduh master backup JSON"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>JSON</span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="relative flex py-1 items-center">
+                <div className="flex-grow border-t border-slate-200"></div>
+                <span className="flex-shrink mx-3 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+                  atau unggah file backup kustom
+                </span>
+                <div className="flex-grow border-t border-slate-200"></div>
+              </div>
 
               <div>
                 <label

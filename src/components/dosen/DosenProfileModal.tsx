@@ -4,14 +4,15 @@ import { ProgramStudi } from '../../types/attendance';
 import {
   X, User, Mail, Phone, BookOpen, Shield, Check,
   Camera, Building, FileCheck, CheckCircle2, AlertCircle, Sparkles, Upload, Image as ImageIcon,
-  KeyRound
+  KeyRound, Laptop
 } from 'lucide-react';
 import { ChangePasswordOtpSection } from '../shared/ChangePasswordOtpSection';
+import { DeviceSessionManager } from '../shared/DeviceSessionManager';
 
 interface DosenProfileModalProps {
   isOpen: boolean;
   onClose: () => void;
-  defaultTab?: 'profil' | 'password';
+  defaultTab?: 'profil' | 'password' | 'sesi';
 }
 
 // Preset professional avatar options for easy one-click selection
@@ -49,7 +50,7 @@ export const DosenProfileModal: React.FC<DosenProfileModalProps> = ({
 }) => {
   const { currentUser, updateUser, schedules } = useAttendance();
 
-  const [activeTab, setActiveTab] = useState<'profil' | 'password'>(defaultTab);
+  const [activeTab, setActiveTab] = useState<'profil' | 'password' | 'sesi'>(defaultTab);
 
   // Form states initialized from currentUser
   const [name, setName] = useState(currentUser.name || '');
@@ -276,6 +277,21 @@ export const DosenProfileModal: React.FC<DosenProfileModalProps> = ({
             <span>Ganti Password (OTP Email)</span>
             <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-700">
               Resend OTP
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('sesi')}
+            className={`flex items-center gap-2 py-3 px-3 sm:px-4 text-xs sm:text-sm font-semibold border-b-2 transition cursor-pointer ${
+              activeTab === 'sesi'
+                ? 'border-blue-600 text-blue-700 bg-white'
+                : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-100/60'
+            }`}
+          >
+            <Laptop className="w-4 h-4" />
+            <span>Sesi & Perangkat</span>
+            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800">
+              Terproteksi
             </span>
           </button>
         </div>
@@ -642,7 +658,7 @@ export const DosenProfileModal: React.FC<DosenProfileModalProps> = ({
             </div>
           </div>
         </form>
-      ) : (
+      ) : activeTab === 'password' ? (
         /* Tab Ganti Password dengan OTP Email */
         <div className="space-y-4">
           <ChangePasswordOtpSection
@@ -650,6 +666,11 @@ export const DosenProfileModal: React.FC<DosenProfileModalProps> = ({
             overrideEmail={email}
             onPasswordChanged={() => {}}
           />
+        </div>
+      ) : (
+        /* Tab Sesi & Perangkat Terhubung */
+        <div className="space-y-4">
+          <DeviceSessionManager mode="user" />
         </div>
       )}
     </div>

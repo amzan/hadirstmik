@@ -115,6 +115,27 @@ export interface LeaveRequest {
   createdAt: string;
 }
 
+export interface DeviceSession {
+  id: string; // ID sesi unik
+  deviceId: string; // ID unik fingerprint perangkat browser
+  sessionToken: string; // Token autentikasi sesi aktif
+  userId: string; // ID akun pemilik (mhs-..., dosen-..., user-admin-1)
+  userUsername: string; // NIM, NIDN, atau username
+  userName: string;
+  userRole: Role;
+  userAvatarUrl?: string;
+  deviceName: string; // e.g. "Google Chrome di Windows 11", "Safari di iPhone"
+  deviceType: 'desktop' | 'mobile' | 'tablet';
+  browser: string;
+  os: string;
+  ipSimulated: string;
+  locationCity: string;
+  loginTimestamp: number;
+  lastActiveTimestamp: number;
+  status: 'ACTIVE' | 'TERMINATED';
+  isCurrentDevice?: boolean;
+}
+
 export interface DatabaseBackupData {
   users: User[];
   students: Student[];
@@ -123,6 +144,7 @@ export interface DatabaseBackupData {
   sessions: AttendanceSession[];
   records: AttendanceRecord[];
   leaveRequests: LeaveRequest[];
+  deviceSessions?: DeviceSession[];
 }
 
 export interface DatabaseBackup {

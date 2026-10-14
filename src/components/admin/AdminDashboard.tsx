@@ -8,11 +8,12 @@ import { SessionMonitoringTab } from './SessionMonitoringTab';
 import { DatabaseBackupTab } from './DatabaseBackupTab';
 import { DatabaseBackupModal } from './DatabaseBackupModal';
 import { BulkExcelImportModal } from './BulkExcelImportModal';
+import { DeviceSessionManager } from '../shared/DeviceSessionManager';
 import { ImportCategory } from '../../utils/excelBulkService';
 import {
   Shield, Users, Calendar, BookOpen, UserPlus, Plus,
   Trash2, Edit2, Search, Download, RefreshCw, GraduationCap, Clock, Radio, UserCog,
-  Database, FileSpreadsheet
+  Database, FileSpreadsheet, Laptop
 } from 'lucide-react';
 
 interface AdminDashboardProps {
@@ -37,10 +38,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     addSchedule,
     updateSchedule,
     deleteSchedule,
-    resetToDefaultData
+    resetToDefaultData,
+    deviceSessions,
   } = useAttendance();
 
-  const [activeTab, setActiveTab] = useState<'sessions' | 'schedules' | 'users' | 'students' | 'courses' | 'database'>('sessions');
+  const [activeTab, setActiveTab] = useState<'sessions' | 'schedules' | 'users' | 'students' | 'courses' | 'database' | 'devices'>('sessions');
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [isBackupModalOpen, setIsBackupModalOpen] = useState(false);
   const [isBulkImportOpen, setIsBulkImportOpen] = useState(false);
@@ -393,6 +395,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           <Database className="w-4 h-4 text-indigo-600" />
           <span>Cadangan & Database</span>
         </button>
+
+        <button
+          onClick={() => setActiveTab('devices')}
+          className={`pb-3 border-b-2 shrink-0 flex items-center gap-1.5 transition cursor-pointer ${
+            activeTab === 'devices'
+              ? 'border-blue-600 text-blue-700 font-bold'
+              : 'border-transparent text-slate-500 hover:text-slate-900'
+          }`}
+        >
+          <Laptop className="w-4 h-4 text-blue-600" />
+          <span>Sesi & Perangkat Kampus ({deviceSessions.filter(s => s.status === 'ACTIVE').length})</span>
+        </button>
       </div>
 
       {/* TAB 0: SESSIONS MONITORING & CONTROL */}
@@ -723,6 +737,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             });
           }}
         />
+      )}
+
+      {/* TAB 6: CAMPUS DEVICE SESSIONS & ANTI-HIJACKING */}
+      {activeTab === 'devices' && (
+        <div className="bg-white border border-slate-200 rounded-2xl p-5 sm:p-6 shadow-2xs space-y-4">
+          <div className="border-b border-slate-200 pb-4">
+            <h3 className="text-lg font-bold text-slate-900">Manajemen Sesi Perangkat Terdaftar Seluruh Kampus</h3>
+            <p className="text-xs text-slate-500 mt-1">
+              Pantau seluruh perangkat browser mahasiswa, dosen, dan staf yang aktif atau tersimpan. BAAK dapat memutuskan sesi mencurigakan untuk melindungi integritas sistem presensi.
+            </p>
+          </div>
+          <DeviceSessionManager mode="admin" />
+        </div>
       )}
 
       {/* User Modal */}

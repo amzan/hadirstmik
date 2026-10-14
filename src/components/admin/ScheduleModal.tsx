@@ -120,7 +120,7 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
       setCourseCode('');
       setCourseName('');
       setSks(2);
-      setLecturerId(lecturers[0]?.id || 'dosen-3');
+      setLecturerId(lecturers[0]?.id || '');
       setRoom('RK 2');
       setRombel('TI 3');
       setProdi('Teknologi Informasi');

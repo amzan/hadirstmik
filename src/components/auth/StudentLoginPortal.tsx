@@ -77,10 +77,15 @@ export const StudentLoginPortal: React.FC<StudentLoginPortalProps> = ({
 
     setTimeout(() => {
       if (existingUser) {
+        const canonicalUser: User = {
+          ...existingUser,
+          id: `mhs-${cleanNim}`,
+        };
+        addUser(canonicalUser);
         setIsLoading(false);
-        setSuccessMessage(`Login berhasil! Selamat datang, ${existingUser.name}.`);
+        setSuccessMessage(`Login berhasil! Selamat datang, ${canonicalUser.name}.`);
         setTimeout(() => {
-          onLoginSuccess(existingUser);
+          onLoginSuccess(canonicalUser);
         }, 500);
         return;
       }

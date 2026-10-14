@@ -5,7 +5,8 @@ import {
   downloadDatabaseExcelFile,
   validateAndParseBackupFile,
   calculateDatabaseSizeEstimate,
-  formatBytes
+  formatBytes,
+  getLatestMasterBackup,
 } from '../../utils/databaseBackupService';
 import { DatabaseBackup, DatabaseSnapshot } from '../../types/attendance';
 import { BulkExcelImportModal } from './BulkExcelImportModal';
@@ -34,6 +35,7 @@ export const DatabaseBackupTab: React.FC<DatabaseBackupTabProps> = ({
     leaveRequests,
     getDatabaseBackupData,
     restoreDatabase,
+    restoreMasterDatabase,
     createSnapshot,
     restoreSnapshot,
     deleteSnapshot,
@@ -41,6 +43,7 @@ export const DatabaseBackupTab: React.FC<DatabaseBackupTabProps> = ({
   } = useAttendance();
 
   const [isBulkImportOpen, setIsBulkImportOpen] = useState(false);
+  const [isConfirmMasterOpen, setIsConfirmMasterOpen] = useState(false);
 
   // Snapshot form state
   const [snapshotName, setSnapshotName] = useState('');
@@ -62,6 +65,27 @@ export const DatabaseBackupTab: React.FC<DatabaseBackupTabProps> = ({
 
   // Current database statistics
   const currentBackupData = getDatabaseBackupData();
+  const masterBackupObj = getLatestMasterBackup();
+
+  const handleExecuteRestoreMaster = () => {
+    setIsRestoring(true);
+    setRestoreErrorMsg('');
+    setRestoreSuccessMsg('');
+    setIsConfirmMasterOpen(false);
+
+    setTimeout(() => {
+      const res = restoreMasterDatabase();
+      setIsRestoring(false);
+      if (res.success) {
+        setRestoreSuccessMsg(
+          `Berhasil memulihkan basis data ke Master Backup Terkini! 17 Akun, 64 Mahasiswa, 35 Jadwal, 29 Matakuliah, 84 Presensi telah aktif. Matakuliah Algoritma dan Pemrograman tetap milik Dosen Ammar Fauzan, S.Pd., M.Kom. (Rabu 18.00 WIB, 2 SKS).`
+        );
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      } else {
+        setRestoreErrorMsg(res.message);
+      }
+    }, 400);
+  };
   const estimatedSizeBytes = calculateDatabaseSizeEstimate(currentBackupData);
   const totalEntities =
     users.length +
@@ -197,7 +221,7 @@ export const DatabaseBackupTab: React.FC<DatabaseBackupTabProps> = ({
             <button
               onClick={() => downloadDatabaseBackupFile(currentBackupData, currentUser)}
               className="px-4 py-2.5 rounded-xl bg-white text-indigo-950 font-bold text-xs sm:text-sm flex items-center gap-2 hover:bg-indigo-50 active:bg-indigo-100 transition shadow-sm cursor-pointer"
-              title="Unduh file backup JSON lengkap"
+              title="Unduh file backup JSON lengkap saat ini"
             >
               <Download className="w-4 h-4 text-indigo-600" />
               <span>Unduh Backup JSON</span>
@@ -209,6 +233,56 @@ export const DatabaseBackupTab: React.FC<DatabaseBackupTabProps> = ({
             >
               <FileSpreadsheet className="w-4 h-4" />
               <span>Arsip Excel (.xlsx)</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Master Backup Synchronization Card with Algoritma Exception */}
+      <div className="bg-white border-2 border-indigo-200 rounded-2xl p-5 sm:p-6 shadow-sm relative overflow-hidden">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5">
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-xs font-bold border border-emerald-300">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Master Backup Database Terkini Tersedia</span>
+              </span>
+              <span className="text-xs text-slate-500 font-medium">Update Teranyar Resmi BAAK</span>
+            </div>
+            
+            <h4 className="text-base sm:text-lg font-bold text-slate-900">
+              Sinkronisasi Basis Data Master Paling Baru (Update Terkini)
+            </h4>
+
+            <p className="text-xs sm:text-sm text-slate-600 leading-relaxed max-w-3xl">
+              Memuat seluruh data master resmi kampus terbaru: <strong>{masterBackupObj.summary.totalUsers} Akun Pengguna</strong>, <strong>{masterBackupObj.summary.totalStudents} Mahasiswa Rombel</strong>, <strong>{masterBackupObj.summary.totalCourses} Mata Kuliah</strong>, <strong>{masterBackupObj.summary.totalSchedules} Jadwal Kuliah</strong>, dan <strong>{masterBackupObj.summary.totalRecords} Rekap Presensi</strong>.
+            </p>
+
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-900 text-xs flex items-start gap-2.5 mt-2">
+              <Shield className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
+              <div>
+                <strong className="font-semibold block text-amber-950">Proteksi Pengecualian Matakuliah Algoritma dan Pemrograman:</strong>
+                <span className="leading-relaxed">
+                  Sesuai instruksi akademik terbaru, database mata kuliah <strong>Algoritma dan Pemrograman (MKMI0105)</strong> telah dikecualikan dari kepemilikan Bu Fitri dan secara permanen ditetapkan menjadi milik <strong>Dosen Ammar Fauzan, S.Pd., M.Kom.</strong> dengan jadwal <strong>hari Rabu pukul 18.00 WIB (2 SKS)</strong>.
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-col sm:flex-row lg:flex-col gap-2.5 shrink-0 justify-center">
+            <button
+              onClick={() => setIsConfirmMasterOpen(true)}
+              className="px-5 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition shadow-sm cursor-pointer"
+            >
+              <RefreshCw className="w-4 h-4" />
+              <span>Pulihkan ke Master Terkini</span>
+            </button>
+            <button
+              onClick={() => downloadDatabaseBackupFile(masterBackupObj.data, currentUser)}
+              className="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs flex items-center justify-center gap-2 transition cursor-pointer"
+            >
+              <Download className="w-4 h-4 text-slate-600" />
+              <span>Unduh File Master (.json)</span>
             </button>
           </div>
         </div>
@@ -672,6 +746,63 @@ export const DatabaseBackupTab: React.FC<DatabaseBackupTabProps> = ({
               >
                 <Check className="w-4 h-4" />
                 <span>Ya, Terapkan Pemulihan</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Konfirmasi Pulihkan Master Database Terkini */}
+      {isConfirmMasterOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+            <div className="w-12 h-12 rounded-xl bg-indigo-50 border border-indigo-200 flex items-center justify-center text-indigo-700">
+              <Database className="w-6 h-6" />
+            </div>
+
+            <div>
+              <h3 className="text-lg font-bold text-slate-900">
+                Terapkan Master Backup Database Terkini?
+              </h3>
+              <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+                Tindakan ini akan menyinkronkan seluruh database aplikasi ke master database paling baru dengan proteksi pengecualian mata kuliah.
+              </p>
+            </div>
+
+            <div className="p-3.5 bg-slate-50 rounded-xl text-xs space-y-2 border border-slate-200">
+              <p className="font-bold text-slate-800">Ringkasan Pembaruan Master Database:</p>
+              <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-700">
+                <div>• Pengguna: <strong>{masterBackupObj.summary.totalUsers} Akun</strong></div>
+                <div>• Mahasiswa: <strong>{masterBackupObj.summary.totalStudents} Mahasiswa</strong></div>
+                <div>• Mata Kuliah: <strong>{masterBackupObj.summary.totalCourses} MK</strong></div>
+                <div>• Jadwal Kuliah: <strong>{masterBackupObj.summary.totalSchedules} Kelas</strong></div>
+                <div>• Rekap Presensi: <strong>{masterBackupObj.summary.totalRecords} Kehadiran</strong></div>
+                <div>• Pengajuan Izin: <strong>{masterBackupObj.summary.totalLeaveRequests} Izin/Sakit</strong></div>
+              </div>
+            </div>
+
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-900 text-xs flex items-start gap-2">
+              <Shield className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+              <div className="leading-relaxed">
+                <strong>Catatan Pengecualian:</strong> Matakuliah <strong>Algoritma dan Pemrograman (MKMI0105)</strong> dikecualikan dari kepemilikan Bu Fitri dan otomatis disetel ke <strong>Dosen Ammar Fauzan, S.Pd., M.Kom.</strong> (Rabu 18.00 WIB, 2 SKS).
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={() => setIsConfirmMasterOpen(false)}
+                className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={handleExecuteRestoreMaster}
+                className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition cursor-pointer shadow-xs flex items-center gap-1.5"
+              >
+                <Check className="w-4 h-4" />
+                <span>Ya, Terapkan Master Terkini</span>
               </button>
             </div>
           </div>

@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { AttendanceProvider, useAttendance } from './context/AttendanceContext';
+import { AttendanceProvider, useAttendance, SESSION_KEYS } from './context/AttendanceContext';
 import { Header } from './components/Header';
 import { DosenDashboard } from './components/dosen/DosenDashboard';
 import { MahasiswaDashboard } from './components/mahasiswa/MahasiswaDashboard';
@@ -22,11 +22,16 @@ import { CAMPUS_INFO } from './data/initialData';
 import { Shield } from 'lucide-react';
 
 const INACTIVITY_TIMEOUT_MS = 2 * 60 * 60 * 1000; // 2 hours (7,200,000 ms)
-const AUTH_SESSION_KEY = 'stmik_auth_session_active';
-const LAST_ACTIVITY_KEY = 'stmik_last_activity_timestamp';
 
 const AppContent: React.FC = () => {
-  const { currentUser, setCurrentUser, users } = useAttendance();
+  const {
+    currentUser,
+    setCurrentUser,
+    users,
+    logoutSession,
+    registerDeviceSession,
+    validateCurrentDeviceSession,
+  } = useAttendance();
 
   // Route state to support ~/portaladmin exclusively for BAAK Administrator
   const [currentPath, setCurrentPath] = useState<string>(() => {
@@ -83,14 +88,18 @@ const AppContent: React.FC = () => {
   const [forgotPasswordRole, setForgotPasswordRole] = useState<'mahasiswa' | 'dosen' | 'admin' | undefined>(undefined);
   const [forgotPasswordIdentifier, setForgotPasswordIdentifier] = useState<string>('');
   const [activeRoleTab, setActiveRoleTab] = useState<'mahasiswa' | 'dosen'>('mahasiswa');
+  const [profileModalTab, setProfileModalTab] = useState<'profil' | 'password' | 'sesi'>('profil');
 
   // Authentication session state:
   // "Logout otomatis hanya dilakukan dalam waktu 2 jam setelah tidak ada aktivitas user di dalam aplikasi, batalkan logout otomatis saat muat ulang"
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
     try {
-      const savedAuth = localStorage.getItem(AUTH_SESSION_KEY);
-      const savedTime = localStorage.getItem(LAST_ACTIVITY_KEY);
-      if (savedAuth === 'true' && savedTime) {
+      const savedAuth = localStorage.getItem(SESSION_KEYS.AUTH_ACTIVE);
+      const savedTime = localStorage.getItem(SESSION_KEYS.LAST_ACTIVITY);
+      const savedUserJson = localStorage.getItem(SESSION_KEYS.ACTIVE_USER);
+      const savedUserId = localStorage.getItem(SESSION_KEYS.CURRENT_USER_ID);
+
+      if (savedAuth === 'true' && savedTime && (savedUserJson || savedUserId)) {
         const lastTime = Number(savedTime);
         const now = Date.now();
         if (!isNaN(lastTime) && (now - lastTime < INACTIVITY_TIMEOUT_MS)) {
@@ -107,7 +116,7 @@ const AppContent: React.FC = () => {
   // Inactivity tracking state (2-Hour Inactivity Rule)
   const [lastActivityTimestamp, setLastActivityTimestamp] = useState<number>(() => {
     try {
-      const savedTime = localStorage.getItem(LAST_ACTIVITY_KEY);
+      const savedTime = localStorage.getItem(SESSION_KEYS.LAST_ACTIVITY);
       if (savedTime) {
         const parsed = Number(savedTime);
         if (!isNaN(parsed)) return parsed;
@@ -118,15 +127,17 @@ const AppContent: React.FC = () => {
 
   const [inactivityNotice, setInactivityNotice] = useState<string | null>(() => {
     try {
-      const savedAuth = localStorage.getItem(AUTH_SESSION_KEY);
-      const savedTime = localStorage.getItem(LAST_ACTIVITY_KEY);
+      const savedAuth = localStorage.getItem(SESSION_KEYS.AUTH_ACTIVE);
+      const savedTime = localStorage.getItem(SESSION_KEYS.LAST_ACTIVITY);
       if (savedAuth === 'true' && savedTime) {
         const lastTime = Number(savedTime);
         const now = Date.now();
         if (!isNaN(lastTime) && (now - lastTime >= INACTIVITY_TIMEOUT_MS)) {
           // Melewati 2 jam tanpa aktivitas sebelum reload: bersihkan sesi dan beri tahu pengguna
-          localStorage.removeItem(AUTH_SESSION_KEY);
-          localStorage.removeItem(LAST_ACTIVITY_KEY);
+          localStorage.removeItem(SESSION_KEYS.AUTH_ACTIVE);
+          localStorage.removeItem(SESSION_KEYS.LAST_ACTIVITY);
+          localStorage.removeItem(SESSION_KEYS.ACTIVE_USER);
+          localStorage.removeItem(SESSION_KEYS.CURRENT_USER_ID);
           return 'Sesi Anda telah berakhir secara otomatis karena tidak ada aktivitas selama 2 jam. Silakan pilih portal login untuk masuk kembali.';
         }
       }
@@ -146,7 +157,7 @@ const AppContent: React.FC = () => {
       // Sync ke localStorage secara berkala (maksimal sekali per 5 detik)
       if (now - lastStorageSyncRef.current > 5000) {
         lastStorageSyncRef.current = now;
-        localStorage.setItem(LAST_ACTIVITY_KEY, String(now));
+        localStorage.setItem(SESSION_KEYS.LAST_ACTIVITY, String(now));
       }
     };
 
@@ -155,14 +166,13 @@ const AppContent: React.FC = () => {
 
     const intervalId = setInterval(() => {
       const now = Date.now();
-      const saved = localStorage.getItem(LAST_ACTIVITY_KEY);
+      const saved = localStorage.getItem(SESSION_KEYS.LAST_ACTIVITY);
       const currentLastActivity = saved ? Number(saved) : lastActivityTimestamp;
 
       if (!isNaN(currentLastActivity) && (now - currentLastActivity >= INACTIVITY_TIMEOUT_MS)) {
         // Trigger auto-logout due to 2 hours of inactivity
         setIsAuthenticated(false);
-        localStorage.removeItem(AUTH_SESSION_KEY);
-        localStorage.removeItem(LAST_ACTIVITY_KEY);
+        logoutSession();
         setIsRoleSwitcherOpen(false);
         setIsUnifiedLoginOpen(false);
         setIsStudentLoginOpen(false);
@@ -176,7 +186,30 @@ const AppContent: React.FC = () => {
       trackedEvents.forEach(evt => window.removeEventListener(evt, handleUserActivity));
       clearInterval(intervalId);
     };
-  }, [isAuthenticated, lastActivityTimestamp]);
+  }, [isAuthenticated, lastActivityTimestamp, logoutSession]);
+
+  // Periodic device session validation to prevent unauthorized account switching and remote session revocations
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    const checkSessionSecurity = () => {
+      const validation = validateCurrentDeviceSession();
+      if (!validation.valid) {
+        setIsAuthenticated(false);
+        setInactivityNotice(validation.reason || 'Sesi perangkat telah diakhiri demi keamanan data.');
+      }
+    };
+
+    const interval = setInterval(checkSessionSecurity, 10000);
+    window.addEventListener('focus', checkSessionSecurity);
+    window.addEventListener('storage', checkSessionSecurity);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', checkSessionSecurity);
+      window.removeEventListener('storage', checkSessionSecurity);
+    };
+  }, [isAuthenticated, validateCurrentDeviceSession]);
 
   // Handlers to open each user's login portal / switch role tab
   const handleOpenStudentLogin = useCallback(() => {
@@ -197,25 +230,34 @@ const AppContent: React.FC = () => {
     setIsAuthenticated(true);
     setLastActivityTimestamp(now);
     lastStorageSyncRef.current = now;
-    localStorage.setItem(AUTH_SESSION_KEY, 'true');
-    localStorage.setItem(LAST_ACTIVITY_KEY, String(now));
+    localStorage.setItem(SESSION_KEYS.AUTH_ACTIVE, 'true');
+    localStorage.setItem(SESSION_KEYS.LAST_ACTIVITY, String(now));
+    localStorage.setItem(SESSION_KEYS.CURRENT_USER_ID, user.id);
+    localStorage.setItem(SESSION_KEYS.ACTIVE_USER, JSON.stringify(user));
+    // Remember account preferences in browser for convenient re-login
+    if (user.role) {
+      localStorage.setItem(SESSION_KEYS.REMEMBERED_ROLE, user.role);
+    }
+    if (user.username) {
+      localStorage.setItem(SESSION_KEYS.REMEMBERED_USERNAME, user.username);
+    }
+    // Record device session fingerprint to prevent hijacking
+    registerDeviceSession(user);
     setIsRoleSwitcherOpen(false);
     setIsUnifiedLoginOpen(false);
     setIsStudentLoginOpen(false);
     setInactivityNotice(null);
-  }, [setCurrentUser]);
+  }, [setCurrentUser, registerDeviceSession]);
 
   const handleLogout = useCallback(() => {
     setIsAuthenticated(false);
-    localStorage.removeItem(AUTH_SESSION_KEY);
-    localStorage.removeItem(LAST_ACTIVITY_KEY);
-    localStorage.removeItem('stmik_current_user_id_v1');
+    logoutSession();
     setIsRoleSwitcherOpen(false);
     setIsUnifiedLoginOpen(false);
     setIsStudentLoginOpen(false);
     setIsForgotPasswordOpen(false);
     setInactivityNotice(null);
-  }, []);
+  }, [logoutSession]);
 
   const handleOpenForgotPassword = useCallback((role?: 'mahasiswa' | 'dosen' | 'admin', identifier?: string) => {
     setForgotPasswordRole(role);
@@ -256,16 +298,26 @@ const AppContent: React.FC = () => {
       {/* Campus Header & System Bar */}
       <Header
         isLoggedOut={!isAuthenticated}
-        onOpenRoleSwitcher={() => {
-          if (isAuthenticated && currentUser.role === 'mahasiswa') {
-            setIsRoleSwitcherOpen(true);
-          }
-        }}
         onOpenStudentLogin={handleOpenStudentLogin}
         onOpenDosenLogin={handleOpenDosenLogin}
-        onOpenDosenProfile={() => setIsDosenProfileOpen(true)}
-        onOpenMahasiswaProfile={() => setIsMahasiswaProfileOpen(true)}
-        onOpenBaakProfile={() => setIsBaakProfileOpen(true)}
+        onOpenDosenProfile={() => {
+          setProfileModalTab('profil');
+          setIsDosenProfileOpen(true);
+        }}
+        onOpenMahasiswaProfile={() => {
+          setProfileModalTab('profil');
+          setIsMahasiswaProfileOpen(true);
+        }}
+        onOpenBaakProfile={() => {
+          setProfileModalTab('profil');
+          setIsBaakProfileOpen(true);
+        }}
+        onOpenDeviceSessions={() => {
+          setProfileModalTab('sesi');
+          if (currentUser.role === 'dosen') setIsDosenProfileOpen(true);
+          else if (currentUser.role === 'admin') setIsBaakProfileOpen(true);
+          else setIsMahasiswaProfileOpen(true);
+        }}
         onOpenForgotPassword={() => handleOpenForgotPassword(activeRoleTab)}
         onLogout={handleLogout}
       />
@@ -326,17 +378,13 @@ const AppContent: React.FC = () => {
         </div>
       </footer>
 
-      {/* Role Switcher Modal (Mahasiswa only when logged in) */}
+      {/* Role Switcher Modal (Strictly Anti-Tampering: Enforces Logout before Switch) */}
       {isAuthenticated && currentUser.role === 'mahasiswa' && (
         <RoleSwitcherModal
           isOpen={isRoleSwitcherOpen}
           onClose={() => setIsRoleSwitcherOpen(false)}
           currentUser={currentUser}
-          onSelectUser={(u) => {
-            setCurrentUser(u);
-            setIsRoleSwitcherOpen(false);
-          }}
-          users={users}
+          onLogout={handleLogout}
           onOpenLoginPortal={() => {
             setIsRoleSwitcherOpen(false);
             setIsUnifiedLoginOpen(true);
@@ -388,6 +436,7 @@ const AppContent: React.FC = () => {
         <DosenProfileModal
           isOpen={isDosenProfileOpen}
           onClose={() => setIsDosenProfileOpen(false)}
+          defaultTab={profileModalTab}
         />
       )}
 
@@ -396,6 +445,7 @@ const AppContent: React.FC = () => {
         <MahasiswaProfileModal
           isOpen={isMahasiswaProfileOpen}
           onClose={() => setIsMahasiswaProfileOpen(false)}
+          defaultTab={profileModalTab}
         />
       )}
 
@@ -404,6 +454,7 @@ const AppContent: React.FC = () => {
         <BaakProfileModal
           isOpen={isBaakProfileOpen}
           onClose={() => setIsBaakProfileOpen(false)}
+          defaultTab={profileModalTab}
         />
       )}
 

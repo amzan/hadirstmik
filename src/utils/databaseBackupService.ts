@@ -1,14 +1,137 @@
 import * as XLSX from 'xlsx';
-import { CAMPUS_INFO } from '../data/initialData';
+import {
+  CAMPUS_INFO,
+  INITIAL_USERS,
+  INITIAL_STUDENTS,
+  INITIAL_COURSES,
+  INITIAL_SCHEDULES,
+  INITIAL_SESSIONS,
+  INITIAL_RECORDS,
+  INITIAL_LEAVE_REQUESTS,
+} from '../data/initialData';
 import {
   DatabaseBackup,
   DatabaseBackupData,
   DatabaseSnapshot,
-  User
+  User,
+  DayOfWeek,
+  ScheduleItem,
 } from '../types/attendance';
 
 export const BACKUP_FORMAT_VERSION = '1.0.0';
 export const STORAGE_KEY_SNAPSHOTS = 'stmik_db_snapshots_v1';
+export const DEFAULT_MASTER_SNAPSHOT_ID = 'snap-master-terbaru';
+
+/**
+ * Pengecualian Khusus: Memastikan matakuliah Algoritma dan Pemrograman (MKMI0105)
+ * selalu milik Dosen Ammar Fauzan, S.Pd., M.Kom. (2 SKS, hari Rabu 18.00 WIB)
+ * dan TIDAK PERNAH tertimpa kembali ke Bu Fitri (Fitriani Dwi Ratna Sari) saat pemulihan / sinkronisasi backup.
+ */
+export function sanitizeAlgoritmaCourseAndSchedules(data: DatabaseBackupData): DatabaseBackupData {
+  if (!data) return data;
+
+  const sanitizedCourses = (data.courses || []).map(c => {
+    if (c.code === 'MKMI0105' || c.name.toLowerCase().includes('algoritma dan pemrograman')) {
+      return {
+        ...c,
+        name: 'Algoritma dan Pemrograman',
+        sks: 2,
+        defaultLecturerId: 'dosen-10',
+        defaultLecturerName: 'Ammar Fauzan, S.Pd., M.Kom.',
+      };
+    }
+    return c;
+  });
+
+  const sanitizedSchedules: ScheduleItem[] = (data.schedules || []).map(s => {
+    if (s.courseCode === 'MKMI0105' || s.courseName.toLowerCase().includes('algoritma dan pemrograman')) {
+      return {
+        ...s,
+        day: 'Rabu' as DayOfWeek,
+        startTime: '18:00',
+        endTime: '19:40',
+        sks: 2,
+        lecturerId: 'dosen-10',
+        lecturerName: 'Ammar Fauzan, S.Pd., M.Kom.',
+      };
+    }
+    return s;
+  });
+
+  const sanitizedSessions = (data.sessions || []).map(sess => {
+    if (sess.courseCode === 'MKMI0105' || sess.courseName.toLowerCase().includes('algoritma dan pemrograman')) {
+      return {
+        ...sess,
+        startTime: '18:00',
+        endTime: '19:40',
+        lecturerId: 'dosen-10',
+        lecturerName: 'Ammar Fauzan, S.Pd., M.Kom.',
+      };
+    }
+    return sess;
+  });
+
+  return {
+    ...data,
+    courses: sanitizedCourses,
+    schedules: sanitizedSchedules,
+    sessions: sanitizedSessions,
+  };
+}
+
+/**
+ * Mengambil master backup database terbaru resmi kampus yang telah dikecualikan
+ * (Algoritma dan Pemrograman milik Ammar Fauzan, Rabu 18.00 WIB, 2 SKS)
+ */
+export function getLatestMasterBackup(): DatabaseBackup {
+  const sanitized = sanitizeAlgoritmaCourseAndSchedules({
+    users: INITIAL_USERS,
+    students: INITIAL_STUDENTS,
+    courses: INITIAL_COURSES,
+    schedules: INITIAL_SCHEDULES,
+    sessions: INITIAL_SESSIONS,
+    records: INITIAL_RECORDS,
+    leaveRequests: INITIAL_LEAVE_REQUESTS,
+  });
+
+  return {
+    version: BACKUP_FORMAT_VERSION,
+    timestamp: '2026-10-13T09:30:16.694Z',
+    appName: 'Sistem Presensi QR Kampus - STMIK PGRI Arungbinang Kebumen',
+    campusName: CAMPUS_INFO.name,
+    semester: CAMPUS_INFO.semester,
+    exportedBy: {
+      userId: 'user-admin-1',
+      userName: 'Administrator Akademik (BAAK)',
+      role: 'admin',
+    },
+    summary: {
+      totalUsers: sanitized.users?.length || 0,
+      totalStudents: sanitized.students?.length || 0,
+      totalCourses: sanitized.courses?.length || 0,
+      totalSchedules: sanitized.schedules?.length || 0,
+      totalSessions: sanitized.sessions?.length || 0,
+      totalRecords: sanitized.records?.length || 0,
+      totalLeaveRequests: sanitized.leaveRequests?.length || 0,
+    },
+    data: sanitized,
+  };
+}
+
+/**
+ * Snapshot master bawaan teranyar yang disematkan ke browser
+ */
+export function getDefaultMasterSnapshot(): DatabaseSnapshot {
+  const backup = getLatestMasterBackup();
+  return {
+    id: DEFAULT_MASTER_SNAPSHOT_ID,
+    name: 'Master Backup Database Terkini (Resmi BAAK)',
+    note: 'Database paling mutakhir: 17 Akun, 64 Mahasiswa, 35 Jadwal, 84 Presensi. Pengecualian: Matakuliah Algoritma dan Pemrograman telah dialihkan ke Dosen Ammar Fauzan, S.Pd., M.Kom. (Rabu 18.00 WIB, 2 SKS).',
+    timestamp: '2026-10-13T09:30:16.694Z',
+    summary: backup.summary,
+    data: backup.data,
+  };
+}
 
 /**
  * Membuat payload cadangan terstruktur lengkap untuk basis data aplikasi
@@ -302,7 +425,7 @@ export function validateAndParseBackupFile(fileContent: string): {
         totalRecords: Array.isArray(records) ? records.length : 0,
         totalLeaveRequests: Array.isArray(leaveRequests) ? leaveRequests.length : 0,
       },
-      data: {
+      data: sanitizeAlgoritmaCourseAndSchedules({
         users: Array.isArray(users) ? users : [],
         students: Array.isArray(students) ? students : [],
         courses: Array.isArray(courses) ? courses : [],
@@ -310,7 +433,7 @@ export function validateAndParseBackupFile(fileContent: string): {
         sessions: Array.isArray(sessions) ? sessions : [],
         records: Array.isArray(records) ? records : [],
         leaveRequests: Array.isArray(leaveRequests) ? leaveRequests : [],
-      },
+      }),
     };
 
     return { isValid: true, backup: normalizedBackup };
@@ -354,10 +477,15 @@ export function loadLocalSnapshots(): DatabaseSnapshot[] {
     const saved = localStorage.getItem(STORAGE_KEY_SNAPSHOTS);
     if (saved) {
       const parsed = JSON.parse(saved);
-      if (Array.isArray(parsed)) return parsed;
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed.map(snap => ({
+          ...snap,
+          data: sanitizeAlgoritmaCourseAndSchedules(snap.data || {}),
+        }));
+      }
     }
   } catch {}
-  return [];
+  return [getDefaultMasterSnapshot()];
 }
 
 export function saveLocalSnapshot(

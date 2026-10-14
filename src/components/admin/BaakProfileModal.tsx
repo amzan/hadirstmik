@@ -3,13 +3,14 @@ import { useAttendance } from '../../context/AttendanceContext';
 import { ChangePasswordOtpSection } from '../shared/ChangePasswordOtpSection';
 import {
   X, User, Mail, Phone, Shield, Check,
-  Camera, Building, CheckCircle2, AlertCircle, Sparkles, Upload, KeyRound
+  Camera, Building, CheckCircle2, AlertCircle, Sparkles, Upload, KeyRound, Laptop
 } from 'lucide-react';
+import { DeviceSessionManager } from '../shared/DeviceSessionManager';
 
 interface BaakProfileModalProps {
   isOpen: boolean;
   onClose: () => void;
-  defaultTab?: 'profil' | 'password';
+  defaultTab?: 'profil' | 'password' | 'sesi';
 }
 
 const BAAK_AVATAR_PRESETS = [
@@ -42,7 +43,7 @@ export const BaakProfileModal: React.FC<BaakProfileModalProps> = ({
 }) => {
   const { currentUser, updateUser } = useAttendance();
 
-  const [activeTab, setActiveTab] = useState<'profil' | 'password'>(defaultTab);
+  const [activeTab, setActiveTab] = useState<'profil' | 'password' | 'sesi'>(defaultTab);
 
   // Form states
   const [name, setName] = useState(currentUser.name || 'Administrator Akademik (BAAK)');
@@ -240,6 +241,21 @@ export const BaakProfileModal: React.FC<BaakProfileModalProps> = ({
             <span>Ganti Password (OTP Email)</span>
             <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-100 text-indigo-700">
               Resend OTP
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('sesi')}
+            className={`flex items-center gap-2 py-3 px-3 sm:px-4 text-xs sm:text-sm font-semibold border-b-2 transition cursor-pointer ${
+              activeTab === 'sesi'
+                ? 'border-indigo-600 text-indigo-700 bg-white'
+                : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-100/60'
+            }`}
+          >
+            <Laptop className="w-4 h-4" />
+            <span>Sesi & Perangkat</span>
+            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800">
+              Terproteksi
             </span>
           </button>
         </div>
@@ -506,7 +522,7 @@ export const BaakProfileModal: React.FC<BaakProfileModalProps> = ({
                 </div>
               </div>
             </form>
-          ) : (
+          ) : activeTab === 'password' ? (
             /* Tab Ganti Password dengan OTP Email */
             <div className="space-y-4">
               <ChangePasswordOtpSection
@@ -514,6 +530,11 @@ export const BaakProfileModal: React.FC<BaakProfileModalProps> = ({
                 overrideEmail={email}
                 onPasswordChanged={() => {}}
               />
+            </div>
+          ) : (
+            /* Tab Sesi & Perangkat Terhubung */
+            <div className="space-y-4">
+              <DeviceSessionManager mode="user" />
             </div>
           )}
         </div>

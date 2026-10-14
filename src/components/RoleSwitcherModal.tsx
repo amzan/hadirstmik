@@ -1,9 +1,8 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { useAttendance } from '../context/AttendanceContext';
-import { User, Role } from '../types/attendance';
+import { User } from '../types/attendance';
 import {
-  X, GraduationCap, UserCheck, Shield, Check, Search,
-  Eye, EyeOff, AlertCircle, ArrowRight
+  X, ShieldAlert, LogOut, ArrowRight, Laptop, CheckCircle2, Lock
 } from 'lucide-react';
 
 interface RoleSwitcherModalProps {
@@ -14,214 +13,121 @@ interface RoleSwitcherModalProps {
   users?: User[];
   onOpenLoginPortal?: (defaultTab?: 'dosen' | 'admin') => void;
   onOpenStudentPortal?: () => void;
+  onLogout?: () => void;
 }
 
 export const RoleSwitcherModal: React.FC<RoleSwitcherModalProps> = ({
   isOpen,
   onClose,
   currentUser: propCurrentUser,
-  onSelectUser,
-  users: propUsers,
   onOpenLoginPortal,
   onOpenStudentPortal,
+  onLogout,
 }) => {
   const context = useAttendance();
-  const users = propUsers || context.users;
   const currentUser = propCurrentUser || context.currentUser;
-  const setCurrentUser = onSelectUser || context.setCurrentUser;
-
-  const [selectedRoleTab, setSelectedRoleTab] = useState<'mahasiswa' | 'dosen'>('mahasiswa');
-  const [searchQuery, setSearchQuery] = useState('');
 
   if (!isOpen) return null;
 
-  const filteredUsers = users.filter(u => {
-    const matchesTab = u.role === selectedRoleTab;
-    const matchesQuery = u.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         u.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         (u.rombel && u.rombel.toLowerCase().includes(searchQuery.toLowerCase())) ||
-                         (u.title && u.title.toLowerCase().includes(searchQuery.toLowerCase()));
-    return matchesTab && matchesQuery;
-  });
-
-  const handleSelectUser = (user: User) => {
-    setCurrentUser(user);
-    onClose();
-  };
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fadeIn">
-      <div className="bg-white rounded-xl shadow-2xl border border-slate-200 max-w-2xl w-full overflow-hidden flex flex-col max-h-[90vh]">
+      <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-lg w-full overflow-hidden flex flex-col">
         {/* Modal Header */}
-        <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
-          <div>
-            <h3 className="text-lg sm:text-xl font-bold text-slate-900">
-              Ganti Pengguna & Hak Akses
-            </h3>
-            <p className="text-sm text-slate-500 mt-0.5">
-              Peralihan Akun Terdaftar STMIK PGRI Arungbinang Kebumen
-            </p>
+        <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-xl bg-amber-500/20 border border-amber-400/30 flex items-center justify-center text-amber-400">
+              <Lock className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-base sm:text-lg font-bold text-white">
+                Proteksi Akses & Isolasi Akun
+              </h3>
+              <p className="text-xs text-slate-300">
+                STMIK PGRI Arungbinang Kebumen
+              </p>
+            </div>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 transition cursor-pointer"
+            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Role Tabs: Mahasiswa & Dosen */}
-        <div className="flex border-b border-slate-200 gap-6 px-6 pt-3 text-sm font-semibold">
-          <button
-            onClick={() => setSelectedRoleTab('mahasiswa')}
-            className={`pb-3 border-b-2 flex items-center gap-2 transition cursor-pointer ${
-              selectedRoleTab === 'mahasiswa'
-                ? 'border-slate-900 text-slate-900 font-bold'
-                : 'border-transparent text-slate-500 hover:text-slate-900'
-            }`}
-          >
-            <UserCheck className="w-4 h-4" />
-            <span>Mahasiswa ({users.filter(u => u.role === 'mahasiswa').length})</span>
-          </button>
-
-          <button
-            onClick={() => setSelectedRoleTab('dosen')}
-            className={`pb-3 border-b-2 flex items-center gap-2 transition cursor-pointer ${
-              selectedRoleTab === 'dosen'
-                ? 'border-slate-900 text-slate-900 font-bold'
-                : 'border-transparent text-slate-500 hover:text-slate-900'
-            }`}
-          >
-            <GraduationCap className="w-4 h-4" />
-            <span>Dosen ({users.filter(u => u.role === 'dosen').length})</span>
-          </button>
-        </div>
-
-        {/* Tab Content */}
-        {selectedRoleTab === 'dosen' ? (
-          <div className="p-8 text-center flex-1 flex flex-col items-center justify-center space-y-4">
-            <div className="w-14 h-14 rounded-2xl bg-emerald-50 text-emerald-700 border border-emerald-100 flex items-center justify-center">
-              <GraduationCap className="w-8 h-8" />
+        {/* Modal Content */}
+        <div className="p-6 space-y-5">
+          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-start gap-3.5">
+            <div className="w-10 h-10 rounded-xl bg-amber-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+              <ShieldAlert className="w-6 h-6" />
             </div>
-            <div className="max-w-md">
-              <h4 className="text-lg font-bold text-slate-900">Portal Login Dosen Pengampu</h4>
-              <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-                Akun dosen terproteksi dengan autentikasi nama depan dan kata sandi dosen. Silakan buka portal login dosen untuk autentikasi.
+            <div>
+              <h4 className="text-sm font-bold text-amber-900">
+                Peralihan Akun Langsung Dilarang
+              </h4>
+              <p className="text-xs text-amber-800 mt-1 leading-relaxed">
+                Demi melindungi integritas data presensi dan mencegah mahasiswa beralih/menggunakan akun milik dosen (seperti Bpk. Nur Wasito) atau akun mahasiswa lain, fitur perpindahan akun tanpa login resmi telah <strong>dinonaktifkan secara permanen</strong>.
               </p>
             </div>
-            <button
-              onClick={() => {
-                onClose();
-                onOpenLoginPortal?.('dosen');
-              }}
-              className="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-sm font-semibold flex items-center gap-2 cursor-pointer shadow-xs transition"
-            >
-              <span>Buka Portal Login Dosen</span>
-              <ArrowRight className="w-4 h-4" />
-            </button>
           </div>
-        ) : (
-          <>
-            {/* Search */}
-            <div className="p-4 sm:p-5 border-b border-slate-100">
-              <div className="relative">
-                <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                <input
-                  type="text"
-                  placeholder="Cari nama mahasiswa, NIM, atau rombel..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 bg-white border border-slate-300 rounded-lg text-sm text-slate-900 focus:outline-none focus:border-slate-500 transition"
-                />
-              </div>
-            </div>
 
-            {/* User List */}
-            <div className="overflow-y-auto p-4 sm:p-5 space-y-2.5 flex-1">
-              {filteredUsers.length === 0 ? (
-                <div className="py-12 text-center text-slate-400 text-sm">
-                  Tidak ada mahasiswa yang cocok dengan pencarian
+          <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+            <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
+              Akun Aktif Anda Saat Ini:
+            </div>
+            <div className="flex items-center gap-3">
+              <img
+                src={currentUser.avatarUrl || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150'}
+                alt={currentUser.name}
+                className="w-11 h-11 rounded-full object-cover border border-slate-300 shrink-0"
+              />
+              <div className="min-w-0 flex-1">
+                <div className="text-sm font-bold text-slate-900 truncate">{currentUser.name}</div>
+                <div className="text-xs text-slate-500 font-mono">
+                  {currentUser.role === 'mahasiswa' ? `NIM: ${currentUser.username}` : `Username: ${currentUser.username}`} · <span className="capitalize font-semibold text-slate-700">{currentUser.role}</span>
                 </div>
-              ) : (
-                filteredUsers.map((user) => {
-                  const isCurrent = currentUser.id === user.id;
-                  return (
-                    <div
-                      key={user.id}
-                      onClick={() => handleSelectUser(user)}
-                      className={`p-3.5 rounded-lg border flex items-center justify-between gap-3 cursor-pointer transition ${
-                        isCurrent
-                          ? 'border-slate-900 bg-slate-50/80 ring-1 ring-slate-900'
-                          : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50/50'
-                      }`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <img
-                          src={user.avatarUrl || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150'}
-                          alt={user.name}
-                          className="w-10 h-10 rounded-full object-cover border border-slate-200"
-                        />
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm sm:text-base font-bold text-slate-900">{user.name}</span>
-                            {isCurrent && (
-                              <span className="text-xs font-semibold text-slate-900">
-                                (Aktif)
-                              </span>
-                            )}
-                          </div>
-                          <div className="text-sm text-slate-500 flex items-center gap-2 mt-0.5">
-                            <span>NIM: <strong className="font-mono text-slate-700">{user.username}</strong></span>
-                            {user.rombel && (
-                              <>
-                                <span>·</span>
-                                <span>Rombel {user.rombel}</span>
-                              </>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        {isCurrent ? (
-                          <span className="w-8 h-8 rounded-full bg-slate-900 text-white flex items-center justify-center">
-                            <Check className="w-4 h-4" />
-                          </span>
-                        ) : (
-                          <span className="text-sm font-semibold text-slate-600 hover:text-slate-900 px-3.5 py-1.5 rounded-md border border-slate-200 bg-white">
-                            Pilih
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })
-              )}
+              </div>
+              <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                Sesi Terkunci
+              </span>
             </div>
-          </>
-        )}
+          </div>
 
-        {/* Footer info */}
-        <div className="p-4 bg-slate-50 border-t border-slate-200 text-xs sm:text-sm text-slate-500 flex items-center justify-between gap-3">
-          {onOpenStudentPortal ? (
-            <button
-              onClick={() => {
-                onClose();
-                onOpenStudentPortal();
-              }}
-              className="text-blue-600 hover:text-blue-800 font-semibold flex items-center gap-1.5 cursor-pointer"
-            >
-              <GraduationCap className="w-4 h-4" />
-              <span>Login Mandiri dengan NIM & Password</span>
-            </button>
-          ) : (
-            <span>STMIK PGRI Arungbinang Kebumen</span>
-          )}
+          <div className="text-xs text-slate-600 space-y-2">
+            <p className="font-semibold text-slate-800 flex items-center gap-1.5">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span>Untuk Masuk Menggunakan Akun Lain:</span>
+            </p>
+            <p className="pl-5.5 text-slate-500">
+              Silakan keluar (logout) dari akun ini terlebih dahulu, lalu lakukan autentikasi kredensial resmi pada portal login yang sesuai (Portal Mahasiswa atau Portal Dosen).
+            </p>
+          </div>
+        </div>
+
+        {/* Modal Actions */}
+        <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3">
           <button
+            type="button"
             onClick={onClose}
-            className="px-4 py-1.5 rounded-md text-slate-600 hover:bg-slate-200 font-medium transition cursor-pointer"
+            className="w-full sm:w-auto px-4 py-2 rounded-xl border border-slate-300 text-slate-700 font-semibold text-xs sm:text-sm hover:bg-slate-200/60 transition cursor-pointer"
           >
-            Tutup
+            Tetap di Akun Ini
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              onClose();
+              if (onLogout) {
+                onLogout();
+              } else {
+                context.logoutSession();
+              }
+            }}
+            className="w-full sm:w-auto px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs sm:text-sm transition flex items-center justify-center gap-2 cursor-pointer shadow-xs"
+          >
+            <LogOut className="w-4 h-4" />
+            <span>Keluar (Logout) untuk Ganti Akun</span>
           </button>
         </div>
       </div>
