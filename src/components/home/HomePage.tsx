@@ -3,7 +3,7 @@ import { useAttendance } from '../../context/AttendanceContext';
 import { CAMPUS_INFO } from '../../data/initialData';
 import { User } from '../../types/attendance';
 import {
-  GraduationCap, BookOpen, Shield, ArrowRight,
+  GraduationCap, BookOpen, ArrowRight,
   AlertTriangle, Calendar, Eye, EyeOff,
   CheckCircle2, Sparkles, KeyRound
 } from 'lucide-react';
@@ -505,20 +505,6 @@ export const HomePage: React.FC<HomePageProps> = ({
                   </>
                 )}
               </button>
-
-              {/* Akses Terpisah Khusus Administrator BAAK */}
-              {onNavigateToAdmin && (
-                <div className="pt-2 text-center border-t border-slate-100 mt-2">
-                  <button
-                    type="button"
-                    onClick={onNavigateToAdmin}
-                    className="inline-flex items-center gap-1.5 text-xs text-slate-500 hover:text-indigo-600 transition font-medium cursor-pointer py-1 px-2 rounded-lg hover:bg-slate-50 group"
-                  >
-                    <Shield className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-600 transition" />
-                    <span>Petugas BAAK? Akses Konsol Admin di <strong className="font-mono text-slate-700 group-hover:text-indigo-600">/portaladmin</strong></span>
-                  </button>
-                </div>
-              )}
             </form>
           </div>
         </div>

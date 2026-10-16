@@ -566,3 +566,509 @@ export function generateTeachingLogPDF(
   doc.save(fileName);
 }
 
+export interface KartuPresensiCourseItem {
+  courseCode: string;
+  courseName: string;
+  sks: number;
+  lecturerName: string;
+  rombel: string;
+  hadir: number;
+  izin: number;
+  sakit: number;
+  alpha: number;
+  totalHeld: number;
+  percentage: number;
+  eligibleExam: boolean;
+}
+
+export interface KartuPresensiStudentData {
+  nim: string;
+  name: string;
+  prodi: string;
+  rombel: string;
+  academicYear?: string;
+  semester?: string;
+  advisorName?: string;
+}
+
+/**
+ * Generate PDF Kartu Presensi Mahasiswa
+ * Berisi ringkasan jumlah kehadiran mahasiswa di semua mata kuliah
+ * Dilengkapi dua kotak kosong untuk verifikasi kehadiran saat UTS dan UAS
+ */
+export function generateKartuPresensiPDF(
+  student: KartuPresensiStudentData,
+  courses: KartuPresensiCourseItem[],
+  overallRate: { totalSessions: number; hadir: number; izin: number; sakit: number; alpha: number; percentage: number }
+) {
+  // A4 Portrait for official academic cards
+  const doc = new jsPDF({
+    orientation: 'portrait',
+    unit: 'mm',
+    format: 'a4',
+  });
+
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+
+  // 1. Official Kop Surat Resmi STMIK PGRI Arungbinang Kebumen
+  const logoDataUrl = getStmikLogoDataUrl();
+  const logoSize = 18;
+  const logoX = 14;
+  const logoY = 9;
+  if (logoDataUrl) {
+    try {
+      doc.addImage(logoDataUrl, 'PNG', logoX, logoY, logoSize, logoSize);
+    } catch {
+      // safe fallback
+    }
+  }
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11);
+  doc.setTextColor(20, 30, 60);
+  doc.text('SEKOLAH TINGGI MANAJEMEN INFORMATIKA DAN KOMPUTER (STMIK)', pageWidth / 2 + 6, 13.5, { align: 'center' });
+  doc.text('PERSATUAN GURU REPUBLIK INDONESIA (PGRI) ARUNGBINANG KEBUMEN', pageWidth / 2 + 6, 18.5, { align: 'center' });
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.setTextColor(71, 85, 105);
+  doc.text(`${CAMPUS_INFO.address} · Telp: (0287) 381116`, pageWidth / 2 + 6, 23, { align: 'center' });
+  doc.setFontSize(7.5);
+  doc.setTextColor(100, 116, 139);
+  doc.text('Laman Resmi: www.stmik-arungbinang.ac.id · Surel: baak@stmik-arungbinang.ac.id', pageWidth / 2 + 6, 26.5, { align: 'center' });
+
+  // Double line separator under Kop Surat
+  doc.setLineWidth(0.8);
+  doc.setDrawColor(20, 30, 60);
+  doc.line(14, 29.5, pageWidth - 14, 29.5);
+  doc.setLineWidth(0.3);
+  doc.line(14, 30.5, pageWidth - 14, 30.5);
+
+  // 2. Document Title
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(12.5);
+  doc.setTextColor(15, 23, 42);
+  doc.text('KARTU PRESENSI MAHASISWA', pageWidth / 2, 37, { align: 'center' });
+
+  doc.setFontSize(9);
+  doc.setTextColor(51, 65, 85);
+  const semesterTitle = (student.semester || CAMPUS_INFO.semester).toUpperCase();
+  doc.text(`${semesterTitle} · TAHUN AKADEMIK ${student.academicYear || '2026/2027'}`, pageWidth / 2, 41.5, { align: 'center' });
+
+  doc.setFont('helvetica', 'italic');
+  doc.setFontSize(7.5);
+  doc.setTextColor(100, 116, 139);
+  doc.text('Lembar Verifikasi Persyaratan Mengikuti Ujian Tengah Semester (UTS) & Ujian Akhir Semester (UAS)', pageWidth / 2, 45.5, { align: 'center' });
+
+  // 3. Student Biodata Card (2-column layout with sleek border)
+  const biodataY = 48.5;
+  const biodataHeight = 19;
+  doc.setFillColor(248, 250, 252);
+  doc.setDrawColor(226, 232, 240);
+  doc.roundedRect(14, biodataY, pageWidth - 28, biodataHeight, 1.5, 1.5, 'FD');
+
+  const leftBioX = 18;
+  const rightBioX = pageWidth / 2 + 6;
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.setTextColor(71, 85, 105);
+
+  // Left column
+  doc.text('Nama Mahasiswa', leftBioX, biodataY + 5);
+  doc.text(':', leftBioX + 28, biodataY + 5);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(15, 23, 42);
+  doc.text(student.name, leftBioX + 31, biodataY + 5);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(71, 85, 105);
+  doc.text('NIM', leftBioX, biodataY + 10);
+  doc.text(':', leftBioX + 28, biodataY + 10);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(15, 23, 42);
+  doc.text(student.nim, leftBioX + 31, biodataY + 10);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(71, 85, 105);
+  doc.text('Program Studi', leftBioX, biodataY + 15);
+  doc.text(':', leftBioX + 28, biodataY + 15);
+  doc.setTextColor(15, 23, 42);
+  doc.text(student.prodi, leftBioX + 31, biodataY + 15);
+
+  // Right column
+  doc.setTextColor(71, 85, 105);
+  doc.text('Kelas / Rombel', rightBioX, biodataY + 5);
+  doc.text(':', rightBioX + 28, biodataY + 5);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(15, 23, 42);
+  doc.text(student.rombel, rightBioX + 31, biodataY + 5);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(71, 85, 105);
+  doc.text('Total Mata Kuliah', rightBioX, biodataY + 10);
+  doc.text(':', rightBioX + 28, biodataY + 10);
+  doc.setTextColor(15, 23, 42);
+  const totalSksTaken = courses.reduce((acc, c) => acc + c.sks, 0);
+  doc.text(`${courses.length} MK (${totalSksTaken} SKS)`, rightBioX + 31, biodataY + 10);
+
+  doc.setTextColor(71, 85, 105);
+  doc.text('Status Kelayakan', rightBioX, biodataY + 15);
+  doc.text(':', rightBioX + 28, biodataY + 15);
+  if (overallRate.percentage >= 75) {
+    doc.setTextColor(22, 101, 52);
+    doc.setFont('helvetica', 'bold');
+    doc.text(`MEMENUHI SYARAT (${overallRate.percentage}%)`, rightBioX + 31, biodataY + 15);
+  } else {
+    doc.setTextColor(185, 28, 28);
+    doc.setFont('helvetica', 'bold');
+    doc.text(`DI BAWAH STANDAR (${overallRate.percentage}%)`, rightBioX + 31, biodataY + 15);
+  }
+
+  // 4. Table Ringkasan Jumlah Kehadiran di Semua Mata Kuliah
+  const headRow = [
+    'No',
+    'Kode MK',
+    'Mata Kuliah',
+    'SKS',
+    'Dosen Pengampu',
+    'Rombel',
+    'H',
+    'I',
+    'S',
+    'A',
+    'Total',
+    '%',
+    'Status Ujian',
+  ];
+
+  const bodyRows = courses.map((item, index) => {
+    const isEligible = item.percentage >= 75;
+    return [
+      (index + 1).toString(),
+      item.courseCode,
+      item.courseName,
+      `${item.sks}`,
+      item.lecturerName,
+      item.rombel,
+      item.hadir.toString(),
+      item.izin.toString(),
+      item.sakit.toString(),
+      item.alpha.toString(),
+      item.totalHeld.toString(),
+      `${item.percentage}%`,
+      isEligible ? 'MEMENUHI (>=75%)' : 'BELUM ( <75% )',
+    ];
+  });
+
+  // Summary footer row
+  const totalHadir = courses.reduce((sum, c) => sum + c.hadir, 0);
+  const totalIzin = courses.reduce((sum, c) => sum + c.izin, 0);
+  const totalSakit = courses.reduce((sum, c) => sum + c.sakit, 0);
+  const totalAlpha = courses.reduce((sum, c) => sum + c.alpha, 0);
+  const totalAllSessions = courses.reduce((sum, c) => sum + c.totalHeld, 0);
+
+  const footRow = [
+    '',
+    'TOTAL',
+    'Kumulatif Seluruh Mata Kuliah',
+    `${totalSksTaken}`,
+    '-',
+    '-',
+    `${totalHadir}`,
+    `${totalIzin}`,
+    `${totalSakit}`,
+    `${totalAlpha}`,
+    `${totalAllSessions}`,
+    `${overallRate.percentage}%`,
+    overallRate.percentage >= 75 ? 'BERHAK UJIAN' : 'EVALUASI BAAK',
+  ];
+
+  autoTable(doc, {
+    startY: biodataY + biodataHeight + 4,
+    head: [headRow],
+    body: bodyRows,
+    foot: [footRow],
+    theme: 'grid',
+    styles: {
+      fontSize: 7.5,
+      cellPadding: 1.5,
+      halign: 'center',
+      valign: 'middle',
+      lineColor: [203, 213, 225],
+      lineWidth: 0.15,
+      textColor: [15, 23, 42],
+    },
+    headStyles: {
+      fillColor: [15, 23, 42], // Slate 900
+      textColor: [255, 255, 255],
+      fontStyle: 'bold',
+      halign: 'center',
+      fontSize: 7.5,
+    },
+    footStyles: {
+      fillColor: [241, 245, 249],
+      textColor: [15, 23, 42],
+      fontStyle: 'bold',
+      fontSize: 7.5,
+      halign: 'center',
+    },
+    columnStyles: {
+      0: { cellWidth: 8, halign: 'center' }, // No
+      1: { cellWidth: 19, halign: 'center', fontStyle: 'bold' }, // Kode
+      2: { cellWidth: 42, halign: 'left', fontStyle: 'bold' }, // Nama MK
+      3: { cellWidth: 9, halign: 'center' }, // SKS
+      4: { cellWidth: 32, halign: 'left' }, // Dosen
+      5: { cellWidth: 14, halign: 'center' }, // Rombel
+      6: { cellWidth: 7.5, halign: 'center', fillColor: [240, 253, 244] }, // H
+      7: { cellWidth: 6.5, halign: 'center' }, // I
+      8: { cellWidth: 6.5, halign: 'center' }, // S
+      9: { cellWidth: 6.5, halign: 'center', fillColor: [254, 242, 242] }, // A
+      10: { cellWidth: 9, halign: 'center' }, // Total
+      11: { cellWidth: 10, halign: 'center', fontStyle: 'bold' }, // %
+      12: { cellWidth: 21, halign: 'center', fontStyle: 'bold' }, // Status Ujian
+    },
+    didParseCell: (data) => {
+      if (data.section === 'body') {
+        // Highlight status ujian column
+        if (data.column.index === 12) {
+          const raw = String(data.cell.raw);
+          if (raw.includes('MEMENUHI')) {
+            data.cell.styles.textColor = [22, 101, 52];
+            data.cell.styles.fontStyle = 'bold';
+          } else {
+            data.cell.styles.textColor = [185, 28, 28];
+            data.cell.styles.fontStyle = 'bold';
+            data.cell.styles.fillColor = [254, 226, 226];
+          }
+        }
+        // Color alpha column
+        if (data.column.index === 9 && Number(data.cell.raw) > 0) {
+          data.cell.styles.textColor = [185, 28, 28];
+          data.cell.styles.fontStyle = 'bold';
+        }
+      }
+    },
+  });
+
+  // 5. DUA KOTAK KOSONG UNTUK TANDA TANGAN VERIFIKASI KEHADIRAN UTS & UAS
+  const finalTableY = (doc as any).lastAutoTable.finalY;
+  const verificationBoxHeight = 44; // mm
+  const signatureHeight = 32; // mm
+  const totalBottomHeight = verificationBoxHeight + signatureHeight + 18;
+
+  let boxStartY = finalTableY + 4;
+  // If not enough remaining room on the current page, start clean on next page
+  if (boxStartY + totalBottomHeight > pageHeight - 14) {
+    doc.addPage();
+    boxStartY = 20;
+  }
+
+  // Section Header for Verification Boxes
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8.5);
+  doc.setTextColor(15, 23, 42);
+  doc.text('KOTAK VERIFIKASI KEHADIRAN UJIAN MAHASISWA (UTS & UAS)', 14, boxStartY);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7);
+  doc.setTextColor(100, 116, 139);
+  doc.text('* Wajib ditandatangani oleh Pengawas Ruang Ujian sebagai bukti kehadiran fisik & pemenuhan kuota perkuliahan.', 14, boxStartY + 3.8);
+
+  const boxesY = boxStartY + 5.5;
+  const boxWidth = 88;
+  const boxHeight = 36;
+  const gap = (pageWidth - 28 - (boxWidth * 2)); // spacing between the 2 boxes
+
+  // -------------------------------------------------------------
+  // KOTAK 1: VERIFIKASI KEHADIRAN UTS (Ujian Tengah Semester)
+  // -------------------------------------------------------------
+  const box1X = 14;
+  // Outer Box Border
+  doc.setDrawColor(71, 85, 105);
+  doc.setLineWidth(0.4);
+  doc.setFillColor(255, 255, 255);
+  doc.roundedRect(box1X, boxesY, boxWidth, boxHeight, 1.5, 1.5, 'FD');
+
+  // Top Title Bar for Box 1
+  doc.setFillColor(241, 245, 249);
+  doc.roundedRect(box1X, boxesY, boxWidth, 7, 1.5, 1.5, 'F');
+  doc.line(box1X, boxesY + 7, box1X + boxWidth, boxesY + 7);
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8);
+  doc.setTextColor(15, 23, 42);
+  doc.text('1. VERIFIKASI KEHADIRAN UTS', box1X + 4, boxesY + 4.8);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(6.5);
+  doc.setTextColor(100, 116, 139);
+  doc.text('(Sesi 1 s/d Pertemuan 7/8)', box1X + boxWidth - 4, boxesY + 4.8, { align: 'right' });
+
+  // Inside Box 1: Criteria & Status
+  doc.setFontSize(7);
+  doc.setTextColor(51, 65, 85);
+  doc.text('Syarat Minimal Kehadiran : 75% Pertemuan Efektif', box1X + 4, boxesY + 11);
+  doc.text(`Status Kehadiran Sistem    : ${overallRate.percentage >= 75 ? 'MEMENUHI SYARAT UTS' : 'DISPENSASI / EVALUASI'}`, box1X + 4, boxesY + 14.5);
+
+  // EMPTY BOX FOR PHYSICAL SIGNATURE & EXAM STAMP
+  const emptyBox1Y = boxesY + 16.5;
+  const emptyBox1Height = 13.5;
+  doc.setDrawColor(203, 213, 225);
+  doc.setLineWidth(0.25);
+  doc.setFillColor(250, 250, 250);
+  doc.rect(box1X + 4, emptyBox1Y, boxWidth - 8, emptyBox1Height, 'FD');
+
+  doc.setFont('helvetica', 'italic');
+  doc.setFontSize(6.5);
+  doc.setTextColor(160, 174, 192);
+  doc.text('[ KOTAK KOSONG TEMPAT TANDA TANGAN / PARAF PENGAWAS UTS ]', box1X + (boxWidth / 2), emptyBox1Y + (emptyBox1Height / 2) + 1.2, { align: 'center' });
+
+  // Signature verification labels at bottom of Box 1
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(6.5);
+  doc.setTextColor(71, 85, 105);
+  doc.text('Tanda Tangan Pengawas: ( ............................................... )', box1X + 4, boxesY + boxHeight - 2.2);
+
+  // -------------------------------------------------------------
+  // KOTAK 2: VERIFIKASI KEHADIRAN UAS (Ujian Akhir Semester)
+  // -------------------------------------------------------------
+  const box2X = box1X + boxWidth + gap;
+  // Outer Box Border
+  doc.setDrawColor(71, 85, 105);
+  doc.setLineWidth(0.4);
+  doc.setFillColor(255, 255, 255);
+  doc.roundedRect(box2X, boxesY, boxWidth, boxHeight, 1.5, 1.5, 'FD');
+
+  // Top Title Bar for Box 2
+  doc.setFillColor(241, 245, 249);
+  doc.roundedRect(box2X, boxesY, boxWidth, 7, 1.5, 1.5, 'F');
+  doc.line(box2X, boxesY + 7, box2X + boxWidth, boxesY + 7);
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8);
+  doc.setTextColor(15, 23, 42);
+  doc.text('2. VERIFIKASI KEHADIRAN UAS', box2X + 4, boxesY + 4.8);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(6.5);
+  doc.setTextColor(100, 116, 139);
+  doc.text('(Total Seluruh Pertemuan Semester)', box2X + boxWidth - 4, boxesY + 4.8, { align: 'right' });
+
+  // Inside Box 2: Criteria & Status
+  doc.setFontSize(7);
+  doc.setTextColor(51, 65, 85);
+  doc.text('Syarat Minimal Kehadiran : 75% Total Sesi Semester', box2X + 4, boxesY + 11);
+  doc.text(`Status Kehadiran Sistem    : ${overallRate.percentage >= 75 ? 'MEMENUHI SYARAT UAS' : 'DISPENSASI / EVALUASI'}`, box2X + 4, boxesY + 14.5);
+
+  // EMPTY BOX FOR PHYSICAL SIGNATURE & EXAM STAMP
+  const emptyBox2Y = boxesY + 16.5;
+  const emptyBox2Height = 13.5;
+  doc.setDrawColor(203, 213, 225);
+  doc.setLineWidth(0.25);
+  doc.setFillColor(250, 250, 250);
+  doc.rect(box2X + 4, emptyBox2Y, boxWidth - 8, emptyBox2Height, 'FD');
+
+  doc.setFont('helvetica', 'italic');
+  doc.setFontSize(6.5);
+  doc.setTextColor(160, 174, 192);
+  doc.text('[ KOTAK KOSONG TEMPAT TANDA TANGAN / PARAF PENGAWAS UAS ]', box2X + (boxWidth / 2), emptyBox2Y + (emptyBox2Height / 2) + 1.2, { align: 'center' });
+
+  // Signature verification labels at bottom of Box 2
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(6.5);
+  doc.setTextColor(71, 85, 105);
+  doc.text('Tanda Tangan Pengawas: ( ............................................... )', box2X + 4, boxesY + boxHeight - 2.2);
+
+  // 6. Signatures Section: Mahasiswa & BAAK
+  const signatureY = boxesY + boxHeight + 4;
+  const todayFormatted = new Date().toLocaleDateString('id-ID', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
+
+  // Left: Mahasiswa
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7.5);
+  doc.setTextColor(71, 85, 105);
+  doc.text(`Kebumen, ${todayFormatted}`, 14, signatureY);
+  doc.text('Mahasiswa yang bersangkutan,', 14, signatureY + 4);
+
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(15, 23, 42);
+  doc.text(student.name, 14, signatureY + 20);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7);
+  doc.setTextColor(71, 85, 105);
+  doc.text(`NIM. ${student.nim}`, 14, signatureY + 23.5);
+
+  // Right: Bagian Administrasi Akademik & Kemahasiswaan (BAAK)
+  const rightSigX = pageWidth - 78;
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7.5);
+  doc.setTextColor(71, 85, 105);
+  doc.text('Mengetahui & Memvalidasi,', rightSigX, signatureY);
+  doc.text('Bagian Administrasi Akademik (BAAK)', rightSigX, signatureY + 4);
+
+  // Digital verification badge
+  doc.setDrawColor(203, 213, 225);
+  doc.setFillColor(248, 250, 252);
+  doc.roundedRect(rightSigX, signatureY + 6.5, 64, 10, 1, 1, 'FD');
+  doc.setFontSize(6.5);
+  doc.setTextColor(71, 85, 105);
+  doc.text('DOKUMEN RESMI TERSINKRONISASI', rightSigX + 3.5, signatureY + 10.5);
+  doc.text('STMIK PGRI ARUNGBINANG KEBUMEN', rightSigX + 3.5, signatureY + 14);
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(7.5);
+  doc.setTextColor(15, 23, 42);
+  doc.text('Kepala Biro Administrasi Akademik', rightSigX, signatureY + 20);
+  doc.setLineWidth(0.3);
+  doc.setDrawColor(15, 23, 42);
+  doc.line(rightSigX, signatureY + 21, rightSigX + 60, signatureY + 21);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7);
+  doc.setTextColor(71, 85, 105);
+  doc.text('NIP. 198205142010121001', rightSigX, signatureY + 24.5);
+
+  // 7. Academic Notes / Notice
+  const noteY = signatureY + 27;
+  if (noteY + 12 < pageHeight - 8) {
+    doc.setFillColor(248, 250, 252);
+    doc.setDrawColor(226, 232, 240);
+    doc.roundedRect(14, noteY, pageWidth - 28, 10.5, 1, 1, 'FD');
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(6.5);
+    doc.setTextColor(15, 23, 42);
+    doc.text('Ketentuan Penting Penggunaan Kartu Presensi:', 17, noteY + 3.8);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6);
+    doc.setTextColor(71, 85, 105);
+    doc.text('1. Kartu ini wajib dicetak dan dibawa mahasiswa pada setiap pelaksanaan UTS & UAS untuk diverifikasi oleh Pengawas Ruang Ujian.', 17, noteY + 6.8);
+    doc.text('2. Hak mengikuti ujian diberikan bagi mahasiswa dengan persentase kehadiran minimal 75% pada masing-masing mata kuliah yang ditempuh.', 17, noteY + 9.5);
+  }
+
+  // 8. Page Numbering & Document Footers
+  const totalPages = (doc as any).internal.getNumberOfPages();
+  for (let p = 1; p <= totalPages; p++) {
+    doc.setPage(p);
+    doc.setFontSize(6.5);
+    doc.setTextColor(148, 163, 184);
+    doc.text(
+      `Halaman ${p} dari ${totalPages} · Dokumen resmi "Kartu Presensi Mahasiswa" dicetak otomatis melalui Portal Presensi STMIK PGRI Arungbinang pada ${new Date().toLocaleString('id-ID')} WIB`,
+      pageWidth / 2,
+      pageHeight - 5,
+      { align: 'center' }
+    );
+  }
+
+  // 9. Save PDF with the exact name requested: "Kartu Presensi Mahasiswa"
+  const cleanNim = student.nim.replace(/[^a-zA-Z0-9]/g, '_');
+  const fileName = `Kartu_Presensi_Mahasiswa_${cleanNim}.pdf`;
+  doc.save(fileName);
+}
+

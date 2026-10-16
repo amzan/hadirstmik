@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Html5Qrcode } from 'html5-qrcode';
 import { useAttendance } from '../../context/AttendanceContext';
 import { AttendanceSession } from '../../types/attendance';
@@ -26,24 +26,85 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({ isOpen, onClose 
   const [manualTokenInput, setManualTokenInput] = useState('');
 
   const scannerRef = useRef<Html5Qrcode | null>(null);
+  const isStoppingRef = useRef(false);
   const qrRegionId = 'html5qr-code-full-region';
 
-  // Initialize or teardown camera scanner when mode changes
-  useEffect(() => {
-    if (!isOpen || scanMode !== 'camera') {
-      if (scannerRef.current && isScanning) {
-        scannerRef.current.stop().catch(() => {}).finally(() => {
-          setIsScanning(false);
-        });
+  // Safely stop and clear scanner without throwing "Cannot stop, scanner is not running or paused."
+  const safeStopScanner = useCallback(async (instance?: Html5Qrcode | null) => {
+    const scanner = instance || scannerRef.current;
+    if (!scanner || isStoppingRef.current) return;
+
+    isStoppingRef.current = true;
+    try {
+      // Check scanner state before calling stop
+      // State 2: SCANNING, State 3: PAUSED
+      let canStop = true;
+      if (typeof scanner.getState === 'function') {
+        const state = scanner.getState();
+        canStop = (state === 2 || state === 3);
       }
+
+      if (canStop) {
+        await scanner.stop();
+      }
+    } catch (err: any) {
+      // Suppress standard "Cannot stop, scanner is not running or paused" warning from html5-qrcode
+      const msg = err?.message || String(err || '');
+      if (!msg.includes('Cannot stop') && !msg.includes('not running') && !msg.includes('paused')) {
+        console.warn('safeStopScanner notice:', err);
+      }
+    } finally {
+      try {
+        scanner.clear();
+      } catch {}
+      if (scannerRef.current === scanner) {
+        scannerRef.current = null;
+      }
+      setIsScanning(false);
+      isStoppingRef.current = false;
+    }
+  }, []);
+
+  // Handle scanned token - safely stop camera BEFORE switching to result view
+  const handleTokenScanned = useCallback(async (token: string, currentScanner?: Html5Qrcode | null) => {
+    await safeStopScanner(currentScanner || scannerRef.current);
+    const result = scanQrCode(token, currentUser.username);
+    setScanResult({
+      ...result,
+      scannedToken: token,
+    });
+  }, [scanQrCode, currentUser.username, safeStopScanner]);
+
+  // Handle modal closing
+  const handleClose = useCallback(async () => {
+    await safeStopScanner();
+    setScanResult(null);
+    setCameraError(null);
+    onClose();
+  }, [safeStopScanner, onClose]);
+
+  // Initialize or teardown camera scanner when mode changes or result appears
+  useEffect(() => {
+    let isCancelled = false;
+    let localScanner: Html5Qrcode | null = null;
+
+    if (!isOpen || scanMode !== 'camera' || scanResult !== null) {
+      safeStopScanner();
       return;
     }
 
-    let isMounted = true;
     const startScanner = async () => {
+      // Make sure previous scanner instance is cleanly stopped
+      await safeStopScanner();
+      if (isCancelled) return;
+
       try {
         setCameraError(null);
+        const container = document.getElementById(qrRegionId);
+        if (!container) return;
+
         const scanner = new Html5Qrcode(qrRegionId);
+        localScanner = scanner;
         scannerRef.current = scanner;
 
         await scanner.start(
@@ -52,50 +113,51 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({ isOpen, onClose 
             fps: 10,
             qrbox: { width: 250, height: 250 },
           },
-          (decodedText) => {
-            if (isMounted) {
-              handleTokenScanned(decodedText);
-              scanner.stop().catch(() => {});
-              setIsScanning(false);
+          async (decodedText) => {
+            if (!isCancelled) {
+              await handleTokenScanned(decodedText, scanner);
             }
           },
           () => {}
         );
-        if (isMounted) setIsScanning(true);
+
+        if (isCancelled) {
+          await safeStopScanner(scanner);
+          return;
+        }
+
+        setIsScanning(true);
       } catch (err: any) {
-        if (isMounted) {
+        if (!isCancelled) {
           console.warn('Camera start error:', err);
           setCameraError(
             'Kamera tidak dapat diakses atau izin belum diberikan. Silakan gunakan opsi "Unggah QR" atau "Ketik Token Sesi".'
           );
           setIsScanning(false);
         }
+        try {
+          if (localScanner) {
+            localScanner.clear();
+          }
+        } catch {}
       }
     };
 
     const timer = setTimeout(startScanner, 200);
 
     return () => {
-      isMounted = false;
+      isCancelled = true;
       clearTimeout(timer);
-      if (scannerRef.current) {
-        scannerRef.current.stop().catch(() => {});
-      }
+      safeStopScanner(localScanner || scannerRef.current);
     };
-  }, [isOpen, scanMode]);
-
-  // Handle scanned token
-  const handleTokenScanned = (token: string) => {
-    const result = scanQrCode(token, currentUser.username);
-    setScanResult({
-      ...result,
-      scannedToken: token,
-    });
-  };
+  }, [isOpen, scanMode, scanResult, safeStopScanner, handleTokenScanned]);
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    // Reset value so user can upload the same file again if desired
+    e.target.value = '';
 
     const html5QrCode = new Html5Qrcode('qr-upload-temp-region');
     html5QrCode
@@ -108,6 +170,11 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({ isOpen, onClose 
           success: false,
           message: 'QR Code tidak terdeteksi pada gambar. Pastikan gambar jelas dan tidak buram.',
         });
+      })
+      .finally(() => {
+        try {
+          html5QrCode.clear();
+        } catch {}
       });
   };
 
@@ -130,7 +197,7 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({ isOpen, onClose 
             </div>
           </div>
           <button
-            onClick={onClose}
+            onClick={handleClose}
             className="p-1 rounded-lg text-slate-400 hover:text-slate-700 transition cursor-pointer"
           >
             <X className="w-5 h-5" />
@@ -141,7 +208,10 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({ isOpen, onClose 
         {!scanResult && (
           <div className="flex border-b border-slate-200 bg-slate-50 px-4 py-2 gap-2 text-sm font-semibold">
             <button
-              onClick={() => setScanMode('camera')}
+              onClick={() => {
+                setCameraError(null);
+                setScanMode('camera');
+              }}
               className={`flex-1 py-2 px-3 rounded-lg flex items-center justify-center gap-2 transition cursor-pointer ${
                 scanMode === 'camera'
                   ? 'bg-white text-slate-900 shadow-xs border border-slate-300'
@@ -152,7 +222,10 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({ isOpen, onClose 
               <span>Kamera Langsung</span>
             </button>
             <button
-              onClick={() => setScanMode('upload')}
+              onClick={() => {
+                safeStopScanner();
+                setScanMode('upload');
+              }}
               className={`flex-1 py-2 px-3 rounded-lg flex items-center justify-center gap-2 transition cursor-pointer ${
                 scanMode === 'upload'
                   ? 'bg-white text-slate-900 shadow-xs border border-slate-300'
@@ -163,7 +236,10 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({ isOpen, onClose 
               <span>Unggah QR</span>
             </button>
             <button
-              onClick={() => setScanMode('token')}
+              onClick={() => {
+                safeStopScanner();
+                setScanMode('token');
+              }}
               className={`flex-1 py-2 px-3 rounded-lg flex items-center justify-center gap-2 transition cursor-pointer ${
                 scanMode === 'token'
                   ? 'bg-white text-slate-900 shadow-xs border border-slate-300'
@@ -232,7 +308,7 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({ isOpen, onClose 
                   Scan Lagi
                 </button>
                 <button
-                  onClick={onClose}
+                  onClick={handleClose}
                   className="flex-1 py-2.5 px-4 bg-slate-900 hover:bg-slate-800 text-white text-sm font-semibold rounded-lg transition cursor-pointer"
                 >
                   Selesai
@@ -280,20 +356,24 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({ isOpen, onClose 
               {/* Camera Mode */}
               {scanMode === 'camera' && (
                 <div className="flex flex-col items-center">
-                  <div
-                    id={qrRegionId}
-                    className="w-full max-w-[320px] aspect-square bg-slate-900 rounded-xl overflow-hidden border border-slate-300 flex items-center justify-center text-white text-sm relative"
-                  >
+                  {/* Dedicated camera wrapper: container for Html5Qrcode has ZERO React children to prevent removeChild error */}
+                  <div className="w-full max-w-[320px] aspect-square bg-slate-900 rounded-xl overflow-hidden border border-slate-300 relative flex items-center justify-center">
+                    {/* The Html5Qrcode DOM target element: NEVER put React children inside this div */}
+                    <div id={qrRegionId} className="w-full h-full" />
+
+                    {/* Sibling React overlay: safely decoupled from Html5Qrcode DOM manipulations */}
                     {!isScanning && !cameraError && (
-                      <div className="text-center p-4">
-                        <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 text-emerald-400" />
-                        <span>Mengaktifkan kamera perangkat...</span>
+                      <div className="absolute inset-0 flex items-center justify-center text-white text-sm bg-slate-900/90 pointer-events-none z-10">
+                        <div className="text-center p-4">
+                          <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 text-emerald-400" />
+                          <span>Mengaktifkan kamera perangkat...</span>
+                        </div>
                       </div>
                     )}
                   </div>
 
                   {cameraError && (
-                    <div className="mt-3 p-3 bg-amber-50 border border-amber-200 text-amber-900 rounded-lg text-sm text-left">
+                    <div className="mt-3 p-3 bg-amber-50 border border-amber-200 text-amber-900 rounded-lg text-sm text-left w-full max-w-[320px]">
                       {cameraError}
                     </div>
                   )}
@@ -323,7 +403,8 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({ isOpen, onClose 
                       className="hidden"
                     />
                   </label>
-                  <div id="qr-upload-temp-region" className="hidden"></div>
+                  {/* Empty target for file scanning */}
+                  <div id="qr-upload-temp-region" className="hidden" />
                 </div>
               )}
             </>
@@ -337,7 +418,7 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({ isOpen, onClose 
             Sistem Validasi Resmi STMIK PGRI
           </span>
           <button
-            onClick={onClose}
+            onClick={handleClose}
             className="px-4 py-1.5 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-700 font-medium cursor-pointer"
           >
             Tutup
