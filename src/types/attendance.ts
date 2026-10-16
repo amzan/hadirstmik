@@ -80,6 +80,7 @@ export interface Student {
   rombels?: string[]; // Array of rombels: e.g. ["TI 1A", "TI 3"]
   email: string;
   phone?: string;
+  password?: string; // Custom hashed or stored password if updated by user or admin
   excludedScheduleIds?: string[]; // IDs of schedules excluded/dropped to manage SKS limit (e.g. <= 20 SKS)
   customScheduleIds?: string[];   // Additional schedule IDs explicitly enrolled
 }

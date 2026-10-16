@@ -227,7 +227,14 @@ export const ChangePasswordOtpSection: React.FC<ChangePasswordOtpSectionProps> =
     try {
       // 1. Update in AttendanceContext using resetUserPassword & updateUser
       const res = resetUserPassword(currentUser.username, newPassword);
-      updateUser(currentUser.id, { password: newPassword });
+      const updateData: Partial<User> = { password: newPassword };
+      if (overrideEmail && overrideEmail.trim() && overrideEmail.trim() !== currentUser.email) {
+        updateData.email = overrideEmail.trim();
+        if (onEmailUpdated) {
+          onEmailUpdated(overrideEmail.trim());
+        }
+      }
+      updateUser(currentUser.id, updateData);
 
       if (onPasswordChanged) {
         onPasswordChanged(newPassword);

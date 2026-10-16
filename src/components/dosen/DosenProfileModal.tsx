@@ -4,7 +4,7 @@ import { ProgramStudi } from '../../types/attendance';
 import {
   X, User, Mail, Phone, BookOpen, Shield, Check,
   Camera, Building, FileCheck, CheckCircle2, AlertCircle, Sparkles, Upload, Image as ImageIcon,
-  KeyRound, Laptop
+  KeyRound, Laptop, Eye, EyeOff
 } from 'lucide-react';
 import { ChangePasswordOtpSection } from '../shared/ChangePasswordOtpSection';
 import { DeviceSessionManager } from '../shared/DeviceSessionManager';
@@ -59,6 +59,8 @@ export const DosenProfileModal: React.FC<DosenProfileModalProps> = ({
   const [academicRank, setAcademicRank] = useState(currentUser.academicRank || 'Lektor');
   const [prodi, setProdi] = useState<ProgramStudi>(currentUser.prodi || 'Teknologi Informasi');
   const [email, setEmail] = useState(currentUser.email || '');
+  const [newPassword, setNewPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [phone, setPhone] = useState(currentUser.phone || '');
   const [officeRoom, setOfficeRoom] = useState(currentUser.officeRoom || 'Gedung A Lt. 2 R. Dosen');
   const [avatarUrl, setAvatarUrl] = useState(currentUser.avatarUrl || AVATAR_PRESETS[0].url);
@@ -80,6 +82,8 @@ export const DosenProfileModal: React.FC<DosenProfileModalProps> = ({
       setAcademicRank(currentUser.academicRank || 'Lektor');
       setProdi(currentUser.prodi || 'Teknologi Informasi');
       setEmail(currentUser.email || '');
+      setNewPassword('');
+      setShowPassword(false);
       setPhone(currentUser.phone || '');
       setOfficeRoom(currentUser.officeRoom || 'Gedung A Lt. 2 R. Dosen');
       setAvatarUrl(currentUser.avatarUrl || AVATAR_PRESETS[0].url);
@@ -196,8 +200,7 @@ export const DosenProfileModal: React.FC<DosenProfileModalProps> = ({
       return;
     }
 
-    // Update user in context
-    updateUser(currentUser.id, {
+    const payload: Partial<User> = {
       name: cleanName,
       username: cleanNidn,
       nidn: cleanNidn,
@@ -208,7 +211,18 @@ export const DosenProfileModal: React.FC<DosenProfileModalProps> = ({
       phone: phone.trim(),
       officeRoom: officeRoom.trim(),
       avatarUrl: avatarUrl.trim(),
-    });
+    };
+
+    if (newPassword.trim()) {
+      if (newPassword.trim().length < 6) {
+        setErrorMessage('Kata sandi baru minimal terdiri dari 6 karakter.');
+        return;
+      }
+      payload.password = newPassword.trim();
+    }
+
+    // Update user in context and persist automatically
+    updateUser(currentUser.id, payload);
 
     setSaveSuccess(true);
     setTimeout(() => {
@@ -562,6 +576,34 @@ export const DosenProfileModal: React.FC<DosenProfileModalProps> = ({
               />
             </div>
 
+            {/* Kata Sandi Baru (Opsional) */}
+            <div className="sm:col-span-2">
+              <label className="block text-xs font-semibold text-slate-700 mb-1 flex items-center justify-between">
+                <span>Kata Sandi Baru Dosen (Opsional)</span>
+                <span className="text-[11px] font-normal text-slate-500">Kosongkan jika tidak ingin mengubah</span>
+              </label>
+              <div className="relative">
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="Masukkan kata sandi baru dosen (minimal 6 karakter)"
+                  className="w-full px-3.5 py-2 pr-10 text-sm rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-hidden text-slate-900 font-mono"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 p-1 cursor-pointer"
+                  title={showPassword ? 'Sembunyikan sandi' : 'Tampilkan sandi'}
+                >
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+              <p className="text-[11px] text-slate-500 mt-1">
+                Jika diisi, kata sandi login dosen akan langsung tersinkronisasi ke seluruh database sistem.
+              </p>
+            </div>
+
             {/* Ruang Kerja / Kantor */}
             <div className="sm:col-span-2">
               <label className="block text-xs font-semibold text-slate-700 mb-1">
@@ -664,7 +706,10 @@ export const DosenProfileModal: React.FC<DosenProfileModalProps> = ({
           <ChangePasswordOtpSection
             currentUser={currentUser}
             overrideEmail={email}
-            onPasswordChanged={() => {}}
+            onEmailUpdated={(newEm) => setEmail(newEm)}
+            onPasswordChanged={() => {
+              setNewPassword('');
+            }}
           />
         </div>
       ) : (

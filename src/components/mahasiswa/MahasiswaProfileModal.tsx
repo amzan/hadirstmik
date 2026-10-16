@@ -6,7 +6,7 @@ import { DeviceSessionManager } from '../shared/DeviceSessionManager';
 import {
   X, User, Mail, Phone, BookOpen, Shield, Check,
   Camera, CheckCircle2, AlertCircle, Sparkles, Upload, KeyRound,
-  GraduationCap, Laptop
+  GraduationCap, Laptop, Eye, EyeOff
 } from 'lucide-react';
 
 interface MahasiswaProfileModalProps {
@@ -56,6 +56,8 @@ export const MahasiswaProfileModal: React.FC<MahasiswaProfileModalProps> = ({
   const [prodi, setProdi] = useState<ProgramStudi>(currentUser.prodi || 'Teknologi Informasi');
   const [rombel, setRombel] = useState(currentUser.rombel || 'TI 3');
   const [email, setEmail] = useState(currentUser.email || '');
+  const [newPassword, setNewPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [phone, setPhone] = useState(currentUser.phone || '');
   const [avatarUrl, setAvatarUrl] = useState(currentUser.avatarUrl || STUDENT_AVATAR_PRESETS[0].url);
   const [showCustomAvatarInput, setShowCustomAvatarInput] = useState(false);
@@ -73,6 +75,8 @@ export const MahasiswaProfileModal: React.FC<MahasiswaProfileModalProps> = ({
       setProdi(currentUser.prodi || 'Teknologi Informasi');
       setRombel(currentUser.rombel || 'TI 3');
       setEmail(currentUser.email || '');
+      setNewPassword('');
+      setShowPassword(false);
       setPhone(currentUser.phone || '');
       setAvatarUrl(currentUser.avatarUrl || STUDENT_AVATAR_PRESETS[0].url);
       setSaveSuccess(false);
@@ -180,14 +184,24 @@ export const MahasiswaProfileModal: React.FC<MahasiswaProfileModalProps> = ({
       return;
     }
 
-    updateUser(currentUser.id, {
+    const updatePayload: Partial<User> = {
       name: cleanName,
       prodi,
       rombel: rombel.trim(),
       email: cleanEmail,
       phone: phone.trim(),
       avatarUrl: avatarUrl.trim(),
-    });
+    };
+
+    if (newPassword.trim()) {
+      if (newPassword.trim().length < 6) {
+        setErrorMessage('Kata sandi baru minimal terdiri dari 6 karakter.');
+        return;
+      }
+      updatePayload.password = newPassword.trim();
+    }
+
+    updateUser(currentUser.id, updatePayload);
 
     setSaveSuccess(true);
     setTimeout(() => {
@@ -500,7 +514,34 @@ export const MahasiswaProfileModal: React.FC<MahasiswaProfileModalProps> = ({
                     className="w-full px-3.5 py-2 text-sm rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-hidden text-slate-900 font-mono"
                   />
                   <p className="text-[11px] text-slate-500 mt-1">
-                    Email ini akan digunakan untuk menerima kode verifikasi OTP saat ganti kata sandi.
+                    Email ini akan digunakan untuk menerima kode verifikasi OTP saat ganti kata sandi dan login.
+                  </p>
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-semibold text-slate-700 mb-1 flex items-center justify-between">
+                    <span>Kata Sandi Baru (Opsional)</span>
+                    <span className="text-[11px] font-normal text-slate-500">Kosongkan jika tidak ingin mengubah</span>
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      placeholder="Masukkan kata sandi baru (minimal 6 karakter)"
+                      className="w-full px-3.5 py-2 pr-10 text-sm rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-hidden text-slate-900 font-mono"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 p-1 cursor-pointer"
+                      title={showPassword ? 'Sembunyikan sandi' : 'Tampilkan sandi'}
+                    >
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    Jika diisi, kata sandi login mahasiswa akan otomatis tersinkronisasi ke seluruh database sistem.
                   </p>
                 </div>
               </div>
@@ -513,7 +554,7 @@ export const MahasiswaProfileModal: React.FC<MahasiswaProfileModalProps> = ({
                   className="text-xs text-blue-600 hover:text-blue-800 font-semibold flex items-center gap-1.5 transition cursor-pointer"
                 >
                   <KeyRound className="w-3.5 h-3.5" />
-                  <span>Ingin ubah kata sandi? Buka Tab Password</span>
+                  <span>Ingin ubah via OTP? Buka Tab Password</span>
                 </button>
 
                 <div className="flex items-center gap-2.5">
@@ -540,7 +581,10 @@ export const MahasiswaProfileModal: React.FC<MahasiswaProfileModalProps> = ({
               <ChangePasswordOtpSection
                 currentUser={currentUser}
                 overrideEmail={email}
-                onPasswordChanged={() => {}}
+                onEmailUpdated={(updatedEm) => setEmail(updatedEm)}
+                onPasswordChanged={(newPwd) => {
+                  setNewPassword('');
+                }}
               />
             </div>
           ) : (

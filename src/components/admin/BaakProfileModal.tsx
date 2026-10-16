@@ -3,7 +3,8 @@ import { useAttendance } from '../../context/AttendanceContext';
 import { ChangePasswordOtpSection } from '../shared/ChangePasswordOtpSection';
 import {
   X, User, Mail, Phone, Shield, Check,
-  Camera, Building, CheckCircle2, AlertCircle, Sparkles, Upload, KeyRound, Laptop
+  Camera, Building, CheckCircle2, AlertCircle, Sparkles, Upload, KeyRound, Laptop,
+  Eye, EyeOff
 } from 'lucide-react';
 import { DeviceSessionManager } from '../shared/DeviceSessionManager';
 
@@ -49,6 +50,8 @@ export const BaakProfileModal: React.FC<BaakProfileModalProps> = ({
   const [name, setName] = useState(currentUser.name || 'Administrator Akademik (BAAK)');
   const [title, setTitle] = useState(currentUser.title || 'Kepala Bagian BAAK');
   const [email, setEmail] = useState(currentUser.email || 'baak@stmik-arungbinang.ac.id');
+  const [newPassword, setNewPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [phone, setPhone] = useState(currentUser.phone || '081234567890');
   const [officeRoom, setOfficeRoom] = useState(currentUser.officeRoom || 'Gedung Rektorat Lt. 1 Ruang BAAK');
   const [avatarUrl, setAvatarUrl] = useState(currentUser.avatarUrl || BAAK_AVATAR_PRESETS[0].url);

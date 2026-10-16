@@ -1191,61 +1191,167 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         u.id === id ||
         (u.username && user.username && u.username.toLowerCase() === user.username.toLowerCase() && u.role === user.role)
       );
+      let next: User[];
       if (idx >= 0) {
-        const next = [...prev];
+        next = [...prev];
         next[idx] = { ...next[idx], ...user, id: next[idx].id || id };
-        return next;
+      } else {
+        next = [...prev, user];
       }
-      return [...prev, user];
+      localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(next));
+      return next;
     });
     return user;
   }, []);
 
   const updateUser = useCallback((id: string, updated: Partial<User>) => {
+    // 1. Update users state and persist immediately to localStorage
+    let nextUsersList: User[] = [];
     setUsers(prev => {
-      const exists = prev.some(u => u.id === id);
+      const exists = prev.some(u => 
+        u.id === id || 
+        (u.username && (
+          (updated.username && u.username.toLowerCase() === updated.username.toLowerCase()) ||
+          (currentUser.id === id && u.username.toLowerCase() === currentUser.username.toLowerCase())
+        ) && (!updated.role || u.role === updated.role))
+      );
+
       if (exists) {
-        return prev.map(u => u.id === id ? { ...u, ...updated } : u);
+        nextUsersList = prev.map(u => {
+          if (
+            u.id === id || 
+            (u.username && (
+              (updated.username && u.username.toLowerCase() === updated.username.toLowerCase()) ||
+              (currentUser.id === id && u.username.toLowerCase() === currentUser.username.toLowerCase())
+            ) && (!updated.role || u.role === updated.role))
+          ) {
+            return { ...u, ...updated };
+          }
+          return u;
+        });
+      } else {
+        const newUserObj: User = {
+          ...currentUser,
+          ...updated,
+          id,
+        };
+        nextUsersList = [...prev, newUserObj];
       }
-      return [...prev, { ...currentUser, ...updated, id }];
+
+      localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(nextUsersList));
+      return nextUsersList;
     });
+
+    // 2. Update active currentUser if it matches the updated user
     setCurrentUser(prev => {
-      if (prev.id === id) {
+      const isTarget = prev.id === id || 
+        (updated.username && prev.username.toLowerCase() === updated.username.toLowerCase()) ||
+        (prev.role === updated.role && prev.username.toLowerCase() === (updated.username || prev.username).toLowerCase());
+
+      if (isTarget) {
         const nextUser = { ...prev, ...updated };
         const isAuth = localStorage.getItem(SESSION_KEYS.AUTH_ACTIVE) === 'true';
         if (isAuth) {
           localStorage.setItem(SESSION_KEYS.ACTIVE_USER, JSON.stringify(nextUser));
+        }
+        if (nextUser.id) {
+          localStorage.setItem(SESSION_KEYS.CURRENT_USER_ID, nextUser.id);
         }
         return nextUser;
       }
       return prev;
     });
 
-    // Sync master students list if student profile was updated
-    if (id.startsWith('mhs-') || updated.role === 'mahasiswa' || currentUser.role === 'mahasiswa') {
-      const targetNim = (updated.username || currentUser.username || (id.startsWith('mhs-') ? id.replace('mhs-', '') : '')).toUpperCase();
-      if (targetNim) {
-        setStudents(prev => prev.map(s => {
+    // 3. Sync master students list if student profile was updated (email, password, name, phone, prodi, rombel)
+    const isStudent = id.startsWith('mhs-') || updated.role === 'mahasiswa' || currentUser.role === 'mahasiswa' ||
+      (updated.username && students.some(s => s.nim.toUpperCase() === updated.username?.toUpperCase()));
+    const targetNim = (updated.username || (id.startsWith('mhs-') ? id.replace('mhs-', '') : '') || (currentUser.role === 'mahasiswa' ? currentUser.username : '')).toUpperCase();
+
+    if (isStudent && targetNim) {
+      setStudents(prev => {
+        const nextStudents = prev.map(s => {
           if (s.nim.toUpperCase() === targetNim) {
             return {
               ...s,
-              name: updated.name || s.name,
-              email: updated.email || s.email,
-              phone: updated.phone || s.phone,
-              prodi: updated.prodi || s.prodi,
-              rombel: updated.rombel || s.rombel,
+              name: updated.name !== undefined ? updated.name : s.name,
+              email: updated.email !== undefined ? updated.email : s.email,
+              password: updated.password !== undefined ? updated.password : s.password,
+              phone: updated.phone !== undefined ? updated.phone : s.phone,
+              prodi: updated.prodi !== undefined ? updated.prodi : s.prodi,
+              rombel: updated.rombel !== undefined ? updated.rombel : s.rombel,
+              rombels: updated.rombels !== undefined ? updated.rombels : s.rombels,
+              excludedScheduleIds: updated.excludedScheduleIds !== undefined ? updated.excludedScheduleIds : s.excludedScheduleIds,
+              customScheduleIds: updated.customScheduleIds !== undefined ? updated.customScheduleIds : s.customScheduleIds,
             };
           }
           return s;
-        }));
-      }
+        });
+        localStorage.setItem(STORAGE_KEYS.STUDENTS, JSON.stringify(nextStudents));
+        return nextStudents;
+      });
     }
 
-    if (updated.name) {
-      setSchedules(prev => prev.map(s => s.lecturerId === id ? { ...s, lecturerName: updated.name! } : s));
-      setSessions(prev => prev.map(ses => ses.lecturerId === id ? { ...ses, lecturerName: updated.name! } : ses));
+    // 4. Cascade update to Courses, Schedules, and Sessions if lecturer details changed
+    if (updated.name || updated.nidn) {
+      setCourses(prev => {
+        const next = prev.map(c => {
+          if (c.defaultLecturerId === id || (updated.name && c.defaultLecturerName === currentUser.name)) {
+            return { ...c, defaultLecturerName: updated.name || c.defaultLecturerName };
+          }
+          return c;
+        });
+        localStorage.setItem(STORAGE_KEYS.COURSES, JSON.stringify(next));
+        return next;
+      });
+
+      setSchedules(prev => {
+        const next = prev.map(s => {
+          if (s.lecturerId === id || (updated.name && s.lecturerName === currentUser.name)) {
+            return { ...s, lecturerName: updated.name || s.lecturerName };
+          }
+          return s;
+        });
+        localStorage.setItem(STORAGE_KEYS.SCHEDULES, JSON.stringify(next));
+        return next;
+      });
+
+      setSessions(prev => {
+        const next = prev.map(ses => {
+          if (ses.lecturerId === id || (updated.name && ses.lecturerName === currentUser.name)) {
+            return { ...ses, lecturerName: updated.name || ses.lecturerName };
+          }
+          return ses;
+        });
+        localStorage.setItem(STORAGE_KEYS.SESSIONS, JSON.stringify(next));
+        return next;
+      });
     }
-  }, [currentUser]);
+
+    // 5. Sync active device sessions for this user with latest email and name
+    setDeviceSessions(prev => {
+      let changed = false;
+      const nextSessions = prev.map(ds => {
+        if (
+          ds.userId === id || 
+          (updated.username && ds.username.toLowerCase() === updated.username.toLowerCase()) ||
+          (currentUser.id === id && ds.userId === currentUser.id) ||
+          (currentUser.username && ds.username.toLowerCase() === currentUser.username.toLowerCase())
+        ) {
+          changed = true;
+          return {
+            ...ds,
+            userEmail: updated.email !== undefined ? updated.email : ds.userEmail,
+            userName: updated.name !== undefined ? updated.name : ds.userName,
+          };
+        }
+        return ds;
+      });
+      if (changed) {
+        localStorage.setItem('stmik_device_sessions_v1', JSON.stringify(nextSessions));
+      }
+      return nextSessions;
+    });
+  }, [currentUser, students]);
 
   const deleteUser = useCallback((id: string) => {
     setUsers(prev => prev.filter(u => u.id !== id));
@@ -1603,6 +1709,7 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             ...u,
             name: updated.name || u.name,
             email: updated.email || u.email,
+            password: updated.password !== undefined ? updated.password : u.password,
             prodi: updated.prodi || u.prodi,
             rombel: updated.rombel || (rombelList ? rombelList.join(', ') : u.rombel),
             rombels: rombelList || u.rombels,
@@ -1621,6 +1728,7 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           username: nim,
           name: updated.name || nim,
           email: updated.email || `${nim.toLowerCase()}@student.stmik-arungbinang.ac.id`,
+          password: updated.password,
           role: 'mahasiswa',
           prodi: updated.prodi || 'Teknologi Informasi',
           rombel: updated.rombel || rombelList.join(', '),
@@ -1635,6 +1743,47 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
       localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(nextUsers));
       return nextUsers;
+    });
+
+    // If currently logged in user is this student, sync currentUser!
+    setCurrentUser(prev => {
+      if (prev.role === 'mahasiswa' && prev.username.toUpperCase() === nim.toUpperCase()) {
+        const nextCurrentUser = {
+          ...prev,
+          name: updated.name || prev.name,
+          email: updated.email || prev.email,
+          ...(updated.password ? { password: updated.password } : {}),
+          prodi: updated.prodi || prev.prodi,
+          rombel: updated.rombel || prev.rombel,
+          phone: updated.phone !== undefined ? updated.phone : prev.phone,
+        };
+        const isAuth = localStorage.getItem(SESSION_KEYS.AUTH_ACTIVE) === 'true';
+        if (isAuth) {
+          localStorage.setItem(SESSION_KEYS.ACTIVE_USER, JSON.stringify(nextCurrentUser));
+        }
+        return nextCurrentUser;
+      }
+      return prev;
+    });
+
+    // Sync device sessions for this student
+    setDeviceSessions(prev => {
+      let changed = false;
+      const nextSessions = prev.map(ds => {
+        if (ds.username.toUpperCase() === nim.toUpperCase()) {
+          changed = true;
+          return {
+            ...ds,
+            userEmail: updated.email !== undefined ? updated.email : ds.userEmail,
+            userName: updated.name !== undefined ? updated.name : ds.userName,
+          };
+        }
+        return ds;
+      });
+      if (changed) {
+        localStorage.setItem('stmik_device_sessions_v1', JSON.stringify(nextSessions));
+      }
+      return nextSessions;
     });
   }, []);
 
@@ -2791,6 +2940,7 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
     // 1. Check in users state (Admin, Dosen, Mahasiswa who previously logged in)
     const matchedUser = users.find(u => {
+      const id = u.id?.toLowerCase();
       const email = u.email?.toLowerCase();
       const uname = u.username?.toLowerCase();
       const nidn = u.nidn?.toLowerCase();
@@ -2798,6 +2948,7 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       const firstName = u.name.replace(/^(dr\.|dra\.|prof\.|ir\.)\s+/i, '').trim().split(/[\s,]+/)[0].toLowerCase();
 
       return (
+        id === clean ||
         email === clean ||
         uname === clean ||
         nidn === clean ||
@@ -2812,6 +2963,7 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     const matchedStudent = students.find(s => {
       return (
         s.nim.toLowerCase() === clean ||
+        `mhs-${s.nim.toLowerCase()}` === clean ||
         s.email?.toLowerCase() === clean ||
         s.name.toLowerCase() === clean
       );
@@ -2823,6 +2975,7 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         username: matchedStudent.nim,
         name: matchedStudent.name,
         email: matchedStudent.email,
+        password: matchedStudent.password,
         role: 'mahasiswa',
         prodi: matchedStudent.prodi,
         rombel: matchedStudent.rombel,
@@ -2834,7 +2987,7 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     return null;
   }, [users, students]);
 
-  // Reset user password and persist in users state
+  // Reset user password and persist in users state & students database
   const resetUserPassword = useCallback((identifier: string, newPassword: string): { success: boolean; message: string; user?: User } => {
     const targetUser = findUserByIdentifier(identifier);
     if (!targetUser) {
@@ -2850,18 +3003,48 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       const exists = prev.some(
         u => u.id === targetUser.id || (u.username.toLowerCase() === targetUser.username.toLowerCase() && u.role === targetUser.role)
       );
+      let nextUsers: User[];
       if (exists) {
-        return prev.map(u => 
+        nextUsers = prev.map(u => 
           (u.id === targetUser.id || (u.username.toLowerCase() === targetUser.username.toLowerCase() && u.role === targetUser.role))
             ? { ...u, password: newPassword }
             : u
         );
       } else {
-        return [...prev, updatedUser];
+        nextUsers = [...prev, updatedUser];
       }
+      localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(nextUsers));
+      return nextUsers;
     });
 
-    setCurrentUser(prev => (prev.id === targetUser.id ? { ...prev, password: newPassword } : prev));
+    // If student, synchronize to master students database as well!
+    if (targetUser.role === 'mahasiswa') {
+      setStudents(prev => {
+        const nextStudents = prev.map(s => {
+          if (s.nim.toUpperCase() === targetUser.username.toUpperCase()) {
+            return { ...s, password: newPassword };
+          }
+          return s;
+        });
+        localStorage.setItem(STORAGE_KEYS.STUDENTS, JSON.stringify(nextStudents));
+        return nextStudents;
+      });
+    }
+
+    setCurrentUser(prev => {
+      if (
+        prev.id === targetUser.id ||
+        (prev.username && prev.username.toLowerCase() === targetUser.username.toLowerCase() && prev.role === targetUser.role)
+      ) {
+        const next = { ...prev, password: newPassword };
+        const isAuth = localStorage.getItem(SESSION_KEYS.AUTH_ACTIVE) === 'true';
+        if (isAuth) {
+          localStorage.setItem(SESSION_KEYS.ACTIVE_USER, JSON.stringify(next));
+        }
+        return next;
+      }
+      return prev;
+    });
 
     return {
       success: true,
