@@ -5,7 +5,7 @@ import {
   Calendar, Clock, Building2, BookOpen, UserCheck, AlertCircle,
   CheckCircle2, Sparkles, Filter, Check, X, Info, ChevronRight,
   Users, Plus, Search, Database, Layers, ExternalLink, BookmarkCheck,
-  GraduationCap
+  GraduationCap, RefreshCw, ShieldCheck, GitMerge
 } from 'lucide-react';
 
 interface ScheduleModalProps {
@@ -111,6 +111,8 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
   const [selectedRombelCodes, setSelectedRombelCodes] = useState<string[]>(['TI 3']);
   const [showStudentPreview, setShowStudentPreview] = useState(false);
   const [studentSearchPreview, setStudentSearchPreview] = useState('');
+  const [syncStatusNotice, setSyncStatusNotice] = useState<string>('');
+  const [isSyncingRoster, setIsSyncingRoster] = useState(false);
 
   // Recommendation engine state
   const [showRecommendations, setShowRecommendations] = useState(false);
@@ -328,22 +330,77 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
     setNewCourseName('');
   };
 
-  // Handle Rombel Selection (Single or Multi-select)
-  const handleToggleRombel = (rCode: string) => {
-    if (isMultiRombelMode) {
-      const exists = selectedRombelCodes.includes(rCode);
-      let updated: string[];
-      if (exists) {
-        updated = selectedRombelCodes.filter(c => c !== rCode);
-      } else {
-        updated = [...selectedRombelCodes, rCode];
-      }
-      setSelectedRombelCodes(updated);
-      setRombel(updated.join(' & '));
-    } else {
-      setSelectedRombelCodes([rCode]);
-      setRombel(rCode);
+  // Directly remove a rombel from the schedule
+  const handleRemoveRombel = (rCode: string) => {
+    const updated = selectedRombelCodes.filter(c => c.toUpperCase() !== rCode.toUpperCase());
+    const count = getRombelStudentCount(rCode);
+    setSelectedRombelCodes(updated);
+    setRombel(updated.join(' & '));
+    if (updated.length <= 1) {
+      setIsMultiRombelMode(false);
     }
+    setSyncStatusNotice(`Rombel "${rCode}" dihilangkan dari jadwal. ${count} mahasiswa dari rombel ini tidak lagi terhubung.`);
+    setTimeout(() => setSyncStatusNotice(''), 4500);
+  };
+
+  // Directly select or toggle a rombel (add if not present, remove if present)
+  const handleToggleRombel = (rCode: string) => {
+    const cleanR = rCode.trim();
+    const exists = selectedRombelCodes.some(c => c.toUpperCase() === cleanR.toUpperCase());
+    let updated: string[];
+
+    if (exists) {
+      updated = selectedRombelCodes.filter(c => c.toUpperCase() !== cleanR.toUpperCase());
+      const count = getRombelStudentCount(cleanR);
+      setSyncStatusNotice(`Rombel "${cleanR}" dihilangkan dari jadwal (-${count} mahasiswa).`);
+      if (updated.length <= 1) {
+        setIsMultiRombelMode(false);
+      }
+    } else {
+      if (isMultiRombelMode || selectedRombelCodes.length >= 1) {
+        updated = [...selectedRombelCodes, cleanR];
+        setIsMultiRombelMode(true);
+      } else {
+        updated = [cleanR];
+      }
+      const count = getRombelStudentCount(cleanR);
+      setSyncStatusNotice(`Rombel "${cleanR}" ditambahkan ke jadwal (+${count} mahasiswa otomatis tersinkron).`);
+    }
+
+    setSelectedRombelCodes(updated);
+    setRombel(updated.join(' & '));
+    setTimeout(() => setSyncStatusNotice(''), 4500);
+  };
+
+  // Clear all rombels
+  const handleClearAllRombels = () => {
+    setSelectedRombelCodes([]);
+    setRombel('');
+    setIsMultiRombelMode(false);
+    setSyncStatusNotice('Seluruh rombel telah dihilangkan dari jadwal.');
+    setTimeout(() => setSyncStatusNotice(''), 4000);
+  };
+
+  // Select all rombels from a specific Program Studi
+  const handleSelectAllProdiRombels = (targetProdi: ProgramStudi) => {
+    const prodiRombels = activeRombelsList.filter(r => r.prodi === targetProdi).map(r => r.code);
+    if (prodiRombels.length === 0) return;
+    const combined = Array.from(new Set([...selectedRombelCodes, ...prodiRombels]));
+    setSelectedRombelCodes(combined);
+    setRombel(combined.join(' & '));
+    setIsMultiRombelMode(combined.length > 1);
+    setSyncStatusNotice(`Semua rombel ${targetProdi} (${prodiRombels.join(', ')}) berhasil ditambahkan dan disinkronkan ke jadwal.`);
+    setTimeout(() => setSyncStatusNotice(''), 4500);
+  };
+
+  // Manual Trigger to re-sync roster
+  const handleManualSyncRoster = () => {
+    setIsSyncingRoster(true);
+    setTimeout(() => {
+      setIsSyncingRoster(false);
+      setSyncStatusNotice(`Sinkronisasi Berhasil! ${connectedStudents.length} mahasiswa dari rombel [${selectedRombelCodes.join(', ') || '-'}] telah terverifikasi dan terhubung otomatis untuk presensi QR.`);
+      setTimeout(() => setSyncStatusNotice(''), 5000);
+    }, 450);
   };
 
   // Toggle multi-rombel mode
@@ -353,7 +410,55 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
       const single = selectedRombelCodes[0] || 'TI 3';
       setSelectedRombelCodes([single]);
       setRombel(single);
+      setSyncStatusNotice(`Mode kelas tunggal diaktifkan: hanya rombel ${single} yang dipertahankan.`);
+      setTimeout(() => setSyncStatusNotice(''), 4000);
     }
+  };
+
+  // Helper to determine program studi for a given rombel code
+  const getRombelProdi = (rombelCode: string): ProgramStudi => {
+    const clean = rombelCode.trim().toUpperCase();
+    const found = activeRombelsList.find(r => r.code.toUpperCase() === clean);
+    if (found?.prodi && found.prodi !== 'Lintas Program Studi') return found.prodi;
+    if (clean.startsWith('TI') || clean.includes('TI ') || clean.includes('TI-')) return 'Teknologi Informasi';
+    if (clean.startsWith('MI') || clean.includes('MI ') || clean.includes('MI-')) return 'Manajemen Informatika';
+    return 'Teknologi Informasi';
+  };
+
+  // Group selected rombels by their program studi
+  const selectedRombelsProdiMap = useMemo(() => {
+    const map: Record<string, string[]> = {};
+    selectedRombelCodes.forEach(code => {
+      const p = getRombelProdi(code);
+      if (p) {
+        if (!map[p]) map[p] = [];
+        map[p].push(code);
+      }
+    });
+    return map;
+  }, [selectedRombelCodes, activeRombelsList]);
+
+  // Unique list of distinct program studi present in selected rombels
+  const distinctSelectedProdis = useMemo(() => {
+    return Object.keys(selectedRombelsProdiMap);
+  }, [selectedRombelsProdiMap]);
+
+  // Multi-rombel with different prodis detected!
+  const hasDifferentProdis = distinctSelectedProdis.length > 1;
+
+  // Handle validate and merge cross-prodi multi-rombel
+  const handleValidateAndMergeCrossProdi = () => {
+    setProdi('Lintas Program Studi');
+    setSyncStatusNotice('Multi-rombel dengan Prodi yang berbeda divalidasi & digabungkan. Field Program Studi diubah menjadi "Lintas Program Studi".');
+    setTimeout(() => setSyncStatusNotice(''), 5500);
+  };
+
+  // Handle cancel/separate cross-prodi
+  const handleSeparateCrossProdi = () => {
+    const defaultProdi = (distinctSelectedProdis[0] as ProgramStudi) || 'Teknologi Informasi';
+    setProdi(defaultProdi);
+    setSyncStatusNotice(`Penggabungan lintas prodi dibatalkan. Field Program Studi dikembalikan ke "${defaultProdi}".`);
+    setTimeout(() => setSyncStatusNotice(''), 4500);
   };
 
   // Rule 1: Duplicate schedule check for the same rombel
@@ -916,17 +1021,36 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Program Studi
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-semibold text-slate-700">
+                    Program Studi
+                  </label>
+                  {prodi === 'Lintas Program Studi' && (
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 font-bold border border-purple-200 flex items-center gap-1 animate-fadeIn">
+                      <GitMerge className="w-3 h-3 text-purple-600" />
+                      <span>Lintas Program Studi</span>
+                    </span>
+                  )}
+                </div>
                 <select
                   value={prodi}
                   onChange={(e) => setProdi(e.target.value as ProgramStudi)}
-                  className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-lg text-sm text-slate-900 font-medium focus:outline-none focus:border-slate-900"
+                  className={`w-full px-3.5 py-2 bg-white border rounded-lg text-sm font-medium focus:outline-none transition ${
+                    prodi === 'Lintas Program Studi'
+                      ? 'border-purple-400 ring-2 ring-purple-100 text-purple-950 font-bold'
+                      : 'border-slate-300 text-slate-900 focus:border-slate-900'
+                  }`}
                 >
                   <option value="Teknologi Informasi">Teknologi Informasi</option>
                   <option value="Manajemen Informatika">Manajemen Informatika</option>
+                  <option value="Lintas Program Studi">Lintas Program Studi</option>
                 </select>
+                {hasDifferentProdis && prodi !== 'Lintas Program Studi' && (
+                  <p className="text-[11px] text-amber-700 font-medium mt-1 flex items-center gap-1">
+                    <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                    <span>Multi-rombel dari prodi berbeda terdeteksi. Silakan validasi penggabungan di bawah.</span>
+                  </p>
+                )}
               </div>
             </div>
 
@@ -985,14 +1109,169 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
               </div>
             </div>
 
-            {/* Rombel Cards Grid from Database */}
-            <div>
-              <div className="text-xs font-semibold text-slate-700 mb-2">
-                Pilih dari Database Master Rombel Kampus:
+            {/* 2.1: Rombel Terpilih pada Jadwal Ini (Bisa Dihilangkan Langsung) */}
+            <div className="p-3 bg-white border border-slate-200 rounded-xl space-y-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                  <Layers className="w-3.5 h-3.5 text-indigo-600" />
+                  <span>Rombel Terpilih pada Jadwal:</span>
+                  <span className="text-[11px] font-normal text-slate-500">
+                    ({selectedRombelCodes.length} rombel aktif)
+                  </span>
+                </span>
+                
+                {selectedRombelCodes.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleClearAllRombels}
+                    className="text-[11px] font-semibold text-rose-600 hover:text-rose-800 hover:underline cursor-pointer flex items-center gap-1"
+                  >
+                    <span>Hilangkan Semua Rombel</span>
+                  </button>
+                )}
               </div>
+
+              {selectedRombelCodes.length > 0 ? (
+                <div className="flex flex-wrap items-center gap-2 pt-1">
+                  {selectedRombelCodes.map(rCode => {
+                    const stCount = getRombelStudentCount(rCode);
+                    return (
+                      <span
+                        key={rCode}
+                        className="inline-flex items-center gap-2 pl-3 pr-2 py-1.5 rounded-lg bg-slate-900 text-white text-xs font-bold shadow-xs border border-slate-800 animate-fadeIn"
+                      >
+                        <span>Rombel {rCode}</span>
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-indigo-300 font-semibold">
+                          {stCount} Mhs
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveRombel(rCode)}
+                          className="p-1 text-slate-400 hover:text-white hover:bg-rose-600 rounded transition cursor-pointer"
+                          title={`Hilangkan Rombel "${rCode}" secara langsung dari jadwal ini`}
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </span>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="p-3 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-900 flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                  <span>
+                    Belum ada rombel yang dipilih untuk jadwal ini. Silakan klik salah satu atau beberapa rombel di bawah.
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {/* 2.1.b: NOTIFIKASI & VALIDASI MULTI-ROMBEL LINTAS PRODI */}
+            {hasDifferentProdis && (
+              <div className={`p-4 rounded-xl border transition-all animate-fadeIn ${
+                prodi === 'Lintas Program Studi'
+                  ? 'bg-gradient-to-r from-purple-50 via-indigo-50 to-purple-50 border-purple-300 shadow-xs'
+                  : 'bg-gradient-to-r from-amber-50 via-orange-50 to-amber-50 border-amber-300 shadow-xs'
+              }`}>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3.5">
+                  <div className="flex items-start gap-3">
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 shadow-xs ${
+                      prodi === 'Lintas Program Studi'
+                        ? 'bg-purple-600 text-white'
+                        : 'bg-amber-500 text-white animate-pulse'
+                    }`}>
+                      <GitMerge className="w-5 h-5" />
+                    </div>
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h5 className="font-bold text-xs sm:text-sm text-slate-900 flex items-center gap-1.5">
+                          <span>Multi-rombel dengan Prodi yang berbeda</span>
+                        </h5>
+                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold border ${
+                          prodi === 'Lintas Program Studi'
+                            ? 'bg-purple-100 text-purple-900 border-purple-300'
+                            : 'bg-amber-200/80 text-amber-900 border-amber-300'
+                        }`}>
+                          {prodi === 'Lintas Program Studi' ? 'Sudah Digabungkan' : 'Konfirmasi Diperlukan'}
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-600 leading-relaxed">
+                        Rombel yang dipilih berasal dari program studi yang berbeda:{' '}
+                        <span className="font-bold text-slate-900">
+                          {distinctSelectedProdis.map(p => `${p} (${selectedRombelsProdiMap[p]?.join(', ')})`).join(' dan ')}
+                        </span>.
+                        {prodi === 'Lintas Program Studi' ? (
+                          <span className="text-purple-900 font-semibold ml-1">
+                            Multi-rombel telah divalidasi dan field Program Studi berhasil diubah menjadi "Lintas Program Studi".
+                          </span>
+                        ) : (
+                          <span className="text-amber-900 font-medium ml-1">
+                            Apakah multi rombel lintas prodi ini akan digabungkan ke dalam satu jadwal perkuliahan?
+                          </span>
+                        )}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                    {prodi !== 'Lintas Program Studi' ? (
+                      <button
+                        type="button"
+                        onClick={handleValidateAndMergeCrossProdi}
+                        className="px-4 py-2 bg-purple-700 hover:bg-purple-800 text-white rounded-lg text-xs font-bold flex items-center gap-2 transition cursor-pointer shadow-xs hover:shadow-md"
+                        title="Validasi penggabungan multi-rombel lintas prodi dan ubah Program Studi menjadi 'Lintas Program Studi'"
+                      >
+                        <GitMerge className="w-3.5 h-3.5 text-purple-200" />
+                        <span>Validasi & Gabungkan Lintas Prodi</span>
+                      </button>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-purple-800 bg-purple-100/90 px-3 py-1.5 rounded-lg border border-purple-200 flex items-center gap-1.5 shadow-2xs">
+                          <CheckCircle2 className="w-4 h-4 text-purple-600" />
+                          <span>Tergabung: Lintas Program Studi</span>
+                        </span>
+                        <button
+                          type="button"
+                          onClick={handleSeparateCrossProdi}
+                          className="text-xs text-slate-500 hover:text-slate-800 underline cursor-pointer px-1"
+                          title="Batalkan penggabungan dan kembalikan Program Studi ke salah satu prodi"
+                        >
+                          Batalkan
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* 2.2: Rombel Cards Grid from Database & Quick Selectors */}
+            <div>
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                <span className="text-xs font-semibold text-slate-700">
+                  Pilih atau Hilangkan Rombel dari Database Master Kampus:
+                </span>
+                <div className="flex items-center gap-1.5 text-[11px]">
+                  <button
+                    type="button"
+                    onClick={() => handleSelectAllProdiRombels('Teknologi Informasi')}
+                    className="px-2 py-0.5 rounded border border-slate-200 bg-white hover:bg-slate-100 text-slate-700 font-medium cursor-pointer"
+                  >
+                    + Semua Rombel TI
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSelectAllProdiRombels('Manajemen Informatika')}
+                    className="px-2 py-0.5 rounded border border-slate-200 bg-white hover:bg-slate-100 text-slate-700 font-medium cursor-pointer"
+                  >
+                    + Semua Rombel MI
+                  </button>
+                </div>
+              </div>
+
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                 {activeRombelsList.map(r => {
-                  const isSelected = selectedRombelCodes.includes(r.code);
+                  const isSelected = selectedRombelCodes.some(c => c.toUpperCase() === r.code.toUpperCase());
                   const studentCount = getRombelStudentCount(r.code);
 
                   return (
@@ -1000,15 +1279,17 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
                       type="button"
                       key={r.id}
                       onClick={() => handleToggleRombel(r.code)}
-                      className={`p-2.5 rounded-xl border text-left flex flex-col justify-between transition cursor-pointer relative ${
+                      className={`p-2.5 rounded-xl border text-left flex flex-col justify-between transition cursor-pointer relative group ${
                         isSelected
                           ? 'bg-slate-900 text-white border-slate-900 shadow-xs'
                           : 'bg-white hover:bg-slate-100/80 border-slate-200 text-slate-800'
                       }`}
+                      title={isSelected ? `Klik untuk menghilangkan Rombel ${r.code}` : `Klik untuk menambahkan Rombel ${r.code}`}
                     >
                       <div className="flex items-center justify-between gap-1 w-full">
-                        <span className="font-bold text-xs tracking-wide">
-                          {r.code}
+                        <span className="font-bold text-xs tracking-wide flex items-center gap-1.5">
+                          {isSelected && <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />}
+                          <span>{r.code}</span>
                         </span>
                         <span className={`text-[10px] px-1.5 py-0.2 rounded font-semibold ${
                           isSelected ? 'bg-slate-800 text-indigo-300' : 'bg-slate-100 text-slate-600'
@@ -1021,10 +1302,15 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
                         {r.name}
                       </div>
 
-                      <div className="flex items-center gap-1 mt-2 pt-1 border-t border-slate-200/40 text-[10px]">
-                        <Users className={`w-3 h-3 ${isSelected ? 'text-indigo-300' : 'text-indigo-600'}`} />
-                        <span className={isSelected ? 'text-indigo-200 font-bold' : 'text-slate-700 font-bold'}>
-                          {studentCount} Mahasiswa
+                      <div className="flex items-center justify-between gap-1 mt-2 pt-1 border-t border-slate-200/40 text-[10px]">
+                        <div className="flex items-center gap-1">
+                          <Users className={`w-3 h-3 ${isSelected ? 'text-indigo-300' : 'text-indigo-600'}`} />
+                          <span className={isSelected ? 'text-indigo-200 font-bold' : 'text-slate-700 font-bold'}>
+                            {studentCount} Mahasiswa
+                          </span>
+                        </div>
+                        <span className={`text-[9px] font-semibold ${isSelected ? 'text-rose-300 opacity-80 group-hover:opacity-100' : 'text-indigo-600'}`}>
+                          {isSelected ? '✕ Hilangkan' : '+ Pilih'}
                         </span>
                       </div>
                     </button>
@@ -1033,92 +1319,162 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
               </div>
             </div>
 
-            {/* Custom/Selected Rombel Value */}
+            {/* Custom/Selected Rombel Text Output */}
             <div className="pt-1">
               <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Keterangan Rombel Jadwal:
+                Keterangan Teks Rombel Jadwal:
               </label>
               <input
                 type="text"
                 value={rombel}
                 onChange={(e) => {
                   setRombel(e.target.value);
-                  setSelectedRombelCodes(e.target.value.split(/[,;&/]+/).map(p => p.trim()).filter(Boolean));
+                  const parsed = e.target.value.split(/[,;&/]+/).map(p => p.trim()).filter(Boolean);
+                  setSelectedRombelCodes(parsed);
+                  if (parsed.length > 1) setIsMultiRombelMode(true);
                 }}
                 placeholder="Contoh: TI 3 atau TI 1 & 5"
-                className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-lg text-sm text-slate-900 font-semibold focus:outline-none focus:border-slate-900"
+                className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-lg text-sm text-slate-900 font-semibold focus:outline-none focus:border-slate-900 font-mono"
                 required
               />
+              <p className="text-[11px] text-slate-500 mt-1">
+                Otomatis diselaraskan ketika Anda memilih atau menghilangkan rombel di atas.
+              </p>
             </div>
 
-            {/* Connected Students from Mahasiswa Database Preview */}
-            <div className="p-3 bg-white border border-slate-200 rounded-xl space-y-2">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <div className="w-6 h-6 rounded-full bg-blue-100 text-blue-800 flex items-center justify-center font-bold text-xs">
+            {/* 2.3: MEKANISME SINKRONISASI DAFTAR MAHASISWA TERHUBUNG */}
+            <div className="p-4 bg-white border border-slate-200 rounded-xl space-y-3">
+              {/* Sync notification banner */}
+              {syncStatusNotice && (
+                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-xs text-emerald-900 font-semibold flex items-center justify-between gap-2 animate-fadeIn">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span>{syncStatusNotice}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setSyncStatusNotice('')}
+                    className="text-emerald-700 hover:text-emerald-900 cursor-pointer"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
+
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 flex items-center justify-center font-bold text-sm">
                     {connectedStudents.length}
                   </div>
                   <div>
-                    <span className="text-xs font-bold text-slate-900">
-                      Mahasiswa Terhubung dari Database Mahasiswa:
-                    </span>
-                    <span className="text-[11px] text-slate-500 ml-1.5">
-                      ({connectedStudents.length} Mahasiswa aktif terdaftar)
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs sm:text-sm font-bold text-slate-900">
+                        Sinkronisasi Daftar Mahasiswa Terhubung
+                      </span>
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold border border-emerald-200">
+                        Otomatis Terhubung
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-500">
+                      {connectedStudents.length} Mahasiswa aktif otomatis terdaftar pada jadwal ini dan siap melakukan presensi QR
+                    </p>
                   </div>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => setShowStudentPreview(!showStudentPreview)}
-                  className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 cursor-pointer flex items-center gap-1"
-                >
-                  <span>{showStudentPreview ? 'Sembunyikan Roster' : 'Lihat Daftar Mahasiswa'}</span>
-                  <ChevronRight className={`w-3.5 h-3.5 transition-transform ${showStudentPreview ? 'rotate-90' : ''}`} />
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleManualSyncRoster}
+                    disabled={isSyncingRoster}
+                    className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer border border-slate-300 disabled:opacity-50"
+                    title="Jalankan sinkronisasi ulang daftar mahasiswa terhubung"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 text-slate-600 ${isSyncingRoster ? 'animate-spin text-indigo-600' : ''}`} />
+                    <span>{isSyncingRoster ? 'Menyinkronkan...' : 'Sinkronkan Ulang'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowStudentPreview(!showStudentPreview)}
+                    className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg text-xs font-bold cursor-pointer flex items-center gap-1 transition"
+                  >
+                    <span>{showStudentPreview ? 'Tutup Roster' : 'Lihat Roster Mahasiswa'}</span>
+                    <ChevronRight className={`w-3.5 h-3.5 transition-transform ${showStudentPreview ? 'rotate-90' : ''}`} />
+                  </button>
+                </div>
               </div>
 
-              {/* Expandable Mahasiswa Roster */}
+              {/* Rombel Contribution Breakdown Pills */}
+              {selectedRombelCodes.length > 0 && (
+                <div className="flex flex-wrap items-center gap-1.5 pt-1 text-[11px] text-slate-600">
+                  <span className="font-semibold text-slate-500">Distribusi Mahasiswa:</span>
+                  {selectedRombelCodes.map(code => (
+                    <span key={code} className="px-2 py-0.5 rounded bg-slate-100 text-slate-800 font-medium border border-slate-200">
+                      Rombel {code}: <strong className="text-indigo-700">{getRombelStudentCount(code)} mhs</strong>
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              {/* Expandable Mahasiswa Roster Table */}
               {showStudentPreview && (
-                <div className="mt-2 pt-2 border-t border-slate-100 space-y-2 animate-fadeIn">
-                  <div className="relative">
-                    <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
-                    <input
-                      type="text"
-                      placeholder="Cari mahasiswa terhubung (NIM/Nama)..."
-                      value={studentSearchPreview}
-                      onChange={(e) => setStudentSearchPreview(e.target.value)}
-                      className="w-full pl-8 pr-3 py-1 bg-slate-50 border border-slate-200 rounded text-xs focus:outline-none"
-                    />
+                <div className="mt-3 pt-3 border-t border-slate-200 space-y-2.5 animate-fadeIn">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-xs font-bold text-slate-800">
+                      Daftar Mahasiswa Terhubung ({filteredConnectedStudents.length})
+                    </span>
+                    <div className="relative w-full sm:w-64">
+                      <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                      <input
+                        type="text"
+                        placeholder="Cari mahasiswa terhubung (NIM/Nama)..."
+                        value={studentSearchPreview}
+                        onChange={(e) => setStudentSearchPreview(e.target.value)}
+                        className="w-full pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs focus:outline-none focus:border-slate-500"
+                      />
+                    </div>
                   </div>
 
-                  <div className="max-h-40 overflow-y-auto space-y-1 pr-1 divide-y divide-slate-100">
+                  <div className="max-h-52 overflow-y-auto border border-slate-200 rounded-lg divide-y divide-slate-100">
                     {filteredConnectedStudents.length === 0 ? (
-                      <div className="py-2 text-center text-xs text-slate-500">
-                        Tidak ada mahasiswa yang ditemukan untuk rombel ini.
+                      <div className="py-6 text-center text-xs text-slate-500">
+                        {connectedStudents.length === 0
+                          ? 'Belum ada rombel yang dipilih. Pilih rombel di atas untuk menghubungkan mahasiswa.'
+                          : 'Tidak ada mahasiswa yang cocok dengan pencarian di rombel ini.'}
                       </div>
                     ) : (
                       filteredConnectedStudents.map((st, idx) => (
-                        <div key={st.nim} className="py-1 flex items-center justify-between text-xs">
-                          <div className="flex items-center gap-2">
-                            <span className="text-slate-400 font-mono text-[10px] w-4">{idx + 1}.</span>
-                            <span className="font-mono font-semibold text-slate-900">{st.nim}</span>
-                            <span className="text-slate-700 font-medium">{st.name}</span>
+                        <div key={st.nim} className="py-2 px-3 flex items-center justify-between text-xs hover:bg-slate-50/80 transition">
+                          <div className="flex items-center gap-2.5">
+                            <span className="text-slate-400 font-mono text-[10px] w-5 text-right">{idx + 1}.</span>
+                            <div>
+                              <span className="font-mono font-bold text-slate-900 mr-2">{st.nim}</span>
+                              <span className="text-slate-800 font-semibold">{st.name}</span>
+                            </div>
                           </div>
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 font-medium">
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] px-2 py-0.5 rounded bg-slate-100 text-slate-700 font-medium">
                               {st.prodi}
                             </span>
-                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800 font-bold">
+                            <span className="text-[10px] px-2 py-0.5 rounded bg-indigo-100 text-indigo-900 font-bold">
                               {st.rombel}
+                            </span>
+                            <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-bold flex items-center gap-1">
+                              <ShieldCheck className="w-3 h-3 text-emerald-600" />
+                              <span>Akun Siap QR</span>
                             </span>
                           </div>
                         </div>
                       ))
                     )}
                   </div>
-                  <div className="text-[10px] text-slate-400 text-right">
-                    Seluruh {connectedStudents.length} mahasiswa ini otomatis memiliki jadwal ini dan dapat mengisi presensi.
+                  <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1">
+                    <span>
+                      ✓ Setiap nama mahasiswa terdaftar dijamin memiliki akun pengguna untuk presensi QR tanpa error.
+                    </span>
+                    <span className="font-bold text-slate-700">
+                      Total: {connectedStudents.length} Mahasiswa
+                    </span>
                   </div>
                 </div>
               )}

@@ -7,7 +7,7 @@ import {
 import {
   INITIAL_USERS, INITIAL_STUDENTS, INITIAL_COURSES, INITIAL_SCHEDULES,
   INITIAL_SESSIONS, INITIAL_RECORDS, INITIAL_LEAVE_REQUESTS, INITIAL_ROMBELS,
-  isStudentInRombel, getStudentRombelList, CAMPUS_INFO
+  isStudentInRombel, getStudentRombelList, CAMPUS_INFO, STUDENT_AVATARS
 } from '../data/initialData';
 import {
   loadLocalSnapshots, saveLocalSnapshot, deleteLocalSnapshot,
@@ -83,6 +83,7 @@ interface AttendanceContextType {
   addStudent: (student: Student) => void;
   updateStudent: (nim: string, student: Partial<Student>) => void;
   deleteStudent: (nim: string) => void;
+  syncStudentUsers: () => { count: number; added: number; updated: number };
 
   // Rombel & Schedule link management
   rombels: Rombel[];
@@ -217,27 +218,6 @@ const STORAGE_KEYS = {
 
 export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // Load initial state from localStorage or seed
-  const [users, setUsers] = useState<User[]>(() => {
-    const saved = localStorage.getItem(STORAGE_KEYS.USERS);
-    if (saved) {
-      try {
-        const parsed: User[] = JSON.parse(saved);
-        return parsed.map(u => {
-          const init = INITIAL_USERS.find(iu => iu.id === u.id);
-          return {
-            ...init,
-            ...u,
-            nidn: u.nidn || init?.nidn || (u.role === 'dosen' ? u.username : undefined),
-            ...(u.role === 'admin' ? { username: 'baak' } : {}),
-          };
-        });
-      } catch {
-        return INITIAL_USERS;
-      }
-    }
-    return INITIAL_USERS;
-  });
-
   const [students, setStudents] = useState<Student[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEYS.STUDENTS);
     if (saved) {
@@ -249,6 +229,75 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       } catch {}
     }
     return INITIAL_STUDENTS;
+  });
+
+  const [users, setUsers] = useState<User[]>(() => {
+    // Determine existing students pool
+    let currentStudents = INITIAL_STUDENTS;
+    const savedStudents = localStorage.getItem(STORAGE_KEYS.STUDENTS);
+    if (savedStudents) {
+      try {
+        const parsedSt: Student[] = JSON.parse(savedStudents);
+        if (Array.isArray(parsedSt) && parsedSt.length > 0) {
+          currentStudents = parsedSt;
+        }
+      } catch {}
+    }
+
+    const saved = localStorage.getItem(STORAGE_KEYS.USERS);
+    let baseUsers: User[] = INITIAL_USERS;
+    if (saved) {
+      try {
+        const parsed: User[] = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          baseUsers = parsed.map(u => {
+            const init = INITIAL_USERS.find(iu => iu.id === u.id);
+            return {
+              ...init,
+              ...u,
+              nidn: u.nidn || init?.nidn || (u.role === 'dosen' ? u.username : undefined),
+              ...(u.role === 'admin' ? { username: 'baak' } : {}),
+            };
+          });
+        }
+      } catch {
+        baseUsers = INITIAL_USERS;
+      }
+    }
+
+    // Map existing student users to preserve custom passwords, avatars, etc.
+    const studentUserMap = new Map<string, User>();
+    baseUsers.forEach(u => {
+      if (u.role === 'mahasiswa') {
+        studentUserMap.set(u.username.toUpperCase(), u);
+      }
+    });
+
+    // Ensure 100% of students in currentStudents have a User account
+    const studentUsers: User[] = currentStudents.map((s, idx) => {
+      const existing = studentUserMap.get(s.nim.toUpperCase());
+      const rombelList = s.rombels && s.rombels.length > 0 ? s.rombels : getStudentRombelList(s.rombel);
+      const joinedRombel = rombelList.join(', ') || s.rombel;
+
+      return {
+        id: existing?.id || `mhs-${s.nim}`,
+        username: s.nim,
+        name: s.name,
+        email: s.email || `${s.nim.toLowerCase()}@student.stmik-arungbinang.ac.id`,
+        role: 'mahasiswa' as const,
+        prodi: s.prodi,
+        rombel: joinedRombel,
+        rombels: rombelList,
+        phone: s.phone || existing?.phone,
+        password: existing?.password,
+        avatarUrl: existing?.avatarUrl || `https://images.unsplash.com/photo-${STUDENT_AVATARS[idx % STUDENT_AVATARS.length]}?w=150`,
+        excludedScheduleIds: s.excludedScheduleIds || existing?.excludedScheduleIds,
+        customScheduleIds: s.customScheduleIds || existing?.customScheduleIds,
+      };
+    });
+
+    const nonStudentUsers = baseUsers.filter(u => u.role !== 'mahasiswa');
+    return [...nonStudentUsers, ...studentUsers];
   });
 
   const [courses, setCourses] = useState<Course[]>(() => {
@@ -868,51 +917,119 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   // Mahasiswa QR Code Scan Validation
   const scanQrCode = useCallback((token: string, studentNim: string): { success: boolean; message: string; session?: AttendanceSession } => {
-    // 1. Find active open session matching this token (or start of token if dynamic)
+    // 1. Clean and normalize token (handles JSON, full URLs, query strings, and extra whitespace)
+    let cleanToken = (token || '').trim();
+    try {
+      if (cleanToken.startsWith('{') && cleanToken.endsWith('}')) {
+        const parsed = JSON.parse(cleanToken);
+        if (parsed.token) cleanToken = String(parsed.token).trim();
+        else if (parsed.qrToken) cleanToken = String(parsed.qrToken).trim();
+      }
+    } catch {}
+    if (cleanToken.includes('token=')) {
+      const match = cleanToken.match(/token=([^&]+)/);
+      if (match && match[1]) cleanToken = decodeURIComponent(match[1]).trim();
+    }
+
+    const cToken = cleanToken.toUpperCase();
+
+    // Find active open session matching this token (or prefix if dynamic rotating QR)
     const session = sessions.find(s => {
       if (!s.isOpen) return false;
-      // Direct token match or valid prefix
-      return s.qrToken === token.trim() || token.trim().startsWith(s.qrToken.split('-').slice(0, 3).join('-'));
+      const sToken = s.qrToken.trim().toUpperCase();
+      // Direct token match
+      if (sToken === cToken) return true;
+      // Dynamic QR rotating prefix match (first 3 parts: e.g. STMIK-MKTI0109-P1)
+      const sPrefix = sToken.split('-').slice(0, 3).join('-');
+      if (sPrefix && cToken.startsWith(sPrefix)) return true;
+      return false;
     });
 
     if (!session) {
       return {
         success: false,
-        message: 'QR Code tidak valid atau sesi presensi telah ditutup oleh dosen pengampu.',
+        message: 'QR Code tidak valid atau sesi presensi telah ditutup oleh dosen pengampu. Pastikan sesi perkuliahan di kelas sedang aktif.',
       };
     }
 
-    // 2. Find student
-    const student = students.find(s => s.nim === studentNim);
+    // 2. Find student by NIM or username (case-insensitive, trim, stripping prefixes if any)
+    const cleanNim = (studentNim || '').trim().toUpperCase();
+    let student = students.find(s => s.nim.trim().toUpperCase() === cleanNim);
+    if (!student && cleanNim.startsWith('MHS-')) {
+      const stripped = cleanNim.replace(/^MHS-/, '');
+      student = students.find(s => s.nim.trim().toUpperCase() === stripped);
+    }
+
+    // If student not found directly in students list, look up in users state
+    if (!student) {
+      const user = users.find(u =>
+        u.role === 'mahasiswa' &&
+        (u.username.trim().toUpperCase() === cleanNim || u.id.trim().toUpperCase() === cleanNim || (u.email && u.email.trim().toLowerCase() === cleanNim.toLowerCase()))
+      );
+      if (user) {
+        student = students.find(s => s.nim.trim().toUpperCase() === user.username.trim().toUpperCase());
+        if (!student) {
+          const rombelList = user.rombels && user.rombels.length > 0 ? user.rombels : getStudentRombelList(user.rombel);
+          student = {
+            nim: user.username,
+            name: user.name,
+            prodi: user.prodi || 'Teknologi Informasi',
+            rombel: user.rombel || rombelList.join(', '),
+            rombels: rombelList,
+            email: user.email || `${user.username.toLowerCase()}@student.stmik-arungbinang.ac.id`,
+            phone: user.phone,
+            excludedScheduleIds: user.excludedScheduleIds,
+            customScheduleIds: user.customScheduleIds,
+          };
+          setStudents(prev => [...prev, student!]);
+        }
+      }
+    }
+
     if (!student) {
       return {
         success: false,
-        message: `Data mahasiswa dengan NIM ${studentNim} tidak ditemukan di sistem.`,
+        message: `Data mahasiswa dengan NIM/identitas "${studentNim}" tidak ditemukan di sistem. Silakan login kembali dengan akun mahasiswa yang valid.`,
       };
     }
 
-    // 3. Verify student belongs to this rombel/class
-    const isEnrolled = isStudentInRombel(student.rombel, session.rombel, student.rombels);
+    // 3. Verify student belongs to this rombel/class or schedule
+    // Check if student has dropped/excluded this specific schedule
+    const isExcluded = session.scheduleId && student.excludedScheduleIds?.includes(session.scheduleId);
+    if (isExcluded) {
+      return {
+        success: false,
+        message: `Mata kuliah ${session.courseName} saat ini berstatus dikeluarkan (drop) dari rencana studi Anda (${student.name}). Hubungi BAAK untuk mengaktifkan kembali.`,
+      };
+    }
+
+    // Check custom schedule inclusion or rombel match
+    const matchingSchedule = session.scheduleId ? schedules.find(s => s.id === session.scheduleId) : null;
+    const scheduleRombel = matchingSchedule?.rombel;
+    const isCustomIncluded = session.scheduleId && student.customScheduleIds?.includes(session.scheduleId);
+    const isEnrolled = isCustomIncluded ||
+      isStudentInRombel(student.rombel, session.rombel, student.rombels) ||
+      (scheduleRombel ? isStudentInRombel(student.rombel, scheduleRombel, student.rombels) : false);
     if (!isEnrolled) {
       return {
         success: false,
-        message: `Mahasiswa (${student.name} - ${student.rombel}) tidak terdaftar dalam kelas rombel ${session.rombel}.`,
+        message: `Mahasiswa (${student.name} - ${student.rombel}) tidak terdaftar dalam kelas rombel ${session.rombel || scheduleRombel || 'ini'} untuk mata kuliah ${session.courseName}.`,
       };
     }
 
     // 4. Check if already checked in
-    const existing = records.find(r => r.sessionId === session.id && r.studentNim === studentNim);
+    const existing = records.find(r => r.sessionId === session.id && r.studentNim.trim().toUpperCase() === student.nim.trim().toUpperCase());
     if (existing) {
       return {
         success: true,
-        message: `Anda sudah tercatat presensi sebelumnya dengan status "${existing.status}" pada ${new Date(existing.scannedAt).toLocaleTimeString('id-ID')}.`,
+        message: `Anda (${student.name}) sudah tercatat presensi sebelumnya dengan status "${existing.status}" pada ${new Date(existing.scannedAt).toLocaleTimeString('id-ID')} WIB.`,
         session,
       };
     }
 
     // 5. Record attendance as HADIR
     const newRecord: AttendanceRecord = {
-      id: `rec-${Date.now()}-${studentNim}`,
+      id: `rec-${Date.now()}-${student.nim}`,
       sessionId: session.id,
       courseCode: session.courseCode,
       courseName: session.courseName,
@@ -932,7 +1049,7 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       message: `Presensi BERHASIL! Selamat mengikuti perkuliahan ${session.courseName} (Pertemuan ${session.meetingNumber}).`,
       session,
     };
-  }, [sessions, students, records]);
+  }, [sessions, students, records, users]);
 
   // Lecturer Manual Update Attendance Record
   const manualUpdateAttendance = useCallback((recordId: string, status: AttendanceStatus, notes?: string) => {
@@ -1135,20 +1252,158 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   }, []);
 
   // Schedule management
+  // Schedule management with automatic rombel, session & student user synchronization
   const addSchedule = useCallback((newSch: Omit<ScheduleItem, 'id'>) => {
+    const schId = `sch-${Date.now()}`;
     const sch: ScheduleItem = {
       ...newSch,
-      id: `sch-${Date.now()}`,
+      id: schId,
     };
-    setSchedules(prev => [...prev, sch]);
+    setSchedules(prev => {
+      const next = [...prev, sch];
+      localStorage.setItem(STORAGE_KEYS.SCHEDULES, JSON.stringify(next));
+      return next;
+    });
+
+    // Auto-sync rombel relations
+    if (sch.rombel) {
+      const parts = sch.rombel.split(/[,;&/]+/).map(p => p.trim().toUpperCase()).filter(Boolean);
+      setRombels(prev => {
+        const next = prev.map(r => {
+          const rCode = r.code.trim().toUpperCase();
+          if (parts.includes(rCode) || parts.some(p => isStudentInRombel(rCode, p))) {
+            const currentIds = r.scheduleIds || [];
+            if (!currentIds.includes(schId)) {
+              return { ...r, scheduleIds: [...currentIds, schId] };
+            }
+          }
+          return r;
+        });
+        localStorage.setItem(STORAGE_KEYS.ROMBELS, JSON.stringify(next));
+        return next;
+      });
+    }
   }, []);
 
   const updateSchedule = useCallback((id: string, updated: Partial<ScheduleItem>) => {
-    setSchedules(prev => prev.map(s => s.id === id ? { ...s, ...updated } : s));
-  }, []);
+    let oldRombel = '';
+    const newRombel = updated.rombel;
+
+    setSchedules(prev => {
+      const next = prev.map(s => {
+        if (s.id === id) {
+          oldRombel = s.rombel;
+          return { ...s, ...updated };
+        }
+        return s;
+      });
+      localStorage.setItem(STORAGE_KEYS.SCHEDULES, JSON.stringify(next));
+      return next;
+    });
+
+    // 1. If rombel was modified, synchronize Rombels master relations
+    if (newRombel !== undefined && newRombel !== oldRombel) {
+      const oldParts = oldRombel.split(/[,;&/]+/).map(p => p.trim().toUpperCase()).filter(Boolean);
+      const newParts = newRombel.split(/[,;&/]+/).map(p => p.trim().toUpperCase()).filter(Boolean);
+
+      setRombels(prev => {
+        const next = prev.map(r => {
+          const rCode = r.code.trim().toUpperCase();
+          const shouldHave = newParts.includes(rCode) || newParts.some(p => isStudentInRombel(rCode, p));
+          const currentIds = r.scheduleIds || [];
+
+          if (shouldHave && !currentIds.includes(id)) {
+            return { ...r, scheduleIds: [...currentIds, id] };
+          } else if (!shouldHave && currentIds.includes(id)) {
+            return { ...r, scheduleIds: currentIds.filter(schId => schId !== id) };
+          }
+          return r;
+        });
+        localStorage.setItem(STORAGE_KEYS.ROMBELS, JSON.stringify(next));
+        return next;
+      });
+
+      // 2. Cascade update to all sessions connected to this schedule
+      setSessions(prev => {
+        let changed = false;
+        const next = prev.map(sess => {
+          if (sess.scheduleId === id) {
+            changed = true;
+            return {
+              ...sess,
+              rombel: newRombel || sess.rombel,
+              courseName: updated.courseName || sess.courseName,
+              courseCode: updated.courseCode || sess.courseCode,
+              room: updated.room || sess.room,
+            };
+          }
+          return sess;
+        });
+        if (changed) {
+          localStorage.setItem(STORAGE_KEYS.SESSIONS, JSON.stringify(next));
+        }
+        return next;
+      });
+    }
+
+    // 3. Ensure student users are reconciled so students in updated rombels have active accounts
+    setUsers(prev => {
+      const studentMap = new Map<string, User>();
+      prev.forEach(u => {
+        if (u.role === 'mahasiswa') {
+          studentMap.set(u.username.toUpperCase(), u);
+        }
+      });
+      let addedAny = false;
+      const nextUsers = [...prev];
+      students.forEach((s, idx) => {
+        if (!studentMap.has(s.nim.toUpperCase())) {
+          addedAny = true;
+          const rombelList = s.rombels && s.rombels.length > 0 ? s.rombels : getStudentRombelList(s.rombel);
+          const newUser: User = {
+            id: `mhs-${s.nim}`,
+            username: s.nim,
+            name: s.name,
+            email: s.email || `${s.nim.toLowerCase()}@student.stmik-arungbinang.ac.id`,
+            role: 'mahasiswa',
+            prodi: s.prodi,
+            rombel: rombelList.join(', ') || s.rombel,
+            rombels: rombelList,
+            phone: s.phone,
+            avatarUrl: `https://images.unsplash.com/photo-${STUDENT_AVATARS[idx % STUDENT_AVATARS.length]}?w=150`,
+            excludedScheduleIds: s.excludedScheduleIds,
+            customScheduleIds: s.customScheduleIds,
+          };
+          nextUsers.push(newUser);
+          studentMap.set(s.nim.toUpperCase(), newUser);
+        }
+      });
+      if (addedAny) {
+        localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(nextUsers));
+        return nextUsers;
+      }
+      return prev;
+    });
+  }, [students]);
 
   const deleteSchedule = useCallback((id: string) => {
-    setSchedules(prev => prev.filter(s => s.id !== id));
+    setSchedules(prev => {
+      const next = prev.filter(s => s.id !== id);
+      localStorage.setItem(STORAGE_KEYS.SCHEDULES, JSON.stringify(next));
+      return next;
+    });
+
+    // Unlink from rombels
+    setRombels(prev => {
+      const next = prev.map(r => {
+        if (r.scheduleIds?.includes(id)) {
+          return { ...r, scheduleIds: r.scheduleIds.filter(schId => schId !== id) };
+        }
+        return r;
+      });
+      localStorage.setItem(STORAGE_KEYS.ROMBELS, JSON.stringify(next));
+      return next;
+    });
   }, []);
 
   // Course management with persistence, schedule sync, archive & relation integrity
@@ -1339,8 +1594,10 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
     // Sync to users
     setUsers(prev => {
+      let found = false;
       const nextUsers = prev.map(u => {
         if (u.username.toUpperCase() === nim.toUpperCase()) {
+          found = true;
           const rombelList = updated.rombels || (updated.rombel ? getStudentRombelList(updated.rombel) : u.rombels);
           return {
             ...u,
@@ -1356,6 +1613,26 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         }
         return u;
       });
+
+      if (!found) {
+        const rombelList = updated.rombels || (updated.rombel ? getStudentRombelList(updated.rombel) : []);
+        const newUser: User = {
+          id: `mhs-${nim}`,
+          username: nim,
+          name: updated.name || nim,
+          email: updated.email || `${nim.toLowerCase()}@student.stmik-arungbinang.ac.id`,
+          role: 'mahasiswa',
+          prodi: updated.prodi || 'Teknologi Informasi',
+          rombel: updated.rombel || rombelList.join(', '),
+          rombels: rombelList,
+          phone: updated.phone,
+          avatarUrl: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150',
+          excludedScheduleIds: updated.excludedScheduleIds,
+          customScheduleIds: updated.customScheduleIds,
+        };
+        nextUsers.push(newUser);
+      }
+
       localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(nextUsers));
       return nextUsers;
     });
@@ -1373,6 +1650,94 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       return nextUsers;
     });
   }, []);
+
+  // Synchronize 100% of students in students state to have active User accounts
+  const syncStudentUsers = useCallback((): { count: number; added: number; updated: number } => {
+    let added = 0;
+    let updated = 0;
+
+    setUsers(prev => {
+      const studentMap = new Map<string, User>();
+      prev.forEach(u => {
+        if (u.role === 'mahasiswa') {
+          studentMap.set(u.username.toUpperCase(), u);
+        }
+      });
+
+      const nextUsers = [...prev];
+
+      students.forEach((s, idx) => {
+        const existing = studentMap.get(s.nim.toUpperCase());
+        const rombelList = s.rombels && s.rombels.length > 0 ? s.rombels : getStudentRombelList(s.rombel);
+        const joinedRombel = rombelList.join(', ') || s.rombel;
+
+        if (!existing) {
+          added++;
+          const newUser: User = {
+            id: `mhs-${s.nim}`,
+            username: s.nim,
+            name: s.name,
+            email: s.email || `${s.nim.toLowerCase()}@student.stmik-arungbinang.ac.id`,
+            role: 'mahasiswa',
+            prodi: s.prodi,
+            rombel: joinedRombel,
+            rombels: rombelList,
+            phone: s.phone,
+            avatarUrl: `https://images.unsplash.com/photo-${STUDENT_AVATARS[idx % STUDENT_AVATARS.length]}?w=150`,
+            excludedScheduleIds: s.excludedScheduleIds,
+            customScheduleIds: s.customScheduleIds,
+          };
+          nextUsers.push(newUser);
+          studentMap.set(s.nim.toUpperCase(), newUser);
+        } else {
+          const needsUpdate =
+            existing.name !== s.name ||
+            existing.rombel !== joinedRombel ||
+            JSON.stringify(existing.rombels || []) !== JSON.stringify(rombelList) ||
+            existing.prodi !== s.prodi ||
+            (s.email && existing.email !== s.email) ||
+            JSON.stringify(existing.excludedScheduleIds || []) !== JSON.stringify(s.excludedScheduleIds || []);
+
+          if (needsUpdate) {
+            updated++;
+            const targetIdx = nextUsers.findIndex(u => u.id === existing.id || (u.role === 'mahasiswa' && u.username.toUpperCase() === s.nim.toUpperCase()));
+            if (targetIdx >= 0) {
+              nextUsers[targetIdx] = {
+                ...nextUsers[targetIdx],
+                name: s.name,
+                prodi: s.prodi,
+                rombel: joinedRombel,
+                rombels: rombelList,
+                email: s.email || nextUsers[targetIdx].email,
+                phone: s.phone || nextUsers[targetIdx].phone,
+                excludedScheduleIds: s.excludedScheduleIds,
+                customScheduleIds: s.customScheduleIds,
+              };
+            }
+          }
+        }
+      });
+
+      localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(nextUsers));
+      return nextUsers;
+    });
+
+    return {
+      count: students.length,
+      added,
+      updated,
+    };
+  }, [students]);
+
+  // Continuous reconciliation: ensure every student in `students` always has a corresponding User account
+  useEffect(() => {
+    const hasMissingStudentUser = students.some(
+      s => !users.some(u => u.role === 'mahasiswa' && u.username.toUpperCase() === s.nim.toUpperCase())
+    );
+    if (hasMissingStudentUser) {
+      syncStudentUsers();
+    }
+  }, [students, users, syncStudentUsers]);
 
   // Rombel & Schedule link management
   const addRombel = useCallback((rawRombel: Omit<Rombel, 'id'>, connectedScheduleIds: string[] = []) => {
@@ -1840,6 +2205,47 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       localStorage.setItem(STORAGE_KEYS.STUDENTS, JSON.stringify(result));
       return result;
     });
+
+    // Synchronize user accounts for incoming students immediately
+    setUsers(prev => {
+      const resultUsers = [...prev];
+      normalizedIncoming.forEach((newSt, idx) => {
+        const uIdx = resultUsers.findIndex(u => u.role === 'mahasiswa' && u.username.toUpperCase() === newSt.nim.toUpperCase());
+        const rombelList = newSt.rombels && newSt.rombels.length > 0 ? newSt.rombels : getStudentRombelList(newSt.rombel);
+        const joinedRombel = rombelList.join(', ') || newSt.rombel;
+        if (uIdx >= 0) {
+          resultUsers[uIdx] = {
+            ...resultUsers[uIdx],
+            name: newSt.name,
+            prodi: newSt.prodi,
+            rombel: joinedRombel,
+            rombels: rombelList,
+            email: newSt.email || resultUsers[uIdx].email,
+            phone: newSt.phone || resultUsers[uIdx].phone,
+            excludedScheduleIds: newSt.excludedScheduleIds,
+            customScheduleIds: newSt.customScheduleIds,
+          };
+        } else {
+          resultUsers.push({
+            id: `mhs-${newSt.nim}`,
+            username: newSt.nim,
+            name: newSt.name,
+            email: newSt.email || `${newSt.nim.toLowerCase()}@student.stmik-arungbinang.ac.id`,
+            role: 'mahasiswa',
+            prodi: newSt.prodi,
+            rombel: joinedRombel,
+            rombels: rombelList,
+            phone: newSt.phone,
+            avatarUrl: `https://images.unsplash.com/photo-${STUDENT_AVATARS[idx % STUDENT_AVATARS.length]}?w=150`,
+            excludedScheduleIds: newSt.excludedScheduleIds,
+            customScheduleIds: newSt.customScheduleIds,
+          });
+        }
+      });
+      localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(resultUsers));
+      return resultUsers;
+    });
+
     return { added, updated, total: added + updated };
   }, []);
 
@@ -2320,7 +2726,7 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   // Helpers
   const getStudentsForRombel = useCallback((rombel: string): Student[] => {
-    return students.filter(s => isStudentInRombel(s.rombel, rombel));
+    return students.filter(s => isStudentInRombel(s.rombel, rombel, s.rombels));
   }, [students]);
 
   const getSchedulesForDay = useCallback((day: DayOfWeek): ScheduleItem[] => {
@@ -2342,11 +2748,16 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   // Calculate attendance rate for student
   const getAttendanceRateForStudent = useCallback((nim: string, courseCode?: string) => {
-    const student = students.find(s => s.nim === nim);
+    const cleanNim = (nim || '').trim().toUpperCase();
+    const student = students.find(s => s.nim.trim().toUpperCase() === cleanNim);
     if (!student) return { totalSessions: 0, hadir: 0, izin: 0, sakit: 0, alpha: 0, percentage: 0 };
 
     const studentSessions = sessions.filter(session => {
-      const inRombel = isStudentInRombel(student.rombel, session.rombel);
+      if (session.scheduleId && student.excludedScheduleIds?.includes(session.scheduleId)) {
+        return false;
+      }
+      const isCustomIncluded = session.scheduleId && student.customScheduleIds?.includes(session.scheduleId);
+      const inRombel = isCustomIncluded || isStudentInRombel(student.rombel, session.rombel, student.rombels);
       if (courseCode) {
         return inRombel && session.courseCode === courseCode;
       }
@@ -2354,7 +2765,7 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     });
 
     const studentRecords = records.filter(r => {
-      const matchesStudent = r.studentNim === nim;
+      const matchesStudent = r.studentNim.trim().toUpperCase() === cleanNim;
       if (courseCode) {
         return matchesStudent && r.courseCode === courseCode;
       }
@@ -2368,7 +2779,6 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     
     // Total sessions that have occurred
     const totalSessions = studentSessions.length || (hadir + izin + sakit + alpha);
-    const validPresence = hadir + (izin * 0.5) + (sakit * 0.5); // weighted or standard
     const percentage = totalSessions > 0 ? Math.round((hadir / totalSessions) * 100) : 100;
 
     return { totalSessions, hadir, izin, sakit, alpha, percentage };
@@ -2501,6 +2911,7 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     addStudent,
     updateStudent,
     deleteStudent,
+    syncStudentUsers,
     rombels,
     addRombel,
     updateRombel,
@@ -2551,7 +2962,7 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     scanQrCode, manualUpdateAttendance, markStudentAttendanceDirectly, batchMarkAttendance, submitLeaveRequest,
     reviewLeaveRequest, addUser, updateUser, deleteUser, addSchedule, updateSchedule,
     deleteSchedule, addCourse, updateCourse, deleteCourse, addStudent, updateStudent,
-    deleteStudent, rombels, addRombel, updateRombel, deleteRombel, linkSchedulesToRombel,
+    deleteStudent, syncStudentUsers, rombels, addRombel, updateRombel, deleteRombel, linkSchedulesToRombel,
     archiveRombel, restoreRombel, archiveCourse, restoreCourse, checkRombelRelations, checkCourseRelations,
     resetToDefaultData, logoutSession, setScheduleMeetingDate, setScheduleAllMeetingDates,
     getMeetingDateForSchedule, getStudentsForRombel, getActiveScheduleNow,

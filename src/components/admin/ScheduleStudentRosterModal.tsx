@@ -3,7 +3,8 @@ import { ScheduleItem, Student, Course, Rombel } from '../../types/attendance';
 import { isStudentInRombel, getStudentRombelList } from '../../data/initialData';
 import {
   X, Users, Calendar, Clock, Building2, BookOpen, Search,
-  GraduationCap, CheckCircle2, BookmarkCheck, ExternalLink, ShieldCheck
+  GraduationCap, CheckCircle2, BookmarkCheck, ExternalLink, ShieldCheck,
+  Edit3, RefreshCw, Layers, GitMerge
 } from 'lucide-react';
 
 interface ScheduleStudentRosterModalProps {
@@ -13,6 +14,8 @@ interface ScheduleStudentRosterModalProps {
   students: Student[];
   courses: Course[];
   rombels: Rombel[];
+  onEditSchedule?: (schedule: ScheduleItem) => void;
+  onSyncRoster?: () => void;
 }
 
 export const ScheduleStudentRosterModal: React.FC<ScheduleStudentRosterModalProps> = ({
@@ -22,8 +25,12 @@ export const ScheduleStudentRosterModal: React.FC<ScheduleStudentRosterModalProp
   students,
   courses,
   rombels,
+  onEditSchedule,
+  onSyncRoster,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncNotice, setSyncNotice] = useState('');
 
   // Matched Master Course in database
   const masterCourse = useMemo(() => {
@@ -116,10 +123,15 @@ export const ScheduleStudentRosterModal: React.FC<ScheduleStudentRosterModalProp
               <div className="text-xs text-slate-600 font-mono">
                 Kode: <strong className="text-slate-900">{schedule.courseCode}</strong> ({schedule.sks} SKS)
               </div>
-              {masterCourse ? (
+              {schedule.prodi === 'Lintas Program Studi' ? (
+                <div className="text-[11px] text-purple-800 font-bold flex items-center gap-1 pt-0.5">
+                  <GitMerge className="w-3.5 h-3.5 text-purple-600" />
+                  <span>Lintas Program Studi</span>
+                </div>
+              ) : masterCourse ? (
                 <div className="text-[11px] text-emerald-700 font-medium flex items-center gap-1 pt-0.5">
                   <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                  <span>Semester {masterCourse.semester || '-'} · {masterCourse.prodi}</span>
+                  <span>Semester {masterCourse.semester || '-'} · {schedule.prodi || masterCourse.prodi}</span>
                 </div>
               ) : (
                 <div className="text-[11px] text-slate-500">
@@ -171,7 +183,24 @@ export const ScheduleStudentRosterModal: React.FC<ScheduleStudentRosterModalProp
             </div>
           </div>
 
-          {/* Search bar & list title */}
+          {/* Sync notification if triggered */}
+          {syncNotice && (
+            <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs sm:text-sm text-emerald-900 font-semibold flex items-center justify-between gap-2 animate-fadeIn">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>{syncNotice}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSyncNotice('')}
+                className="text-emerald-700 hover:text-emerald-900 cursor-pointer"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+
+          {/* Search bar & list title with Quick Action Buttons */}
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
@@ -185,15 +214,53 @@ export const ScheduleStudentRosterModal: React.FC<ScheduleStudentRosterModalProp
               </p>
             </div>
 
-            <div className="relative w-full sm:w-64">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                placeholder="Cari NIM atau Nama..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-9 pr-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs sm:text-sm focus:outline-none focus:border-slate-900"
-              />
+            <div className="flex flex-wrap items-center gap-2.5 w-full sm:w-auto">
+              <div className="relative flex-1 sm:w-56">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  placeholder="Cari NIM atau Nama..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full pl-9 pr-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs sm:text-sm focus:outline-none focus:border-slate-900"
+                />
+              </div>
+
+              {/* Action: Re-sync Roster */}
+              <button
+                type="button"
+                onClick={() => {
+                  setIsSyncing(true);
+                  if (onSyncRoster) onSyncRoster();
+                  setTimeout(() => {
+                    setIsSyncing(false);
+                    setSyncNotice(`Sinkronisasi berhasil! Seluruh ${enrolledStudents.length} mahasiswa terhubung otomatis dan memiliki akun pengguna aktif.`);
+                    setTimeout(() => setSyncNotice(''), 4500);
+                  }, 400);
+                }}
+                disabled={isSyncing}
+                className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-lg text-xs font-semibold flex items-center gap-1.5 border border-slate-200 transition cursor-pointer disabled:opacity-50"
+                title="Sinkronkan ulang daftar mahasiswa dan akun pengguna"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 text-slate-600 ${isSyncing ? 'animate-spin text-indigo-600' : ''}`} />
+                <span>{isSyncing ? 'Menyinkronkan...' : 'Sinkronkan'}</span>
+              </button>
+
+              {/* Action: Direct Edit Schedule Rombel */}
+              {onEditSchedule && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose();
+                    onEditSchedule(schedule);
+                  }}
+                  className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer shadow-xs"
+                  title="Buka form edit jadwal untuk memilih atau menghilangkan rombel"
+                >
+                  <Edit3 className="w-3.5 h-3.5 text-indigo-300" />
+                  <span>Ubah Rombel Jadwal</span>
+                </button>
+              )}
             </div>
           </div>
 

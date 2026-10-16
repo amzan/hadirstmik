@@ -259,6 +259,9 @@ function getNormalizedVal(row: any, keys: string[]): string {
 
 function normalizeProdi(input: string): ProgramStudi {
   const lower = input.toLowerCase();
+  if (lower.includes('lintas')) {
+    return 'Lintas Program Studi';
+  }
   if (lower.includes('manajemen') || lower.includes('mi')) {
     return 'Manajemen Informatika';
   }

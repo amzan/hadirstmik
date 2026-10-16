@@ -10,7 +10,113 @@ export const CAMPUS_INFO = {
   dosenWaliMI: 'Fitriani Dwi Ratna Sari, S.T., M.M.',
 };
 
-export const INITIAL_USERS: User[] = [
+// Helper to parse student's rombel(s) into an array of individual rombel strings
+export function getStudentRombelList(studentRombel: string | string[] | undefined): string[] {
+  if (!studentRombel) return [];
+  if (Array.isArray(studentRombel)) {
+    return studentRombel.map(r => r.trim()).filter(Boolean);
+  }
+  return String(studentRombel)
+    .split(/[,;&]+/)
+    .map(r => r.trim())
+    .filter(Boolean);
+}
+
+export function isStudentInRombel(
+  studentRombel: string | string[] | undefined,
+  scheduleRombel: string,
+  studentRombelsArray?: string[]
+): boolean {
+  if (!studentRombel && (!studentRombelsArray || studentRombelsArray.length === 0)) return false;
+  if (!scheduleRombel) return false;
+  const list = studentRombelsArray && studentRombelsArray.length > 0
+    ? studentRombelsArray
+    : getStudentRombelList(studentRombel);
+  if (list.length === 0) return false;
+
+  const schRombel = scheduleRombel.trim().toUpperCase();
+  const schParts = getStudentRombelList(scheduleRombel).map(p => p.trim().toUpperCase()).filter(Boolean);
+
+  return list.some(rawR => {
+    const sR = rawR.trim().toUpperCase();
+    if (!sR) return false;
+
+    // Direct exact match
+    if (sR === schRombel) return true;
+    if (schParts.includes(sR)) return true;
+
+    // Matching against composite schedule parts (e.g. "TI 1 & 5", "TI 1A, TI 1B")
+    for (const part of schParts) {
+      if (sR === part) return true;
+      if (sR.startsWith(part) || part.startsWith(sR)) return true;
+      if (part === '5' && sR.includes('5')) return true;
+      if (part === '1' && sR.includes('1')) return true;
+    }
+
+    // Specific rombel matching for standard campus aliases
+    if (schRombel.includes('MI 1U') && (sR.startsWith('MI 1') || sR === 'MI 1A' || sR === 'MI 1')) return true;
+    if (schRombel.includes('MI 5') && (sR.startsWith('MI 5') || sR === 'MI 5A')) return true;
+
+    if (sR.startsWith(schRombel) || schRombel.startsWith(sR)) return true;
+
+    return false;
+  });
+}
+
+// Maximum SKS limit per semester standard
+export const MAX_STANDARD_SKS = 20;
+
+/**
+ * Returns all active schedules enrolled for a given student, taking into account
+ * their rombels, any custom included schedule IDs, and excluded schedule IDs.
+ */
+export function getStudentEnrolledSchedules(
+  student: Student | User | { rombel?: string; rombels?: string[]; excludedScheduleIds?: string[]; customScheduleIds?: string[] } | null | undefined,
+  allSchedules: ScheduleItem[]
+): ScheduleItem[] {
+  if (!student) return [];
+  const rombelList = student.rombels && student.rombels.length > 0
+    ? student.rombels
+    : getStudentRombelList(student.rombel);
+
+  const excludedSet = new Set(student.excludedScheduleIds || []);
+  const customSet = new Set(student.customScheduleIds || []);
+
+  return allSchedules.filter(sch => {
+    // If explicitly excluded by admin/student, omit
+    if (excludedSet.has(sch.id)) return false;
+    // If explicitly included via custom schedules, include
+    if (customSet.has(sch.id)) return true;
+    // Otherwise check rombel match
+    return isStudentInRombel(rombelList, sch.rombel);
+  });
+}
+
+/**
+ * Calculates the total SKS for a student across all active enrolled schedules.
+ */
+export function getStudentTotalSks(
+  student: Student | User | { rombel?: string; rombels?: string[]; excludedScheduleIds?: string[]; customScheduleIds?: string[] } | null | undefined,
+  allSchedules: ScheduleItem[]
+): number {
+  const enrolled = getStudentEnrolledSchedules(student, allSchedules);
+  return enrolled.reduce((acc, sch) => acc + (sch.sks || 0), 0);
+}
+
+export const STUDENT_AVATARS = [
+  '1534528741775-53994a69daeb',
+  '1535713875002-d1d0cf377fde',
+  '1494790108377-be9c29b29330',
+  '1507003211169-0a1dd7228f2d',
+  '1522075469751-3a6694fb2f61',
+  '1544005313-94ddf0286df2',
+  '1500648767791-00dcc994a43e',
+  '1517841905240-472988babdf9',
+  '1539571696357-5a69c17a67c6',
+  '1492562080023-ab3db95bfbce',
+];
+
+export const INITIAL_STAFF_USERS: User[] = [
   {
     "id": "user-admin-1",
     "username": "baak",
@@ -181,61 +287,6 @@ export const INITIAL_USERS: User[] = [
     "officeRoom": "Gedung A Lt. 2 R. Dosen MI 211",
     "avatarUrl": "https://images.unsplash.com/photo-1492562080023-ab3db95bfbce?w=150",
     "phone": "081234567811"
-  },
-  {
-    "id": "mhs-25TI0003",
-    "username": "25TI0003",
-    "name": "Ahmad Saefudin",
-    "email": "25ti0003@student.stmik-arungbinang.ac.id",
-    "role": "mahasiswa",
-    "prodi": "Teknologi Informasi",
-    "rombel": "TI 3",
-    "avatarUrl": "https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=150",
-    "phone": "085712340003"
-  },
-  {
-    "id": "mhs-26TI0001",
-    "username": "26TI0001",
-    "name": "Anggi Nauli Utami",
-    "email": "26ti0001@student.stmik-arungbinang.ac.id",
-    "role": "mahasiswa",
-    "prodi": "Teknologi Informasi",
-    "rombel": "TI 1A",
-    "avatarUrl": "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150",
-    "phone": "085712340001"
-  },
-  {
-    "id": "mhs-24MI0001",
-    "username": "24MI0001",
-    "name": "Ahmad Abror",
-    "email": "24mi0001@student.stmik-arungbinang.ac.id",
-    "role": "mahasiswa",
-    "prodi": "Manajemen Informatika",
-    "rombel": "MI 5A",
-    "avatarUrl": "https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?w=150",
-    "phone": "085712340011"
-  },
-  {
-    "id": "mhs-23MI0130",
-    "username": "23MI0130",
-    "name": "LUHUR BUDI UTAMI",
-    "email": "23mi0130@student.stmik-arungbinang.ac.id",
-    "role": "mahasiswa",
-    "prodi": "Manajemen Informatika",
-    "rombel": "MI 1A",
-    "avatarUrl": "https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150",
-    "phone": "085712340021"
-  },
-  {
-    "id": "mhs-24TI0001",
-    "username": "24TI0001",
-    "name": "Achmad Charis Muhlasin",
-    "email": "24ti0001@student.stmik-arungbinang.ac.id",
-    "role": "mahasiswa",
-    "prodi": "Teknologi Informasi",
-    "rombel": "TI 5",
-    "avatarUrl": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150",
-    "phone": "085712340031"
   }
 ];
 
@@ -752,6 +803,24 @@ export const INITIAL_STUDENTS: Student[] = [
     "email": "24mi0030@student.stmik-arungbinang.ac.id",
     "phone": "085712340087"
   }
+];
+
+export const INITIAL_USERS: User[] = [
+  ...INITIAL_STAFF_USERS,
+  ...INITIAL_STUDENTS.map((s, idx) => ({
+    id: `mhs-${s.nim}`,
+    username: s.nim,
+    name: s.name,
+    email: s.email || `${s.nim.toLowerCase()}@student.stmik-arungbinang.ac.id`,
+    role: 'mahasiswa' as const,
+    prodi: s.prodi,
+    rombel: s.rombel,
+    rombels: s.rombels && s.rombels.length > 0 ? s.rombels : getStudentRombelList(s.rombel),
+    phone: s.phone,
+    avatarUrl: `https://images.unsplash.com/photo-${STUDENT_AVATARS[idx % STUDENT_AVATARS.length]}?w=150`,
+    excludedScheduleIds: s.excludedScheduleIds,
+    customScheduleIds: s.customScheduleIds,
+  }))
 ];
 
 export const INITIAL_COURSES: Course[] = [
@@ -2770,101 +2839,6 @@ export const INITIAL_LEAVE_REQUESTS: LeaveRequest[] = [
     "createdAt": "2026-10-05T08:00:00Z"
   }
 ];
-
-// Helper to parse student's rombel(s) into an array of individual rombel strings
-export function getStudentRombelList(studentRombel: string | string[] | undefined): string[] {
-  if (!studentRombel) return [];
-  if (Array.isArray(studentRombel)) {
-    return studentRombel.map(r => r.trim()).filter(Boolean);
-  }
-  return String(studentRombel)
-    .split(/[,;&]+/)
-    .map(r => r.trim())
-    .filter(Boolean);
-}
-
-export function isStudentInRombel(
-  studentRombel: string | string[] | undefined,
-  scheduleRombel: string,
-  studentRombelsArray?: string[]
-): boolean {
-  if (!studentRombel && (!studentRombelsArray || studentRombelsArray.length === 0)) return false;
-  if (!scheduleRombel) return false;
-  const list = studentRombelsArray && studentRombelsArray.length > 0
-    ? studentRombelsArray
-    : getStudentRombelList(studentRombel);
-  if (list.length === 0) return false;
-
-  const schRombel = scheduleRombel.trim().toUpperCase();
-  const schParts = schRombel
-    .split(/[,;&/]+/)
-    .map(p => p.trim())
-    .filter(Boolean);
-
-  return list.some(rawR => {
-    const sR = rawR.trim().toUpperCase();
-    if (!sR) return false;
-
-    // Direct exact match
-    if (sR === schRombel) return true;
-
-    // Matching against composite schedule parts (e.g. "TI 1 & 5", "TI 1A, TI 1B")
-    for (const part of schParts) {
-      if (sR === part) return true;
-      if (sR.startsWith(part) || part.startsWith(sR)) return true;
-      if (part === '5' && sR.includes('5')) return true;
-      if (part === '1' && sR.includes('1')) return true;
-    }
-
-    // Specific rombel matching for standard campus aliases
-    if (schRombel.includes('MI 1U') && (sR.startsWith('MI 1') || sR === 'MI 1A' || sR === 'MI 1')) return true;
-    if (schRombel.includes('MI 5') && (sR.startsWith('MI 5') || sR === 'MI 5A')) return true;
-
-    if (sR.startsWith(schRombel) || schRombel.startsWith(sR)) return true;
-
-    return false;
-  });
-}
-
-// Maximum SKS limit per semester standard
-export const MAX_STANDARD_SKS = 20;
-
-/**
- * Returns all active schedules enrolled for a given student, taking into account
- * their rombels, any custom included schedule IDs, and excluded schedule IDs.
- */
-export function getStudentEnrolledSchedules(
-  student: Student | User | { rombel?: string; rombels?: string[]; excludedScheduleIds?: string[]; customScheduleIds?: string[] } | null | undefined,
-  allSchedules: ScheduleItem[]
-): ScheduleItem[] {
-  if (!student) return [];
-  const rombelList = student.rombels && student.rombels.length > 0
-    ? student.rombels
-    : getStudentRombelList(student.rombel);
-
-  const excludedSet = new Set(student.excludedScheduleIds || []);
-  const customSet = new Set(student.customScheduleIds || []);
-
-  return allSchedules.filter(sch => {
-    // If explicitly excluded by admin/student, omit
-    if (excludedSet.has(sch.id)) return false;
-    // If explicitly included via custom schedules, include
-    if (customSet.has(sch.id)) return true;
-    // Otherwise check rombel match
-    return isStudentInRombel(rombelList, sch.rombel);
-  });
-}
-
-/**
- * Calculates the total SKS for a student across all active enrolled schedules.
- */
-export function getStudentTotalSks(
-  student: Student | User | { rombel?: string; rombels?: string[]; excludedScheduleIds?: string[]; customScheduleIds?: string[] } | null | undefined,
-  allSchedules: ScheduleItem[]
-): number {
-  const enrolled = getStudentEnrolledSchedules(student, allSchedules);
-  return enrolled.reduce((acc, sch) => acc + (sch.sks || 0), 0);
-}
 
 // Initial registered campus rombels
 export const INITIAL_ROMBELS: Rombel[] = [

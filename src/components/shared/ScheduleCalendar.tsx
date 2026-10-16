@@ -76,6 +76,16 @@ export const ScheduleCalendar: React.FC<ScheduleCalendarProps> = ({ onSelectSche
           >
             Manajemen Informatika
           </button>
+          <button
+            onClick={() => setSelectedProdi('Lintas Program Studi')}
+            className={`px-3 py-1.5 rounded-md transition cursor-pointer shrink-0 ${
+              selectedProdi === 'Lintas Program Studi'
+                ? 'bg-white text-indigo-900 font-semibold shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            Lintas Prodi
+          </button>
         </div>
       </div>
 

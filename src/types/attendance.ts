@@ -2,7 +2,7 @@ export type Role = 'admin' | 'dosen' | 'mahasiswa';
 
 export type AttendanceStatus = 'HADIR' | 'IZIN' | 'SAKIT' | 'ALPHA';
 
-export type ProgramStudi = 'Teknologi Informasi' | 'Manajemen Informatika';
+export type ProgramStudi = 'Teknologi Informasi' | 'Manajemen Informatika' | 'Lintas Program Studi';
 
 export interface User {
   id: string;

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useAttendance } from '../../context/AttendanceContext';
 import { User } from '../../types/attendance';
-import { CAMPUS_INFO } from '../../data/initialData';
+import { CAMPUS_INFO, getStudentRombelList } from '../../data/initialData';
 import {
   GraduationCap, Eye, EyeOff, Check, AlertCircle, X,
   ArrowRight
@@ -77,9 +77,20 @@ export const StudentLoginPortal: React.FC<StudentLoginPortalProps> = ({
 
     setTimeout(() => {
       if (existingUser) {
+        const foundStudent = students.find(s => s.nim.toUpperCase() === cleanNim);
+        const rombelList = (foundStudent?.rombels && foundStudent.rombels.length > 0)
+          ? foundStudent.rombels
+          : (existingUser.rombels && existingUser.rombels.length > 0)
+            ? existingUser.rombels
+            : getStudentRombelList(existingUser.rombel || foundStudent?.rombel);
+
         const canonicalUser: User = {
           ...existingUser,
           id: `mhs-${cleanNim}`,
+          rombel: rombelList.join(', ') || existingUser.rombel || foundStudent?.rombel || '',
+          rombels: rombelList,
+          excludedScheduleIds: foundStudent?.excludedScheduleIds || existingUser.excludedScheduleIds,
+          customScheduleIds: foundStudent?.customScheduleIds || existingUser.customScheduleIds,
         };
         addUser(canonicalUser);
         setIsLoading(false);
@@ -94,6 +105,10 @@ export const StudentLoginPortal: React.FC<StudentLoginPortalProps> = ({
       const foundStudent = students.find(s => s.nim.toUpperCase() === cleanNim);
 
       if (foundStudent) {
+        const rombelList = foundStudent.rombels && foundStudent.rombels.length > 0
+          ? foundStudent.rombels
+          : getStudentRombelList(foundStudent.rombel);
+
         // Create user record for this student
         const newStudentUser: User = {
           id: `mhs-${foundStudent.nim}`,
@@ -102,9 +117,12 @@ export const StudentLoginPortal: React.FC<StudentLoginPortalProps> = ({
           email: foundStudent.email,
           role: 'mahasiswa',
           prodi: foundStudent.prodi,
-          rombel: foundStudent.rombel,
+          rombel: rombelList.join(', ') || foundStudent.rombel,
+          rombels: rombelList,
           phone: foundStudent.phone,
           avatarUrl: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150',
+          excludedScheduleIds: foundStudent.excludedScheduleIds,
+          customScheduleIds: foundStudent.customScheduleIds,
         };
 
         addUser(newStudentUser);
