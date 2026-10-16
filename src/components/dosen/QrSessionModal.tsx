@@ -81,12 +81,16 @@ export const QrSessionModal: React.FC<QrSessionModalProps> = ({ session, isOpen,
   };
 
   const toggleFullscreen = () => {
-    if (!document.fullscreenElement) {
-      modalContainerRef.current?.requestFullscreen?.();
-      setIsFullscreen(true);
-    } else {
-      document.exitFullscreen?.();
-      setIsFullscreen(false);
+    try {
+      if (!document.fullscreenElement) {
+        modalContainerRef.current?.requestFullscreen?.().catch(() => {});
+        setIsFullscreen(true);
+      } else {
+        document.exitFullscreen?.().catch(() => {});
+        setIsFullscreen(false);
+      }
+    } catch {
+      // safe fallback if fullscreen is not permitted in iframe
     }
   };
 
