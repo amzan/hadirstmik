@@ -188,9 +188,16 @@ export const UnifiedLoginPortal: React.FC<UnifiedLoginPortalProps> = ({
         phone: '081234567890',
       };
 
-      if (cleanInput !== 'baak' && cleanInput !== adminUser.username.toLowerCase()) {
+      const isMatch = (
+        cleanInput === 'baak' ||
+        cleanInput === 'admin' ||
+        cleanInput === adminUser.username.toLowerCase() ||
+        (adminUser.email && cleanInput === adminUser.email.toLowerCase())
+      );
+
+      if (!isMatch) {
         setIsLoading(false);
-        setErrorMessage('Username administrator tidak valid. Gunakan username resmi: baak');
+        setErrorMessage('Username atau email administrator tidak valid. Gunakan username resmi: baak atau email terdaftar.');
         return;
       }
 

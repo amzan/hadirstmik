@@ -1333,9 +1333,9 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       const nextSessions = prev.map(ds => {
         if (
           ds.userId === id || 
-          (updated.username && ds.username.toLowerCase() === updated.username.toLowerCase()) ||
+          (updated.username && ds.userUsername.toLowerCase() === updated.username.toLowerCase()) ||
           (currentUser.id === id && ds.userId === currentUser.id) ||
-          (currentUser.username && ds.username.toLowerCase() === currentUser.username.toLowerCase())
+          (currentUser.username && ds.userUsername.toLowerCase() === currentUser.username.toLowerCase())
         ) {
           changed = true;
           return {
@@ -1653,6 +1653,7 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           ...u,
           name: newStudent.name,
           email: newStudent.email,
+          password: newStudent.password !== undefined ? newStudent.password : u.password,
           prodi: newStudent.prodi,
           rombel: newStudent.rombel,
           rombels: newStudent.rombels,
@@ -1664,6 +1665,7 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           username: newStudent.nim,
           name: newStudent.name,
           email: newStudent.email,
+          password: newStudent.password,
           role: 'mahasiswa',
           prodi: newStudent.prodi,
           rombel: newStudent.rombel,
@@ -1770,7 +1772,7 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     setDeviceSessions(prev => {
       let changed = false;
       const nextSessions = prev.map(ds => {
-        if (ds.username.toUpperCase() === nim.toUpperCase()) {
+        if (ds.userUsername.toUpperCase() === nim.toUpperCase()) {
           changed = true;
           return {
             ...ds,

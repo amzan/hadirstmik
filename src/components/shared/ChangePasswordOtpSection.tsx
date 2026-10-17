@@ -18,6 +18,7 @@ export const ChangePasswordOtpSection: React.FC<ChangePasswordOtpSectionProps> =
   currentUser,
   onPasswordChanged,
   overrideEmail,
+  onEmailUpdated,
 }) => {
   const { resetUserPassword, updateUser } = useAttendance();
 

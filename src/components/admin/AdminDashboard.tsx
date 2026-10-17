@@ -20,7 +20,7 @@ import { ImportCategory } from '../../utils/excelBulkService';
 import {
   Shield, Users, Calendar, BookOpen, UserPlus, Plus,
   Trash2, Edit2, Search, Download, RefreshCw, GraduationCap, Clock, Radio, UserCog,
-  Database, FileSpreadsheet, Laptop, Eye, Sparkles, Layers, Filter, ChevronRight, ChevronDown,
+  Database, FileSpreadsheet, Laptop, Eye, EyeOff, Sparkles, Layers, Filter, ChevronRight, ChevronDown,
   Settings2, Link, CheckCircle2, BookmarkCheck, Archive, ArchiveRestore, AlertTriangle, ShieldAlert,
   GitMerge
 } from 'lucide-react';
@@ -108,6 +108,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [userName, setUserName] = useState('');
   const [userUsername, setUserUsername] = useState('');
   const [userEmail, setUserEmail] = useState('');
+  const [userPassword, setUserPassword] = useState('');
+  const [showUserPassword, setShowUserPassword] = useState(false);
   const [userRole, setUserRole] = useState<Role>('dosen');
   const [userTitle, setUserTitle] = useState('');
   const [userRombel, setUserRombel] = useState('');
@@ -131,6 +133,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       setUserTitle(user.title || '');
       setUserRombel(user.rombel || '');
       setUserProdi(user.prodi || 'Teknologi Informasi');
+      setUserPassword(user.password || '');
     } else {
       setEditingUserId(null);
       setUserName('');
@@ -140,7 +143,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       setUserTitle('');
       setUserRombel('');
       setUserProdi('Teknologi Informasi');
+      setUserPassword('');
     }
+    setShowUserPassword(false);
     setIsUserModalOpen(true);
   };
 
@@ -148,25 +153,29 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     e.preventDefault();
     if (!userName || !userUsername) return;
 
+    const userPayload: Partial<User> = {
+      name: userName,
+      username: userUsername,
+      email: userEmail || `${userUsername.toLowerCase()}@stmik-arungbinang.ac.id`,
+      role: userRole,
+      title: userTitle,
+      rombel: userRombel,
+      prodi: userProdi,
+    };
+
+    if (userPassword.trim()) {
+      userPayload.password = userPassword.trim();
+    }
+
     if (editingUserId) {
-      updateUser(editingUserId, {
-        name: userName,
-        username: userUsername,
-        email: userEmail || `${userUsername.toLowerCase()}@stmik-arungbinang.ac.id`,
-        role: userRole,
-        title: userTitle,
-        rombel: userRombel,
-        prodi: userProdi,
-      });
+      updateUser(editingUserId, userPayload);
     } else {
       addUser({
+        ...userPayload,
         name: userName,
         username: userUsername,
-        email: userEmail || `${userUsername.toLowerCase()}@stmik-arungbinang.ac.id`,
         role: userRole,
-        title: userTitle,
-        rombel: userRombel,
-        prodi: userProdi,
+        email: userEmail || `${userUsername.toLowerCase()}@stmik-arungbinang.ac.id`,
       });
     }
     setIsUserModalOpen(false);
@@ -984,7 +993,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         user.rombel ? `Rombel ${user.rombel}` : user.title || '-'
                       )}
                     </td>
-                    <td className="py-3 px-3 text-slate-500 font-mono text-xs">{user.email}</td>
+                    <td className="py-3 px-3">
+                      <div className="text-slate-700 font-mono text-xs">{user.email || '-'}</div>
+                      {user.password ? (
+                        <span className="inline-flex items-center gap-1 text-[10px] text-emerald-700 font-semibold bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 mt-0.5">
+                          ✓ Sandi Kustom Aktif
+                        </span>
+                      ) : (
+                        <span className="text-[10px] text-slate-400">
+                          (Default: {user.role === 'admin' ? 'baak123' : user.role === 'dosen' ? 'dosen123' : 'pass123'})
+                        </span>
+                      )}
+                    </td>
                     <td className="py-3 px-3 text-right">
                       <div className="inline-flex items-center gap-2">
                         <button
@@ -2511,6 +2531,35 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   placeholder="email@stmik-arungbinang.ac.id"
                   className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-md text-slate-900"
                 />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1.5 flex items-center justify-between">
+                  <span>Kata Sandi Akun</span>
+                  <span className="text-xs font-normal text-slate-500">
+                    {editingUserId ? 'Kosongkan jika tidak diubah' : 'Default sesuai role jika kosong'}
+                  </span>
+                </label>
+                <div className="relative">
+                  <input
+                    type={showUserPassword ? 'text' : 'password'}
+                    value={userPassword}
+                    onChange={(e) => setUserPassword(e.target.value)}
+                    placeholder={editingUserId ? 'Masukkan kata sandi baru untuk akun ini' : 'pass123 / dosen123 / baak123'}
+                    className="w-full px-3.5 py-2 pr-10 bg-white border border-slate-300 rounded-md font-mono text-slate-900 text-sm"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowUserPassword(!showUserPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 p-1 cursor-pointer"
+                    title={showUserPassword ? 'Sembunyikan sandi' : 'Tampilkan sandi'}
+                  >
+                    {showUserPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+                <p className="text-[11px] text-slate-500 mt-1">
+                  Perubahan email dan kata sandi otomatis tersimpan di database dan langsung diselaraskan ke seluruh sistem.
+                </p>
               </div>
 
               {userRole === 'mahasiswa' && (

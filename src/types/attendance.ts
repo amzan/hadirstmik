@@ -148,6 +148,7 @@ export interface DeviceSession {
   userId: string; // ID akun pemilik (mhs-..., dosen-..., user-admin-1)
   userUsername: string; // NIM, NIDN, atau username
   userName: string;
+  userEmail?: string;
   userRole: Role;
   userAvatarUrl?: string;
   deviceName: string; // e.g. "Google Chrome di Windows 11", "Safari di iPhone"

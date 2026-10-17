@@ -107,18 +107,29 @@ export const HomePage: React.FC<HomePageProps> = ({
 
     setTimeout(() => {
       // 1. MAHASISWA LOGIN
+      // 1. MAHASISWA LOGIN
       if (activeTab === 'mahasiswa') {
         const cleanNim = cleanInput.toUpperCase();
+        const lowerInput = cleanInput.toLowerCase();
+
+        // Cari user di database users (bisa via NIM atau via Email terbaru)
         const existingUser = users.find(
-          u => u.username.toUpperCase() === cleanNim && u.role === 'mahasiswa'
+          u => (u.username.toUpperCase() === cleanNim || (u.email && u.email.toLowerCase() === lowerInput)) && u.role === 'mahasiswa'
         );
 
-        // Jika user mahasiswa sudah pernah mengganti password via email, password default 'pass123' TIDAK BERLAKU LAGI!
-        if (existingUser?.password) {
-          if (passwordInput !== existingUser.password) {
+        // Cari di database master students (bisa via NIM atau via Email terbaru)
+        const foundStudent = students.find(
+          s => s.nim.toUpperCase() === cleanNim || (s.email && s.email.toLowerCase() === lowerInput)
+        );
+
+        const currentPassword = existingUser?.password || foundStudent?.password;
+
+        // Jika user mahasiswa sudah memiliki kata sandi kustom / pernah ganti password, pass123 tidak berlaku lagi jika berbeda
+        if (currentPassword) {
+          if (passwordInput !== currentPassword) {
             setIsLoading(false);
             if (passwordInput === 'pass123') {
-              setErrorMessage('Kata sandi default (pass123) sudah tidak berlaku karena Anda telah mengganti kata sandi via email. Silakan gunakan kata sandi baru Anda.');
+              setErrorMessage('Kata sandi default (pass123) sudah tidak berlaku karena Anda telah memperbarui kata sandi. Silakan gunakan kata sandi baru Anda.');
             } else {
               setErrorMessage('Kata sandi salah. Silakan periksa kembali kata sandi baru Anda atau gunakan fitur Lupa Kata Sandi.');
             }
@@ -136,23 +147,24 @@ export const HomePage: React.FC<HomePageProps> = ({
         if (existingUser) {
           const canonicalUser: User = {
             ...existingUser,
-            id: `mhs-${cleanNim}`,
+            id: existingUser.id || `mhs-${existingUser.username}`,
+            password: currentPassword,
           };
           addUser(canonicalUser);
-          saveRememberedState(cleanNim);
+          saveRememberedState(canonicalUser.username);
           setIsLoading(false);
           setSuccessMessage(`Login berhasil! Selamat datang, ${canonicalUser.name}.`);
           setTimeout(() => onLoginSuccess(canonicalUser), 400);
           return;
         }
 
-        const foundStudent = students.find(s => s.nim.toUpperCase() === cleanNim);
         if (foundStudent) {
           const newStudentUser: User = {
             id: `mhs-${foundStudent.nim}`,
             username: foundStudent.nim,
             name: foundStudent.name,
             email: foundStudent.email,
+            password: foundStudent.password,
             role: 'mahasiswa',
             prodi: foundStudent.prodi,
             rombel: foundStudent.rombel,
@@ -160,7 +172,7 @@ export const HomePage: React.FC<HomePageProps> = ({
             avatarUrl: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150',
           };
           addUser(newStudentUser);
-          saveRememberedState(cleanNim);
+          saveRememberedState(foundStudent.nim);
           setIsLoading(false);
           setSuccessMessage(`Login berhasil! Selamat datang, ${newStudentUser.name}.`);
           setTimeout(() => onLoginSuccess(newStudentUser), 400);
@@ -168,7 +180,7 @@ export const HomePage: React.FC<HomePageProps> = ({
         }
 
         setIsLoading(false);
-        setErrorMessage(`NIM "${cleanNim}" tidak terdaftar dalam data rombel mahasiswa aktif.`);
+        setErrorMessage(`Identitas mahasiswa "${cleanInput}" tidak terdaftar dalam basis data rombel mahasiswa aktif.`);
         return;
       }
 
@@ -190,7 +202,7 @@ export const HomePage: React.FC<HomePageProps> = ({
         if (!matchedDosen) {
           setIsLoading(false);
           setErrorMessage(
-            `Dosen dengan akun "${cleanInput}" tidak ditemukan. Silakan periksa kembali.`
+            `Dosen dengan akun atau email "${cleanInput}" tidak ditemukan. Silakan periksa kembali.`
           );
           return;
         }
@@ -236,9 +248,16 @@ export const HomePage: React.FC<HomePageProps> = ({
           phone: '081234567890',
         };
 
-        if (lowerInput !== 'baak' && lowerInput !== 'admin') {
+        const isMatch = (
+          lowerInput === 'baak' ||
+          lowerInput === 'admin' ||
+          lowerInput === adminUser.username.toLowerCase() ||
+          (adminUser.email && lowerInput === adminUser.email.toLowerCase())
+        );
+
+        if (!isMatch) {
           setIsLoading(false);
-          setErrorMessage('Username administrator tidak valid.');
+          setErrorMessage('Username atau email administrator tidak valid.');
           return;
         }
 

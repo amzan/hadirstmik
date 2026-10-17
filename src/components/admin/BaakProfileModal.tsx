@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAttendance } from '../../context/AttendanceContext';
 import { ChangePasswordOtpSection } from '../shared/ChangePasswordOtpSection';
+import type { User as AppUser } from '../../types/attendance';
 import {
   X, User, Mail, Phone, Shield, Check,
   Camera, Building, CheckCircle2, AlertCircle, Sparkles, Upload, KeyRound, Laptop,
@@ -175,16 +176,27 @@ export const BaakProfileModal: React.FC<BaakProfileModalProps> = ({
       return;
     }
 
-    updateUser(currentUser.id, {
+    const payload: Partial<AppUser> = {
       name: cleanName,
       title: title.trim(),
       email: cleanEmail,
       phone: phone.trim(),
       officeRoom: officeRoom.trim(),
       avatarUrl: avatarUrl.trim(),
-    });
+    };
+
+    if (newPassword.trim()) {
+      if (newPassword.trim().length < 6) {
+        setErrorMessage('Kata sandi baru minimal terdiri dari 6 karakter.');
+        return;
+      }
+      payload.password = newPassword.trim();
+    }
+
+    updateUser(currentUser.id, payload);
 
     setSaveSuccess(true);
+    setNewPassword('');
     setTimeout(() => {
       setSaveSuccess(false);
     }, 2500);
@@ -494,6 +506,33 @@ export const BaakProfileModal: React.FC<BaakProfileModalProps> = ({
                     className="w-full px-3.5 py-2 text-sm rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-hidden text-slate-900"
                   />
                 </div>
+
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-semibold text-slate-700 mb-1 flex items-center justify-between">
+                    <span>Kata Sandi Baru Administrator (Opsional)</span>
+                    <span className="text-[11px] font-normal text-slate-500">Kosongkan jika tidak ingin mengubah</span>
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      placeholder="Masukkan kata sandi baru admin (minimal 6 karakter)"
+                      className="w-full px-3.5 py-2 pr-10 text-sm rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-hidden text-slate-900 font-mono"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 p-1 cursor-pointer"
+                      title={showPassword ? 'Sembunyikan sandi' : 'Tampilkan sandi'}
+                    >
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    Jika diisi, kata sandi login admin akan otomatis diperbarui dan diselaraskan ke seluruh database sistem.
+                  </p>
+                </div>
               </div>
 
               {/* Bottom Buttons */}
@@ -531,7 +570,8 @@ export const BaakProfileModal: React.FC<BaakProfileModalProps> = ({
               <ChangePasswordOtpSection
                 currentUser={currentUser}
                 overrideEmail={email}
-                onPasswordChanged={() => {}}
+                onEmailUpdated={(updatedEm) => setEmail(updatedEm)}
+                onPasswordChanged={() => setNewPassword('')}
               />
             </div>
           ) : (

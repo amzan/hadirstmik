@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAttendance } from '../../context/AttendanceContext';
-import { ProgramStudi } from '../../types/attendance';
+import { ProgramStudi, User as AppUser } from '../../types/attendance';
 import {
   X, User, Mail, Phone, BookOpen, Shield, Check,
   Camera, Building, FileCheck, CheckCircle2, AlertCircle, Sparkles, Upload, Image as ImageIcon,
@@ -200,7 +200,7 @@ export const DosenProfileModal: React.FC<DosenProfileModalProps> = ({
       return;
     }
 
-    const payload: Partial<User> = {
+    const payload: Partial<AppUser> = {
       name: cleanName,
       username: cleanNidn,
       nidn: cleanNidn,

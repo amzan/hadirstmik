@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAttendance } from '../../context/AttendanceContext';
-import { ProgramStudi } from '../../types/attendance';
+import { ProgramStudi, User as AppUser } from '../../types/attendance';
 import { ChangePasswordOtpSection } from '../shared/ChangePasswordOtpSection';
 import { DeviceSessionManager } from '../shared/DeviceSessionManager';
 import {
@@ -184,7 +184,7 @@ export const MahasiswaProfileModal: React.FC<MahasiswaProfileModalProps> = ({
       return;
     }
 
-    const updatePayload: Partial<User> = {
+    const updatePayload: Partial<AppUser> = {
       name: cleanName,
       prodi,
       rombel: rombel.trim(),

@@ -39,25 +39,31 @@ export const StudentLoginPortal: React.FC<StudentLoginPortalProps> = ({
     setSuccessMessage('');
 
     const cleanNim = nim.trim().toUpperCase();
+    const cleanLower = nim.trim().toLowerCase();
 
     if (!cleanNim) {
-      setErrorMessage('Silakan masukkan Nomor Induk Mahasiswa (NIM).');
+      setErrorMessage('Silakan masukkan Nomor Induk Mahasiswa (NIM) atau email Anda.');
       return;
     }
 
     if (!password) {
-      setErrorMessage('Silakan masukkan password.');
+      setErrorMessage('Silakan masukkan kata sandi Anda.');
       return;
     }
 
-    // Check if user already exists in users list with custom password
+    // Check if user already exists in users list with custom password or matching email/NIM
     const existingUser = users.find(
-      u => u.username.toUpperCase() === cleanNim && u.role === 'mahasiswa'
+      u => (u.username.toUpperCase() === cleanNim || (u.email && u.email.toLowerCase() === cleanLower)) && u.role === 'mahasiswa'
+    );
+    const foundStudent = students.find(
+      s => s.nim.toUpperCase() === cleanNim || (s.email && s.email.toLowerCase() === cleanLower)
     );
 
+    const activePassword = existingUser?.password || foundStudent?.password;
+
     // Password validation rule: jika sudah ada penggantian password, password default 'pass123' TIDAK BERLAKU LAGI
-    if (existingUser?.password) {
-      if (password !== existingUser.password) {
+    if (activePassword) {
+      if (password !== activePassword) {
         if (password === 'pass123') {
           setErrorMessage('Password default (pass123) sudah tidak berlaku karena Anda telah mengganti password via email. Silakan gunakan password baru Anda.');
         } else {
@@ -77,20 +83,21 @@ export const StudentLoginPortal: React.FC<StudentLoginPortalProps> = ({
 
     setTimeout(() => {
       if (existingUser) {
-        const foundStudent = students.find(s => s.nim.toUpperCase() === cleanNim);
-        const rombelList = (foundStudent?.rombels && foundStudent.rombels.length > 0)
-          ? foundStudent.rombels
+        const studentRecord = foundStudent || students.find(s => s.nim.toUpperCase() === existingUser.username.toUpperCase());
+        const rombelList = (studentRecord?.rombels && studentRecord.rombels.length > 0)
+          ? studentRecord.rombels
           : (existingUser.rombels && existingUser.rombels.length > 0)
             ? existingUser.rombels
-            : getStudentRombelList(existingUser.rombel || foundStudent?.rombel);
+            : getStudentRombelList(existingUser.rombel || studentRecord?.rombel);
 
         const canonicalUser: User = {
           ...existingUser,
-          id: `mhs-${cleanNim}`,
-          rombel: rombelList.join(', ') || existingUser.rombel || foundStudent?.rombel || '',
+          id: existingUser.id || `mhs-${existingUser.username}`,
+          password: activePassword,
+          rombel: rombelList.join(', ') || existingUser.rombel || studentRecord?.rombel || '',
           rombels: rombelList,
-          excludedScheduleIds: foundStudent?.excludedScheduleIds || existingUser.excludedScheduleIds,
-          customScheduleIds: foundStudent?.customScheduleIds || existingUser.customScheduleIds,
+          excludedScheduleIds: studentRecord?.excludedScheduleIds || existingUser.excludedScheduleIds,
+          customScheduleIds: studentRecord?.customScheduleIds || existingUser.customScheduleIds,
         };
         addUser(canonicalUser);
         setIsLoading(false);
@@ -102,8 +109,6 @@ export const StudentLoginPortal: React.FC<StudentLoginPortalProps> = ({
       }
 
       // 2. Check if student exists in master students database
-      const foundStudent = students.find(s => s.nim.toUpperCase() === cleanNim);
-
       if (foundStudent) {
         const rombelList = foundStudent.rombels && foundStudent.rombels.length > 0
           ? foundStudent.rombels
@@ -115,6 +120,7 @@ export const StudentLoginPortal: React.FC<StudentLoginPortalProps> = ({
           username: foundStudent.nim,
           name: foundStudent.name,
           email: foundStudent.email,
+          password: foundStudent.password,
           role: 'mahasiswa',
           prodi: foundStudent.prodi,
           rombel: rombelList.join(', ') || foundStudent.rombel,

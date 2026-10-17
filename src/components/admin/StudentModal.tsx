@@ -4,7 +4,7 @@ import { isStudentInRombel, getStudentRombelList } from '../../data/initialData'
 import {
   X, UserPlus, Users, BookOpen, Calendar, Clock,
   CheckCircle2, AlertCircle, AlertTriangle, Sparkles, Building2,
-  Check, Plus, Trash2, Shield, Info, Minus, RefreshCw
+  Check, Plus, Trash2, Shield, Info, Minus, RefreshCw, Eye, EyeOff, KeyRound
 } from 'lucide-react';
 
 interface StudentModalProps {
@@ -38,6 +38,8 @@ export const StudentModal: React.FC<StudentModalProps> = ({
   const [customRombelInput, setCustomRombelInput] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
+  const [studentPassword, setStudentPassword] = useState('');
+  const [showStudentPassword, setShowStudentPassword] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
   // Collect all unique rombels from existing rombels, students, schedules + defaults
@@ -72,6 +74,7 @@ export const StudentModal: React.FC<StudentModalProps> = ({
       setExcludedScheduleIds(editingStudent.excludedScheduleIds || []);
       setEmail(editingStudent.email || '');
       setPhone(editingStudent.phone || '');
+      setStudentPassword(editingStudent.password || '');
     } else {
       setNim('');
       setName('');
@@ -80,7 +83,9 @@ export const StudentModal: React.FC<StudentModalProps> = ({
       setExcludedScheduleIds([]);
       setEmail('');
       setPhone('');
+      setStudentPassword('');
     }
+    setShowStudentPassword(false);
     setCustomRombelInput('');
     setErrorMsg('');
   }, [isOpen, editingStudent]);
@@ -223,6 +228,7 @@ export const StudentModal: React.FC<StudentModalProps> = ({
       rombels: selectedRombels,
       email: finalEmail,
       phone: phone.trim() || undefined,
+      password: studentPassword.trim() || editingStudent?.password || undefined,
       excludedScheduleIds: excludedScheduleIds.length > 0
         ? excludedScheduleIds.filter(id => linkedSchedules.some(s => s.id === id))
         : undefined,
@@ -596,6 +602,36 @@ export const StudentModal: React.FC<StudentModalProps> = ({
                 className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs sm:text-sm text-slate-900 focus:bg-white focus:outline-none focus:border-indigo-600 transition"
               />
             </div>
+          </div>
+
+          {/* Kata Sandi Akun Mahasiswa */}
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-1.5 flex items-center justify-between">
+              <span>Kata Sandi Akun Mahasiswa (Opsional)</span>
+              <span className="text-[11px] font-normal text-slate-500">
+                {editingStudent ? 'Kosongkan jika tetap menggunakan kata sandi saat ini' : 'Default: pass123'}
+              </span>
+            </label>
+            <div className="relative">
+              <input
+                type={showStudentPassword ? 'text' : 'password'}
+                value={studentPassword}
+                onChange={(e) => setStudentPassword(e.target.value)}
+                placeholder={editingStudent ? 'Masukkan kata sandi baru untuk akun mahasiswa ini' : 'pass123'}
+                className="w-full px-3.5 py-2.5 pr-10 bg-slate-50 border border-slate-300 rounded-xl text-xs sm:text-sm text-slate-900 focus:bg-white focus:outline-none focus:border-indigo-600 transition font-mono"
+              />
+              <button
+                type="button"
+                onClick={() => setShowStudentPassword(!showStudentPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 p-1 cursor-pointer"
+                title={showStudentPassword ? 'Sembunyikan sandi' : 'Tampilkan sandi'}
+              >
+                {showStudentPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+            <p className="text-[11px] text-slate-500 mt-1">
+              Perubahan email dan kata sandi otomatis disinkronkan ke akun login mahasiswa dan seluruh database presensi.
+            </p>
           </div>
 
           {/* Action Buttons */}
