@@ -497,9 +497,9 @@ export function saveLocalSnapshot(
   note: string | undefined,
   data: DatabaseBackupData
 ): DatabaseSnapshot {
-  const snapshots = loadLocalSnapshots();
+  const snapshots = loadLocalSnapshots().filter(s => s.id !== DEFAULT_MASTER_SNAPSHOT_ID);
   const newSnapshot: DatabaseSnapshot = {
-    id: `snap-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+    id: `snap-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     name: name || `Snapshot ${new Date().toLocaleDateString('id-ID')}`,
     note: note || '',
     timestamp: new Date().toISOString(),
@@ -523,19 +523,37 @@ export function saveLocalSnapshot(
     },
   };
 
-  // Simpan maksimal 15 snapshot terbaru
-  const updated = [newSnapshot, ...snapshots.slice(0, 14)];
-  localStorage.setItem(STORAGE_KEY_SNAPSHOTS, JSON.stringify(updated));
+  // Simpan maksimal 4 snapshot kustom terbaru dengan proteksi kuota localStorage
+  let candidates = [newSnapshot, ...snapshots.slice(0, 3)];
+  while (candidates.length > 0) {
+    try {
+      localStorage.setItem(STORAGE_KEY_SNAPSHOTS, JSON.stringify(candidates));
+      break;
+    } catch {
+      candidates = candidates.slice(0, candidates.length - 1);
+      if (candidates.length === 0) {
+        try {
+          localStorage.removeItem(STORAGE_KEY_SNAPSHOTS);
+        } catch {}
+      }
+    }
+  }
   return newSnapshot;
 }
 
 export function deleteLocalSnapshot(snapshotId: string): DatabaseSnapshot[] {
   const snapshots = loadLocalSnapshots();
-  const updated = snapshots.filter(s => s.id !== snapshotId);
-  localStorage.setItem(STORAGE_KEY_SNAPSHOTS, JSON.stringify(updated));
-  return updated;
+  const updatedCustom = snapshots.filter(
+    s => s.id !== snapshotId && s.id !== DEFAULT_MASTER_SNAPSHOT_ID
+  );
+  try {
+    localStorage.setItem(STORAGE_KEY_SNAPSHOTS, JSON.stringify(updatedCustom));
+  } catch {}
+  return [getDefaultMasterSnapshot(), ...updatedCustom];
 }
 
 export function clearAllLocalSnapshots(): void {
-  localStorage.removeItem(STORAGE_KEY_SNAPSHOTS);
+  try {
+    localStorage.removeItem(STORAGE_KEY_SNAPSHOTS);
+  } catch {}
 }

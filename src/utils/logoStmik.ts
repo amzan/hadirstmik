@@ -256,18 +256,28 @@ export function renderStmikLogoCanvas(): HTMLCanvasElement {
   return canvas;
 }
 
+const FALLBACK_LOGO_DATA_URL =
+  'data:image/svg+xml;utf8,' +
+  encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><circle cx="32" cy="32" r="30" fill="#141416" stroke="#ffffff" stroke-width="2"/><circle cx="32" cy="32" r="20" fill="#FACC15"/><path d="M32 14 L38 30 L32 48 L26 30 Z" fill="#E11D48"/></svg>'
+  );
+
 /**
  * Returns a high-res PNG Data URL of the STMIK PGRI Kebumen logo.
  * Caches the result after the first render.
  */
 export function getStmikLogoDataUrl(): string {
   if (cachedLogoDataUrl) return cachedLogoDataUrl;
-  if (typeof document === 'undefined') return '';
+  if (typeof document === 'undefined') return FALLBACK_LOGO_DATA_URL;
   try {
     const canvas = renderStmikLogoCanvas();
-    cachedLogoDataUrl = canvas.toDataURL('image/png', 1.0);
-    return cachedLogoDataUrl;
+    const dataUrl = canvas.toDataURL('image/png', 1.0);
+    if (dataUrl && dataUrl.startsWith('data:image/')) {
+      cachedLogoDataUrl = dataUrl;
+      return cachedLogoDataUrl;
+    }
+    return FALLBACK_LOGO_DATA_URL;
   } catch {
-    return '';
+    return FALLBACK_LOGO_DATA_URL;
   }
 }

@@ -204,7 +204,7 @@ export const GUEST_USER: User = {
   avatarUrl: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150',
 };
 
-const DB_SEED_VERSION = '2026-11-18T14:26:20.445Z';
+const DB_SEED_VERSION = '2026-11-18T14:26:20.445Z-v2';
 
 const STORAGE_KEYS = {
   SEED_VERSION: 'stmik_db_seed_version',
@@ -219,19 +219,36 @@ const STORAGE_KEYS = {
   CURRENT_USER_ID: SESSION_KEYS.CURRENT_USER_ID,
 };
 
+function safeSetLocalStorage(key: string, value: string): void {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    try {
+      // Free space from cached snapshots if localStorage quota is full
+      localStorage.removeItem('stmik_db_snapshots_v1');
+      localStorage.setItem(key, value);
+    } catch (err) {
+      console.warn(`Unable to persist ${key} to localStorage:`, err);
+    }
+  }
+}
+
 function ensureLatestDatabaseSeed(): void {
   try {
     const currentSeed = localStorage.getItem(STORAGE_KEYS.SEED_VERSION);
     if (currentSeed !== DB_SEED_VERSION) {
-      localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(INITIAL_USERS));
-      localStorage.setItem(STORAGE_KEYS.STUDENTS, JSON.stringify(INITIAL_STUDENTS));
-      localStorage.setItem(STORAGE_KEYS.COURSES, JSON.stringify(INITIAL_COURSES));
-      localStorage.setItem(STORAGE_KEYS.SCHEDULES, JSON.stringify(INITIAL_SCHEDULES));
-      localStorage.setItem(STORAGE_KEYS.SESSIONS, JSON.stringify(INITIAL_SESSIONS));
-      localStorage.setItem(STORAGE_KEYS.RECORDS, JSON.stringify(INITIAL_RECORDS));
-      localStorage.setItem(STORAGE_KEYS.LEAVE, JSON.stringify(INITIAL_LEAVE_REQUESTS));
-      localStorage.setItem(STORAGE_KEYS.ROMBELS, JSON.stringify(INITIAL_ROMBELS));
-      localStorage.setItem(STORAGE_KEYS.SEED_VERSION, DB_SEED_VERSION);
+      try {
+        localStorage.removeItem('stmik_db_snapshots_v1');
+      } catch {}
+      safeSetLocalStorage(STORAGE_KEYS.USERS, JSON.stringify(INITIAL_USERS));
+      safeSetLocalStorage(STORAGE_KEYS.STUDENTS, JSON.stringify(INITIAL_STUDENTS));
+      safeSetLocalStorage(STORAGE_KEYS.COURSES, JSON.stringify(INITIAL_COURSES));
+      safeSetLocalStorage(STORAGE_KEYS.SCHEDULES, JSON.stringify(INITIAL_SCHEDULES));
+      safeSetLocalStorage(STORAGE_KEYS.SESSIONS, JSON.stringify(INITIAL_SESSIONS));
+      safeSetLocalStorage(STORAGE_KEYS.RECORDS, JSON.stringify(INITIAL_RECORDS));
+      safeSetLocalStorage(STORAGE_KEYS.LEAVE, JSON.stringify(INITIAL_LEAVE_REQUESTS));
+      safeSetLocalStorage(STORAGE_KEYS.ROMBELS, JSON.stringify(INITIAL_ROMBELS));
+      safeSetLocalStorage(STORAGE_KEYS.SEED_VERSION, DB_SEED_VERSION);
     }
   } catch (e) {
     console.warn('Failed to migrate database seed version:', e);
@@ -517,11 +534,13 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   // Sync currentUser changes to localStorage ONLY for active authenticated sessions
   useEffect(() => {
-    const isAuth = localStorage.getItem(SESSION_KEYS.AUTH_ACTIVE) === 'true';
-    if (isAuth && currentUser && currentUser.id !== 'guest') {
-      localStorage.setItem(SESSION_KEYS.CURRENT_USER_ID, currentUser.id);
-      localStorage.setItem(SESSION_KEYS.ACTIVE_USER, JSON.stringify(currentUser));
-    }
+    try {
+      const isAuth = localStorage.getItem(SESSION_KEYS.AUTH_ACTIVE) === 'true';
+      if (isAuth && currentUser && currentUser.id !== 'guest') {
+        safeSetLocalStorage(SESSION_KEYS.CURRENT_USER_ID, currentUser.id);
+        safeSetLocalStorage(SESSION_KEYS.ACTIVE_USER, JSON.stringify(currentUser));
+      }
+    } catch {}
   }, [currentUser]);
 
   // Ensure active session student is included in users list
@@ -575,33 +594,33 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     return () => clearInterval(timer);
   }, []);
 
-  // Sync to localStorage
+  // Sync to localStorage safely (preventing QuotaExceededError crashes)
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(users));
+    safeSetLocalStorage(STORAGE_KEYS.USERS, JSON.stringify(users));
   }, [users]);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.STUDENTS, JSON.stringify(students));
+    safeSetLocalStorage(STORAGE_KEYS.STUDENTS, JSON.stringify(students));
   }, [students]);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.COURSES, JSON.stringify(courses));
+    safeSetLocalStorage(STORAGE_KEYS.COURSES, JSON.stringify(courses));
   }, [courses]);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.SCHEDULES, JSON.stringify(schedules));
+    safeSetLocalStorage(STORAGE_KEYS.SCHEDULES, JSON.stringify(schedules));
   }, [schedules]);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.SESSIONS, JSON.stringify(sessions));
+    safeSetLocalStorage(STORAGE_KEYS.SESSIONS, JSON.stringify(sessions));
   }, [sessions]);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.RECORDS, JSON.stringify(records));
+    safeSetLocalStorage(STORAGE_KEYS.RECORDS, JSON.stringify(records));
   }, [records]);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.LEAVE, JSON.stringify(leaveRequests));
+    safeSetLocalStorage(STORAGE_KEYS.LEAVE, JSON.stringify(leaveRequests));
   }, [leaveRequests]);
 
   // Preserve currentUser if authenticated session is active (within 2-hour inactivity rule); otherwise clear

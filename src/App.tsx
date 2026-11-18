@@ -473,11 +473,70 @@ const AppContent: React.FC = () => {
   );
 };
 
+interface AppErrorBoundaryState {
+  hasError: boolean;
+  errorMessage: string;
+}
+
+class AppErrorBoundary extends React.Component<{ children: React.ReactNode }, AppErrorBoundaryState> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false, errorMessage: '' };
+  }
+
+  static getDerivedStateFromError(error: Error): AppErrorBoundaryState {
+    return {
+      hasError: true,
+      errorMessage: error?.message || 'Terjadi gangguan saat memuat komponen aplikasi.',
+    };
+  }
+
+  componentDidCatch(error: Error) {
+    console.error('AppErrorBoundary caught error:', error);
+  }
+
+  handleRecover = () => {
+    try {
+      localStorage.removeItem('stmik_db_snapshots_v1');
+      localStorage.removeItem('stmik_db_seed_version');
+    } catch {}
+    this.setState({ hasError: false, errorMessage: '' });
+    window.location.reload();
+  };
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen bg-[#fafafa] flex items-center justify-center p-4 font-sans text-[#222222]">
+          <div className="frost-card max-w-md w-full p-6 space-y-4 text-center">
+            <h2 className="text-lg font-semibold text-[#222222]">
+              Sinkronisasi Ulang Penyimpanan Browser
+            </h2>
+            <p className="text-xs text-[#555555] leading-relaxed">
+              {this.state.errorMessage}
+            </p>
+            <button
+              type="button"
+              onClick={this.handleRecover}
+              className="frost-btn frost-btn-md frost-btn-brand frost-btn-solid frost-btn-full"
+            >
+              Muat Ulang & Sinkronkan Database
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 export function App() {
   return (
-    <AttendanceProvider>
-      <AppContent />
-    </AttendanceProvider>
+    <AppErrorBoundary>
+      <AttendanceProvider>
+        <AppContent />
+      </AttendanceProvider>
+    </AppErrorBoundary>
   );
 }
 
