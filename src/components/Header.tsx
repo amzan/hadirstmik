@@ -1,9 +1,8 @@
 import React from 'react';
 import { useAttendance } from '../context/AttendanceContext';
-import { CAMPUS_INFO } from '../data/initialData';
 import { getStmikLogoDataUrl } from '../utils/logoStmik';
 import {
-  Clock, ChevronDown, GraduationCap, LogOut, Shield, LogIn, BookOpen, UserCog, KeyRound, ShieldCheck, Laptop
+  Clock, GraduationCap, LogOut, BookOpen, UserCog, KeyRound, ShieldCheck
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -19,11 +18,10 @@ interface HeaderProps {
   onOpenForgotPassword?: () => void;
   onLogout?: () => void;
   isLoggedOut?: boolean;
+  activeRoleTab?: 'mahasiswa' | 'dosen' | 'admin';
 }
 
 export const Header: React.FC<HeaderProps> = ({
-  onOpenRoleSwitcher,
-  onOpenLoginPortal,
   onOpenStudentLogin,
   onOpenDosenLogin,
   onOpenDosenProfile,
@@ -32,7 +30,8 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenDeviceSessions,
   onOpenForgotPassword,
   onLogout,
-  isLoggedOut = false
+  isLoggedOut = false,
+  activeRoleTab = 'mahasiswa'
 }) => {
   const {
     currentUser,
@@ -48,101 +47,101 @@ export const Header: React.FC<HeaderProps> = ({
   const activeSchedule = getActiveScheduleNow();
   const openSessionsCount = sessions.filter(s => s.isOpen).length;
 
-  const getRoleLabel = () => {
-    switch (currentUser.role) {
-      case 'admin':
-        return 'Administrator';
-      case 'dosen':
-        return 'Dosen Pengampu';
-      case 'mahasiswa':
-        return `Mahasiswa · ${currentUser.rombel || 'Reguler'}`;
-    }
+  const getInitials = (name: string) => {
+    const parts = name
+      .replace(/[.,]/g, '')
+      .split(' ')
+      .filter(p => p.length > 1 && !['Dr', 'Ir', 'MKom', 'SKom', 'MT', 'MM', 'MSi'].includes(p));
+    if (parts.length === 0) return name.slice(0, 2).toUpperCase();
+    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+    return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
   };
 
   return (
-    <header className="sticky top-0 z-40 bg-white border-b border-slate-200">
-      {/* Top Hairline Bar: Campus Identity & Live Clock */}
-      <div className="bg-slate-900 text-slate-300 px-2.5 sm:px-6 py-1.5 sm:py-2 text-xs sm:text-sm w-full max-w-full overflow-hidden">
-        <div className="max-w-7xl mx-auto flex items-center justify-between gap-1.5 sm:gap-3 w-full">
-          <div className="flex items-center gap-1.5 min-w-0">
-            <span className="font-semibold text-white truncate text-[11px] sm:text-sm">STMIK PGRI Kebumen</span>
-            <span className="text-slate-600 hidden xs:inline">·</span>
-            <span className="text-slate-300 hidden md:inline">{CAMPUS_INFO.semester}</span>
-          </div>
-
-          <div className="flex items-center gap-2 sm:gap-4 text-xs sm:text-sm shrink-0">
-            {openSessionsCount > 0 && (
-              <span className="flex items-center gap-1 text-emerald-400 font-medium text-[11px] sm:text-xs">
-                <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                <span>{openSessionsCount} <span className="hidden xs:inline">Sesi Aktif</span></span>
-              </span>
-            )}
-
-            <div className="flex items-center gap-1 text-slate-300 font-medium text-[11px] sm:text-xs">
-              <Clock className="w-3 h-3 text-slate-400" />
-              <span>{activeDay}, {simulatedTime} WIB</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Main Navbar */}
-      <div className="max-w-7xl mx-auto px-2.5 sm:px-6 py-2 sm:py-3.5 flex items-center justify-between gap-2 sm:gap-4 w-full">
-        {/* Brand */}
-        <div className="flex items-center gap-1.5 sm:gap-3 min-w-0 shrink">
-          <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-full flex items-center justify-center overflow-hidden shrink-0 shadow-2xs border border-slate-200">
+    <header className="sticky top-0 z-40 bg-white border-b border-[#dddddd] w-full">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4 sm:gap-8 w-full">
+        {/* Zone 1: Brand Lockup (Single-Line Wordmark) */}
+        <div className="flex items-center gap-3 min-w-0 shrink-0">
+          <div className="w-9 h-9 rounded-[6px] bg-[#fafafa] border border-[#dddddd] flex items-center justify-center overflow-hidden shrink-0">
             <img
               src={getStmikLogoDataUrl()}
               alt="Logo STMIK PGRI Arungbinang"
-              className="w-full h-full object-contain"
+              referrerPolicy="no-referrer"
+              className="w-6 h-6 object-contain"
             />
           </div>
-          <div className="min-w-0">
-            <h1 className="text-xs sm:text-base font-bold text-slate-900 tracking-tight leading-tight truncate">
-              Presensi Kampus
-            </h1>
-            <p className="text-[10px] sm:text-xs text-slate-500 leading-none mt-0.5 truncate hidden xs:block">
-              STMIK PGRI Arungbinang
-            </p>
-          </div>
+          <span className="text-sm sm:text-base font-semibold text-[#222222] tracking-tight whitespace-nowrap shrink-0">
+            Presensi Kampus
+          </span>
         </div>
 
-        {/* Current Active Course Schedule */}
-        {activeSchedule && (
-          <div className="hidden lg:flex items-center gap-2.5 text-sm text-slate-600 bg-slate-50 px-3.5 py-2 rounded-lg border border-slate-200">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-            <span className="font-semibold text-slate-900">{activeSchedule.courseName}</span>
-            <span className="text-slate-400">·</span>
-            <span>{activeSchedule.room}</span>
-            <span className="text-slate-400">·</span>
-            <span className="text-slate-500 font-mono">{activeSchedule.startTime}–{activeSchedule.endTime}</span>
+        {/* Zone 2: Contextual Status & Schedule Metadata (Unboxed, Single-Line) */}
+        <div className="hidden md:flex items-center gap-3.5 text-xs sm:text-sm text-[#555555] min-w-0 overflow-hidden">
+          <div className="flex items-center gap-2 whitespace-nowrap shrink-0">
+            <Clock className="w-3.5 h-3.5 text-[#777777]" />
+            <span className="font-mono tabular-nums text-[#222222] font-medium">
+              {activeDay}, {simulatedTime} WIB
+            </span>
           </div>
-        )}
 
-        {/* User Profile & Actions */}
-        <div className="flex items-center gap-1 sm:gap-2 shrink-0">
-          {/* If Logged Out: Show portal login buttons for each user role */}
+          {openSessionsCount > 0 && (
+            <>
+              <span aria-hidden="true" className="text-[#cccccc]">·</span>
+              <span className="text-[#038585] font-medium whitespace-nowrap shrink-0 tabular-nums">
+                {openSessionsCount} Sesi Terbuka
+              </span>
+            </>
+          )}
+
+          {activeSchedule && (
+            <>
+              <span aria-hidden="true" className="text-[#cccccc] hidden lg:inline">·</span>
+              <div className="hidden lg:flex items-center gap-2.5 truncate text-xs text-[#555555]">
+                <span className="font-medium text-[#222222] truncate">{activeSchedule.courseName}</span>
+                <span aria-hidden="true" className="text-[#cccccc]">·</span>
+                <span className="whitespace-nowrap shrink-0">{activeSchedule.room}</span>
+                <span aria-hidden="true" className="text-[#cccccc]">·</span>
+                <span className="font-mono tabular-nums whitespace-nowrap shrink-0">
+                  {activeSchedule.startTime}–{activeSchedule.endTime}
+                </span>
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Zone 3: Interactive Actions (Frost-UI Buttons) */}
+        <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
           {isLoggedOut && (
-            <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+            <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
               {onOpenStudentLogin && (
                 <button
+                  type="button"
+                  data-frost="Button"
                   onClick={onOpenStudentLogin}
-                  className="flex items-center gap-1 px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-[11px] sm:text-xs md:text-sm font-semibold transition cursor-pointer shadow-2xs shrink-0"
-                  title="Buka Portal Login Mahasiswa (NIM & Password)"
+                  className={`frost-btn frost-btn-sm frost-btn-brand ${
+                    activeRoleTab === 'mahasiswa' ? 'frost-btn-solid' : 'frost-btn-outline'
+                  }`}
+                  title="Tampilkan Tab Portal Login Mahasiswa"
                 >
-                  <GraduationCap className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white shrink-0" />
+                  <GraduationCap className="w-4 h-4 shrink-0" />
                   <span className="hidden sm:inline">Portal Mahasiswa</span>
-                  <span className="sm:hidden">Mhs</span>
+                  <span className="sm:hidden">Mahasiswa</span>
                 </button>
               )}
 
               {onOpenDosenLogin && (
                 <button
+                  type="button"
+                  data-frost="Button"
                   onClick={onOpenDosenLogin}
-                  className="flex items-center gap-1 px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-[11px] sm:text-xs md:text-sm font-semibold transition cursor-pointer shadow-2xs shrink-0"
-                  title="Buka Portal Login Dosen Pengampu"
+                  className={`frost-btn frost-btn-sm ${
+                    activeRoleTab === 'dosen'
+                      ? 'frost-btn-neutral frost-btn-solid'
+                      : 'frost-btn-brand frost-btn-outline'
+                  }`}
+                  title="Tampilkan Tab Portal Login Dosen Pengampu"
                 >
-                  <BookOpen className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-200 shrink-0" />
+                  <BookOpen className="w-4 h-4 shrink-0" />
                   <span className="hidden sm:inline">Portal Dosen</span>
                   <span className="sm:hidden">Dosen</span>
                 </button>
@@ -150,167 +149,148 @@ export const Header: React.FC<HeaderProps> = ({
 
               {onOpenForgotPassword && (
                 <button
+                  type="button"
+                  data-frost="Button"
                   onClick={onOpenForgotPassword}
-                  className="hidden md:flex items-center gap-1 px-2.5 py-1.5 sm:py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition cursor-pointer shrink-0 border border-slate-200"
+                  className="hidden lg:inline-flex frost-btn frost-btn-sm frost-btn-brand frost-btn-subtle"
                   title="Atur Ulang Kata Sandi Akun via Email"
                 >
-                  <KeyRound className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                  <KeyRound className="w-3.5 h-3.5 shrink-0" />
                   <span>Reset Sandi</span>
                 </button>
               )}
             </div>
           )}
 
-          {/* Mahasiswa: Logged in State with Profile Configuration */}
+          {/* Mahasiswa Logged-in Controls */}
           {isMahasiswa && (
-            <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+            <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
               <button
                 type="button"
+                data-frost="Button"
                 onClick={onOpenMahasiswaProfile}
-                className="flex items-center gap-1.5 sm:gap-2.5 px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg bg-blue-50/70 hover:bg-blue-100 hover:border-blue-300 border border-blue-200 text-left cursor-pointer max-w-[130px] sm:max-w-[220px] transition group"
-                title="Klik untuk konfigurasi profil mahasiswa & ganti password OTP"
+                className="frost-btn frost-btn-sm frost-btn-brand frost-btn-outline max-w-[160px] sm:max-w-[230px]"
+                title="Konfigurasi Profil Mahasiswa & Ganti Sandi"
               >
-                <img
-                  src={currentUser.avatarUrl || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150'}
-                  alt={currentUser.name}
-                  className="w-6 h-6 sm:w-7 sm:h-7 rounded-full object-cover border border-blue-300 group-hover:border-blue-500 shrink-0"
-                />
-
-                <div className="min-w-0 flex-1">
-                  <span className="text-[11px] sm:text-xs font-semibold text-slate-900 group-hover:text-blue-700 truncate block leading-tight">
-                    {currentUser.name}
-                  </span>
-                  <span className="text-[9px] sm:text-[10px] text-blue-700 font-mono font-medium truncate block leading-tight mt-0.5">
-                    {currentUser.username}
-                  </span>
-                </div>
-
-                <UserCog className="w-3.5 h-3.5 text-blue-400 group-hover:text-blue-600 hidden sm:block shrink-0" />
+                <span className="w-5 h-5 rounded-full bg-[#E4F2FF] text-[#0080FF] text-[10px] font-semibold flex items-center justify-center shrink-0">
+                  {getInitials(currentUser.name)}
+                </span>
+                <span className="truncate font-medium text-[#222222]">{currentUser.name}</span>
+                <UserCog className="w-3.5 h-3.5 text-[#777777] hidden sm:block shrink-0" />
               </button>
 
               {onOpenDeviceSessions && (
                 <button
                   type="button"
+                  data-frost="Button"
                   onClick={onOpenDeviceSessions}
-                  className="flex items-center gap-1 px-2 sm:px-2.5 py-1 sm:py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-[11px] sm:text-xs font-semibold transition cursor-pointer shrink-0"
-                  title="Lihat status sesi dan perangkat terhubung"
+                  className="frost-btn frost-btn-sm frost-btn-teal frost-btn-subtle"
+                  title="Status Sesi & Perangkat Terhubung"
                 >
-                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                  <ShieldCheck className="w-4 h-4 shrink-0" />
                   <span className="hidden xl:inline">Sesi Perangkat</span>
                 </button>
               )}
 
               {onLogout && (
                 <button
+                  type="button"
+                  data-frost="Button"
                   onClick={onLogout}
-                  className="flex items-center gap-1 px-2 sm:px-2.5 py-1 sm:py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 active:bg-rose-200 text-rose-700 border border-rose-200 text-[11px] sm:text-xs font-semibold transition cursor-pointer shrink-0"
+                  className="frost-btn frost-btn-sm frost-btn-danger frost-btn-subtle"
                   title="Keluar dari akun mahasiswa"
                 >
-                  <LogOut className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+                  <LogOut className="w-3.5 h-3.5 shrink-0" />
                   <span>Keluar</span>
                 </button>
               )}
             </div>
           )}
 
-          {/* Dosen: Profile with configuration access */}
+          {/* Dosen Logged-in Controls */}
           {isDosen && (
-            <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+            <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
               <button
                 type="button"
+                data-frost="Button"
                 onClick={onOpenDosenProfile}
-                className="flex items-center gap-1.5 sm:gap-2.5 px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 hover:border-blue-300 border border-slate-200 text-left cursor-pointer max-w-[130px] sm:max-w-[220px] transition group"
-                title="Klik untuk melihat dan konfigurasi profil dosen & ganti password OTP"
+                className="frost-btn frost-btn-sm frost-btn-brand frost-btn-outline max-w-[160px] sm:max-w-[230px]"
+                title="Konfigurasi Profil Dosen & Ganti Sandi"
               >
-                <img
-                  src={currentUser.avatarUrl || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150'}
-                  alt={currentUser.name}
-                  className="w-6 h-6 sm:w-7 sm:h-7 rounded-full object-cover border border-slate-200 group-hover:border-blue-400 shrink-0"
-                />
-
-                <div className="min-w-0 flex-1">
-                  <span className="text-[11px] sm:text-xs font-semibold text-slate-900 group-hover:text-blue-700 truncate block leading-tight">
-                    {currentUser.name}
-                  </span>
-                  <span className="text-[9px] sm:text-[10px] text-slate-500 truncate block leading-tight mt-0.5 flex items-center gap-1">
-                    <span>NIDN {currentUser.nidn || currentUser.username}</span>
-                  </span>
-                </div>
-
-                <UserCog className="w-3.5 h-3.5 text-slate-400 group-hover:text-blue-600 hidden sm:block shrink-0" />
+                <span className="w-5 h-5 rounded-full bg-[#eeeeee] text-[#222222] text-[10px] font-semibold flex items-center justify-center shrink-0">
+                  {getInitials(currentUser.name)}
+                </span>
+                <span className="truncate font-medium text-[#222222]">{currentUser.name}</span>
+                <UserCog className="w-3.5 h-3.5 text-[#777777] hidden sm:block shrink-0" />
               </button>
 
               {onOpenDeviceSessions && (
                 <button
                   type="button"
+                  data-frost="Button"
                   onClick={onOpenDeviceSessions}
-                  className="flex items-center gap-1 px-2 sm:px-2.5 py-1 sm:py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-[11px] sm:text-xs font-semibold transition cursor-pointer shrink-0"
-                  title="Lihat status sesi dan perangkat terhubung"
+                  className="frost-btn frost-btn-sm frost-btn-teal frost-btn-subtle"
+                  title="Status Sesi & Perangkat Terhubung"
                 >
-                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                  <ShieldCheck className="w-4 h-4 shrink-0" />
                   <span className="hidden xl:inline">Sesi Perangkat</span>
                 </button>
               )}
 
               {onLogout && (
                 <button
+                  type="button"
+                  data-frost="Button"
                   onClick={onLogout}
-                  className="flex items-center gap-1 px-2 sm:px-2.5 py-1 sm:py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-[11px] sm:text-xs font-semibold transition cursor-pointer shrink-0"
+                  className="frost-btn frost-btn-sm frost-btn-danger frost-btn-subtle"
                   title="Keluar dari akun dosen"
                 >
-                  <LogOut className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+                  <LogOut className="w-3.5 h-3.5 shrink-0" />
                   <span>Keluar</span>
                 </button>
               )}
             </div>
           )}
 
-          {/* Administrator BAAK: Profile with Configuration */}
+          {/* Administrator BAAK Logged-in Controls */}
           {isAdmin && (
-            <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+            <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
               <button
                 type="button"
+                data-frost="Button"
                 onClick={onOpenBaakProfile}
-                className="flex items-center gap-1.5 sm:gap-2.5 px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg bg-indigo-50/70 hover:bg-indigo-100 hover:border-indigo-300 border border-indigo-200 text-left cursor-pointer max-w-[130px] sm:max-w-[220px] transition group"
-                title="Klik untuk konfigurasi profil administrator BAAK & ganti password OTP"
+                className="frost-btn frost-btn-sm frost-btn-brand frost-btn-outline max-w-[160px] sm:max-w-[230px]"
+                title="Konfigurasi Profil Administrator BAAK & Ganti Sandi"
               >
-                <img
-                  src={currentUser.avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150'}
-                  alt={currentUser.name}
-                  className="w-6 h-6 sm:w-7 sm:h-7 rounded-full object-cover border border-indigo-300 group-hover:border-indigo-500 shrink-0"
-                />
-
-                <div className="min-w-0 flex-1">
-                  <span className="text-[11px] sm:text-xs font-semibold text-slate-900 group-hover:text-indigo-800 truncate block leading-tight">
-                    {currentUser.name}
-                  </span>
-                  <span className="text-[9px] sm:text-[10px] text-indigo-700 font-medium truncate block leading-tight mt-0.5">
-                    BAAK
-                  </span>
-                </div>
-
-                <UserCog className="w-3.5 h-3.5 text-indigo-400 group-hover:text-indigo-600 hidden sm:block shrink-0" />
+                <span className="w-5 h-5 rounded-full bg-[#E4F2FF] text-[#0080FF] text-[10px] font-semibold flex items-center justify-center shrink-0">
+                  {getInitials(currentUser.name)}
+                </span>
+                <span className="truncate font-medium text-[#222222]">{currentUser.name}</span>
+                <UserCog className="w-3.5 h-3.5 text-[#777777] hidden sm:block shrink-0" />
               </button>
 
               {onOpenDeviceSessions && (
                 <button
                   type="button"
+                  data-frost="Button"
                   onClick={onOpenDeviceSessions}
-                  className="flex items-center gap-1 px-2 sm:px-2.5 py-1 sm:py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-[11px] sm:text-xs font-semibold transition cursor-pointer shrink-0"
-                  title="Lihat status sesi dan perangkat terhubung"
+                  className="frost-btn frost-btn-sm frost-btn-teal frost-btn-subtle"
+                  title="Status Sesi & Perangkat Terhubung"
                 >
-                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                  <ShieldCheck className="w-4 h-4 shrink-0" />
                   <span className="hidden xl:inline">Sesi Perangkat</span>
                 </button>
               )}
 
               {onLogout && (
                 <button
+                  type="button"
+                  data-frost="Button"
                   onClick={onLogout}
-                  className="flex items-center gap-1 px-2 sm:px-2.5 py-1 sm:py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-[11px] sm:text-xs font-semibold transition cursor-pointer shrink-0"
+                  className="frost-btn frost-btn-sm frost-btn-danger frost-btn-subtle"
                   title="Keluar dari akun administrator"
                 >
-                  <LogOut className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+                  <LogOut className="w-3.5 h-3.5 shrink-0" />
                   <span>Keluar</span>
                 </button>
               )}

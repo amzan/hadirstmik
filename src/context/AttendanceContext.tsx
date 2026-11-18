@@ -204,7 +204,10 @@ export const GUEST_USER: User = {
   avatarUrl: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150',
 };
 
+const DB_SEED_VERSION = '2026-11-18T14:26:20.445Z';
+
 const STORAGE_KEYS = {
+  SEED_VERSION: 'stmik_db_seed_version',
   USERS: 'stmik_users_v1',
   STUDENTS: 'stmik_students_v1',
   COURSES: 'stmik_courses_v1',
@@ -216,7 +219,32 @@ const STORAGE_KEYS = {
   CURRENT_USER_ID: SESSION_KEYS.CURRENT_USER_ID,
 };
 
+function ensureLatestDatabaseSeed(): void {
+  try {
+    const currentSeed = localStorage.getItem(STORAGE_KEYS.SEED_VERSION);
+    if (currentSeed !== DB_SEED_VERSION) {
+      localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(INITIAL_USERS));
+      localStorage.setItem(STORAGE_KEYS.STUDENTS, JSON.stringify(INITIAL_STUDENTS));
+      localStorage.setItem(STORAGE_KEYS.COURSES, JSON.stringify(INITIAL_COURSES));
+      localStorage.setItem(STORAGE_KEYS.SCHEDULES, JSON.stringify(INITIAL_SCHEDULES));
+      localStorage.setItem(STORAGE_KEYS.SESSIONS, JSON.stringify(INITIAL_SESSIONS));
+      localStorage.setItem(STORAGE_KEYS.RECORDS, JSON.stringify(INITIAL_RECORDS));
+      localStorage.setItem(STORAGE_KEYS.LEAVE, JSON.stringify(INITIAL_LEAVE_REQUESTS));
+      localStorage.setItem(STORAGE_KEYS.ROMBELS, JSON.stringify(INITIAL_ROMBELS));
+      localStorage.setItem(STORAGE_KEYS.SEED_VERSION, DB_SEED_VERSION);
+    }
+  } catch (e) {
+    console.warn('Failed to migrate database seed version:', e);
+  }
+}
+
 export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  // Ensure localStorage is migrated to the latest official database backup seed
+  useState(() => {
+    ensureLatestDatabaseSeed();
+    return true;
+  });
+
   // Load initial state from localStorage or seed
   const [students, setStudents] = useState<Student[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEYS.STUDENTS);
@@ -283,13 +311,13 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         id: existing?.id || `mhs-${s.nim}`,
         username: s.nim,
         name: s.name,
-        email: s.email || `${s.nim.toLowerCase()}@student.stmik-arungbinang.ac.id`,
+        email: s.email || existing?.email || `${s.nim.toLowerCase()}@student.stmik-arungbinang.ac.id`,
         role: 'mahasiswa' as const,
         prodi: s.prodi,
         rombel: joinedRombel,
         rombels: rombelList,
         phone: s.phone || existing?.phone,
-        password: existing?.password,
+        password: existing?.password || s.password,
         avatarUrl: existing?.avatarUrl || `https://images.unsplash.com/photo-${STUDENT_AVATARS[idx % STUDENT_AVATARS.length]}?w=150`,
         excludedScheduleIds: s.excludedScheduleIds || existing?.excludedScheduleIds,
         customScheduleIds: s.customScheduleIds || existing?.customScheduleIds,
@@ -2578,6 +2606,7 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   // Reset to default
   const resetToDefaultData = useCallback(() => {
     localStorage.clear();
+    localStorage.setItem(STORAGE_KEYS.SEED_VERSION, DB_SEED_VERSION);
     setUsers(INITIAL_USERS);
     setStudents(INITIAL_STUDENTS);
     setCourses(INITIAL_COURSES);
@@ -2930,7 +2959,7 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     
     // Total sessions that have occurred
     const totalSessions = studentSessions.length || (hadir + izin + sakit + alpha);
-    const percentage = totalSessions > 0 ? Math.round((hadir / totalSessions) * 100) : 100;
+    const percentage = totalSessions > 0 ? Math.round((hadir / totalSessions) * 100) : 0;
 
     return { totalSessions, hadir, izin, sakit, alpha, percentage };
   }, [students, sessions, records]);

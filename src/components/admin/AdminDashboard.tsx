@@ -548,53 +548,56 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto">
-      {/* Admin Minimalist Header */}
-      <div className="bg-white border border-slate-200 rounded-xl p-6 sm:p-7">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-5">
+    <div className="space-y-6 sm:space-y-8 max-w-7xl mx-auto">
+      {/* Admin Frost-UI Header */}
+      <div className="frost-card p-6 sm:p-7">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-800 shrink-0">
+            <div className="w-12 h-12 rounded-[8px] bg-[#E4F2FF] border border-[#0080FF]/20 flex items-center justify-center text-[#0080FF] shrink-0">
               <Shield className="w-6 h-6" />
             </div>
-            <div>
-              <div className="flex items-center gap-2 text-sm text-slate-500 font-medium">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2 text-xs text-[#555555] font-medium">
                 <span>Panel Administrator BAAK & IT</span>
                 <span aria-hidden="true">·</span>
                 <span>Hak Akses Penuh Sistem</span>
               </div>
-              <h2 className="text-2xl sm:text-3xl font-bold text-slate-900 mt-0.5 tracking-tight">
+              <h2 className="text-xl sm:text-2xl font-bold text-[#222222] tracking-tight">
                 Kelola Basis Data & Jadwal Kampus
               </h2>
-              <p className="text-sm text-slate-600 mt-1">
+              <p className="text-xs sm:text-sm text-[#555555]">
                 Sinkronisasi data mahasiswa, jadwal perkuliahan, mata kuliah, dan rekapitulasi kehadiran
               </p>
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2.5">
             {onOpenProfile && (
               <button
                 onClick={onOpenProfile}
-                className="px-4 py-2.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-800 font-semibold text-sm flex items-center gap-2 transition cursor-pointer shadow-2xs"
+                data-frost="Button"
+                className="frost-btn frost-btn-sm frost-btn-subtle frost-btn-brand"
                 title="Konfigurasi Profil Petugas BAAK & Ganti Password dengan OTP Email"
               >
-                <UserCog className="w-4 h-4 text-indigo-600" />
+                <UserCog className="w-4 h-4" />
                 <span>Profil BAAK</span>
               </button>
             )}
 
             <button
               onClick={() => handleOpenBulkImport('all')}
-              className="px-4 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-semibold text-sm flex items-center gap-2 transition cursor-pointer shadow-xs"
+              data-frost="Button"
+              className="frost-btn frost-btn-sm frost-btn-subtle frost-btn-teal"
               title="Unggah dan perbarui data massal dari file Excel (Jadwal, Pengguna, Mahasiswa, Mata Kuliah)"
             >
-              <FileSpreadsheet className="w-4 h-4 text-emerald-200" />
+              <FileSpreadsheet className="w-4 h-4" />
               <span>Impor Excel Massal</span>
             </button>
 
             <button
               onClick={() => setIsBackupModalOpen(true)}
-              className="px-4 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-semibold text-sm flex items-center gap-2 transition cursor-pointer shadow-xs"
+              data-frost="Button"
+              className="frost-btn frost-btn-sm frost-btn-solid frost-btn-brand"
               title="Cadangkan, Ekspor, dan Pulihkan Database Proyek"
             >
               <Database className="w-4 h-4" />
@@ -603,7 +606,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
             <button
               onClick={() => setIsExportModalOpen(true)}
-              className="px-4 py-2.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-semibold text-sm flex items-center gap-2 transition cursor-pointer"
+              data-frost="Button"
+              className="frost-btn frost-btn-sm frost-btn-solid frost-btn-neutral"
             >
               <Download className="w-4 h-4" />
               <span>Ekspor Master Presensi</span>
@@ -623,10 +627,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   },
                 });
               }}
-              className="px-4 py-2.5 rounded-lg bg-white hover:bg-slate-50 text-slate-700 font-semibold text-sm flex items-center gap-2 border border-slate-300 transition cursor-pointer"
+              data-frost="Button"
+              className="frost-btn frost-btn-sm frost-btn-outline frost-btn-neutral"
               title="Reset data ke bawaan dokumen"
             >
-              <RefreshCw className="w-4 h-4 text-slate-500" />
+              <RefreshCw className="w-4 h-4 text-[#555555]" />
               <span>Reset Data Default</span>
             </button>
           </div>
@@ -634,41 +639,37 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       </div>
 
       {/* Quick Summary Statistics Component for Admin */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
         {/* Stat 1: Classes Today */}
-        <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-5 flex flex-col justify-between hover:border-slate-300 transition">
-          <div className="flex items-center justify-between text-slate-500">
-            <span className="text-sm font-medium">Kelas Kampus Hari Ini</span>
-            <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-slate-700">
-              <Calendar className="w-4 h-4" />
-            </div>
+        <div className="frost-card p-5 sm:p-6 flex flex-col justify-between gap-4">
+          <div className="flex items-center justify-between text-[#555555]">
+            <span className="text-xs font-semibold">Kelas Kampus Hari Ini</span>
+            <Calendar className="w-4 h-4 text-[#555555]" />
           </div>
-          <div className="mt-3">
-            <div className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">
+          <div>
+            <div className="text-2xl font-bold text-[#222222] tracking-tight tabular-nums">
               {todayCampusSchedules.length} Kelas
             </div>
-            <p className="text-sm text-slate-500 mt-1">
+            <p className="text-xs text-[#555555] mt-1.5">
               Hari {activeDay} · {schedules.length} total sesi per minggu
             </p>
           </div>
         </div>
 
         {/* Stat 2: Active Sessions */}
-        <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-5 flex flex-col justify-between hover:border-slate-300 transition">
-          <div className="flex items-center justify-between text-slate-500">
-            <span className="text-sm font-medium">Sesi Presensi Terbuka</span>
-            <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-slate-700">
-              <Clock className="w-4 h-4" />
-            </div>
+        <div className="frost-card p-5 sm:p-6 flex flex-col justify-between gap-4">
+          <div className="flex items-center justify-between text-[#555555]">
+            <span className="text-xs font-semibold">Sesi Presensi Terbuka</span>
+            <Clock className="w-4 h-4 text-[#0080FF]" />
           </div>
-          <div className="mt-3">
-            <div className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
+          <div>
+            <div className="text-2xl font-bold text-[#222222] tracking-tight flex items-center gap-2 tabular-nums">
               <span>{openSessionsCount} Sesi</span>
               {openSessionsCount > 0 && (
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                <span className="w-2 h-2 rounded-full bg-[#009499]"></span>
               )}
             </div>
-            <p className="text-sm text-slate-500 mt-1 truncate">
+            <p className="text-xs text-[#555555] mt-1.5 truncate">
               {openSessionsCount > 0
                 ? 'Dosen sedang membuka presensi real-time'
                 : 'Tidak ada sesi terbuka saat ini'}
@@ -677,36 +678,32 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         </div>
 
         {/* Stat 3: Campus Attendance Rate */}
-        <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-5 flex flex-col justify-between hover:border-slate-300 transition">
-          <div className="flex items-center justify-between text-slate-500">
-            <span className="text-sm font-medium">Rata-rata Kehadiran Kampus</span>
-            <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-slate-700">
-              <Users className="w-4 h-4" />
-            </div>
+        <div className="frost-card p-5 sm:p-6 flex flex-col justify-between gap-4">
+          <div className="flex items-center justify-between text-[#555555]">
+            <span className="text-xs font-semibold">Rata-rata Kehadiran Kampus</span>
+            <Users className="w-4 h-4 text-[#009499]" />
           </div>
-          <div className="mt-3">
-            <div className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">
+          <div>
+            <div className="text-2xl font-bold text-[#222222] tracking-tight tabular-nums">
               {campusAttendanceRate}%
             </div>
-            <p className="text-sm text-slate-500 mt-1">
+            <p className="text-xs text-[#555555] mt-1.5 tabular-nums">
               {totalCampusHadir} hadir dari {totalCampusRecords} total rekaman
             </p>
           </div>
         </div>
 
         {/* Stat 4: Total Campus Community */}
-        <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-5 flex flex-col justify-between hover:border-slate-300 transition">
-          <div className="flex items-center justify-between text-slate-500">
-            <span className="text-sm font-medium">Komunitas Terdaftar</span>
-            <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-slate-700">
-              <GraduationCap className="w-4 h-4" />
-            </div>
+        <div className="frost-card p-5 sm:p-6 flex flex-col justify-between gap-4">
+          <div className="flex items-center justify-between text-[#555555]">
+            <span className="text-xs font-semibold">Komunitas Terdaftar</span>
+            <GraduationCap className="w-4 h-4 text-[#555555]" />
           </div>
-          <div className="mt-3">
-            <div className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">
+          <div>
+            <div className="text-2xl font-bold text-[#222222] tracking-tight tabular-nums">
               {students.length} Mhs · {users.filter(u => u.role === 'dosen').length} Dosen
             </div>
-            <p className="text-sm text-slate-500 mt-1">
+            <p className="text-xs text-[#555555] mt-1.5 tabular-nums">
               {courses.length} mata kuliah aktif kurikulum
             </p>
           </div>
@@ -714,86 +711,58 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       </div>
 
       {/* Admin Nav Tabs */}
-      <div className="flex border-b border-slate-200 gap-6 sm:gap-8 text-sm sm:text-base font-medium overflow-x-auto">
+      <div className="frost-tabs">
         <button
           onClick={() => setActiveTab('sessions')}
-          className={`pb-3 border-b-2 flex items-center gap-2 shrink-0 transition cursor-pointer ${
-            activeTab === 'sessions'
-              ? 'border-slate-900 text-slate-900 font-bold'
-              : 'border-transparent text-slate-500 hover:text-slate-900'
-          }`}
+          className={`frost-tab-btn ${activeTab === 'sessions' ? 'frost-tab-btn-active' : ''}`}
         >
           <span>Monitoring Sesi ({sessions.length})</span>
           {openSessionsCount > 0 && (
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+            <span className="w-2 h-2 rounded-full bg-[#009499]"></span>
           )}
         </button>
 
         <button
           onClick={() => setActiveTab('schedules')}
-          className={`pb-3 border-b-2 shrink-0 transition cursor-pointer ${
-            activeTab === 'schedules'
-              ? 'border-slate-900 text-slate-900 font-bold'
-              : 'border-transparent text-slate-500 hover:text-slate-900'
-          }`}
+          className={`frost-tab-btn ${activeTab === 'schedules' ? 'frost-tab-btn-active' : ''}`}
         >
           Jadwal Perkuliahan ({schedules.length})
         </button>
 
         <button
           onClick={() => setActiveTab('users')}
-          className={`pb-3 border-b-2 shrink-0 transition cursor-pointer ${
-            activeTab === 'users'
-              ? 'border-slate-900 text-slate-900 font-bold'
-              : 'border-transparent text-slate-500 hover:text-slate-900'
-          }`}
+          className={`frost-tab-btn ${activeTab === 'users' ? 'frost-tab-btn-active' : ''}`}
         >
           Kelola Pengguna ({users.length})
         </button>
 
         <button
           onClick={() => setActiveTab('students')}
-          className={`pb-3 border-b-2 shrink-0 transition cursor-pointer ${
-            activeTab === 'students'
-              ? 'border-slate-900 text-slate-900 font-bold'
-              : 'border-transparent text-slate-500 hover:text-slate-900'
-          }`}
+          className={`frost-tab-btn ${activeTab === 'students' ? 'frost-tab-btn-active' : ''}`}
         >
           Rombel & Mahasiswa ({students.length})
         </button>
 
         <button
           onClick={() => setActiveTab('courses')}
-          className={`pb-3 border-b-2 shrink-0 transition cursor-pointer ${
-            activeTab === 'courses'
-              ? 'border-slate-900 text-slate-900 font-bold'
-              : 'border-transparent text-slate-500 hover:text-slate-900'
-          }`}
+          className={`frost-tab-btn ${activeTab === 'courses' ? 'frost-tab-btn-active' : ''}`}
         >
           Master Mata Kuliah ({courses.length})
         </button>
 
         <button
           onClick={() => setActiveTab('database')}
-          className={`pb-3 border-b-2 shrink-0 flex items-center gap-1.5 transition cursor-pointer ${
-            activeTab === 'database'
-              ? 'border-indigo-600 text-indigo-700 font-bold'
-              : 'border-transparent text-slate-500 hover:text-slate-900'
-          }`}
+          className={`frost-tab-btn ${activeTab === 'database' ? 'frost-tab-btn-active' : ''}`}
         >
-          <Database className="w-4 h-4 text-indigo-600" />
+          <Database className="w-4 h-4" />
           <span>Cadangan & Database</span>
         </button>
 
         <button
           onClick={() => setActiveTab('devices')}
-          className={`pb-3 border-b-2 shrink-0 flex items-center gap-1.5 transition cursor-pointer ${
-            activeTab === 'devices'
-              ? 'border-blue-600 text-blue-700 font-bold'
-              : 'border-transparent text-slate-500 hover:text-slate-900'
-          }`}
+          className={`frost-tab-btn ${activeTab === 'devices' ? 'frost-tab-btn-active' : ''}`}
         >
-          <Laptop className="w-4 h-4 text-blue-600" />
+          <Laptop className="w-4 h-4" />
           <span>Sesi & Perangkat Kampus ({deviceSessions.filter(s => s.status === 'ACTIVE').length})</span>
         </button>
       </div>
@@ -803,23 +772,23 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
       {/* TAB 1: USERS */}
       {activeTab === 'users' && (
-        <div className="bg-white rounded-xl border border-slate-200 p-5 sm:p-6 space-y-5">
+        <div className="frost-card p-6 sm:p-7 space-y-6">
           {/* Student Account Sync Status Card */}
-          <div className="bg-gradient-to-r from-emerald-50 via-teal-50 to-blue-50 border border-emerald-200/80 rounded-xl p-4 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="frost-callout frost-callout-success flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div className="flex items-start gap-3.5">
-              <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-xs">
-                <CheckCircle2 className="w-6 h-6" />
+              <div className="w-9 h-9 rounded-[6px] bg-[#009499] text-white flex items-center justify-center shrink-0">
+                <CheckCircle2 className="w-5 h-5" />
               </div>
               <div>
                 <div className="flex items-center gap-2 flex-wrap">
-                  <h4 className="text-sm sm:text-base font-bold text-emerald-950">
+                  <h4 className="text-sm font-bold text-[#014C4F]">
                     Otomasi Akun Mahasiswa Terdaftar
                   </h4>
-                  <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-200/70 text-emerald-900 border border-emerald-300">
-                    100% Terintegrasi
+                  <span className="text-xs font-semibold text-[#009499]">
+                    · 100% Terintegrasi
                   </span>
                 </div>
-                <p className="text-xs sm:text-sm text-emerald-800/90 mt-1 leading-relaxed">
+                <p className="text-xs text-[#015D60] mt-1 leading-relaxed">
                   Setiap nama mahasiswa yang terdaftar dalam sistem (<strong>{students.length} mahasiswa</strong>) wajib dan otomatis memiliki akun pengguna aktif (<strong>{users.filter(u => u.role === 'mahasiswa').length} akun mahasiswa</strong>) dengan kredensial NIM untuk melakukan presensi QR perkuliahan tanpa error.
                 </p>
               </div>
@@ -829,10 +798,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <button
                 type="button"
                 onClick={handleSyncStudentAccounts}
-                className="w-full sm:w-auto px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition cursor-pointer shadow-xs"
+                data-frost="Button"
+                className="frost-btn frost-btn-xs frost-btn-solid frost-btn-teal w-full sm:w-auto"
                 title="Sinkronkan seluruh data mahasiswa terdaftar ke akun pengguna sistem"
               >
-                <RefreshCw className="w-4 h-4" />
+                <RefreshCw className="w-3.5 h-3.5" />
                 <span>Sinkronkan Akun Mahasiswa</span>
               </button>
             </div>
@@ -840,44 +810,46 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
           {/* Sync Toast Notification */}
           {syncToastMessage && (
-            <div className="p-3.5 bg-emerald-100 border border-emerald-300 text-emerald-900 rounded-xl text-xs sm:text-sm font-medium flex items-center gap-2 animate-fadeIn">
-              <CheckCircle2 className="w-5 h-5 text-emerald-700 shrink-0" />
+            <div className="frost-callout frost-callout-success text-xs sm:text-sm font-medium flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-[#009499] shrink-0" />
               <span>{syncToastMessage}</span>
             </div>
           )}
 
-          <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-slate-100">
-            <div>
-              <h3 className="text-base sm:text-lg font-bold text-slate-900">Daftar Akun Pengguna Sistem</h3>
-              <p className="text-sm text-slate-500">Kelola akun Dosen, Mahasiswa, dan Administrator Kampus</p>
+          <div className="flex flex-wrap items-center justify-between gap-4 pb-5 border-b border-[#eeeeee]">
+            <div className="space-y-1">
+              <h3 className="text-base font-bold text-[#222222]">Daftar Akun Pengguna Sistem</h3>
+              <p className="text-xs text-[#555555]">Kelola akun Dosen, Mahasiswa, dan Administrator Kampus</p>
             </div>
 
-            <div className="flex flex-wrap sm:flex-nowrap items-center gap-3 w-full sm:w-auto">
+            <div className="flex flex-wrap sm:flex-nowrap items-center gap-2.5 w-full sm:w-auto">
               <div className="relative flex-1 sm:flex-none">
-                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <Search className="w-4 h-4 text-[#777777] absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
                   type="text"
                   placeholder="Cari nama, NIM, email..."
                   value={searchUser}
                   onChange={(e) => setSearchUser(e.target.value)}
-                  className="w-full sm:w-auto pl-9 pr-3 py-1.5 bg-white border border-slate-300 rounded-md text-sm focus:outline-none focus:border-slate-500"
+                  className="frost-input frost-input-sm pl-9 pr-3 w-full sm:w-56"
                 />
               </div>
 
               <button
                 onClick={() => handleOpenBulkImport('users')}
-                className="w-full sm:w-auto px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-800 rounded-lg text-sm font-semibold flex items-center justify-center gap-1.5 transition cursor-pointer shrink-0"
+                data-frost="Button"
+                className="frost-btn frost-btn-xs frost-btn-subtle frost-btn-teal shrink-0"
                 title="Impor pengguna dari file Excel (.xlsx)"
               >
-                <FileSpreadsheet className="w-4 h-4 text-emerald-700" />
+                <FileSpreadsheet className="w-3.5 h-3.5" />
                 <span>Import Excel</span>
               </button>
 
               <button
                 onClick={() => handleOpenUserModal()}
-                className="w-full sm:w-auto px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-sm font-semibold flex items-center justify-center gap-2 transition cursor-pointer shrink-0"
+                data-frost="Button"
+                className="frost-btn frost-btn-xs frost-btn-solid frost-btn-brand shrink-0"
               >
-                <UserPlus className="w-4 h-4" />
+                <UserPlus className="w-3.5 h-3.5" />
                 <span>Tambah Pengguna</span>
               </button>
             </div>
@@ -885,14 +857,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
           {/* Role Filter Tabs */}
           <div className="flex items-center gap-2 overflow-x-auto pb-1 text-xs font-semibold">
-            <span className="text-slate-400 mr-1 uppercase tracking-wider text-[11px]">Filter Peran:</span>
+            <span className="text-[#777777] mr-1 uppercase tracking-wider text-[11px]">Filter Peran:</span>
             <button
               type="button"
               onClick={() => setUserRoleFilter('ALL')}
-              className={`px-3 py-1.5 rounded-lg transition cursor-pointer border ${
+              className={`px-3.5 py-2 rounded-[6px] transition cursor-pointer border ${
                 userRoleFilter === 'ALL'
-                  ? 'bg-slate-900 text-white border-slate-900'
-                  : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                  ? 'bg-[#222222] text-white border-[#222222]'
+                  : 'bg-white text-[#555555] border-[#dddddd] hover:bg-[#f5f5f5]'
               }`}
             >
               Semua Pengguna ({users.length})
@@ -900,10 +872,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <button
               type="button"
               onClick={() => setUserRoleFilter('mahasiswa')}
-              className={`px-3 py-1.5 rounded-lg transition cursor-pointer border flex items-center gap-1.5 ${
+              className={`px-3.5 py-2 rounded-[6px] transition cursor-pointer border flex items-center gap-1.5 ${
                 userRoleFilter === 'mahasiswa'
-                  ? 'bg-blue-600 text-white border-blue-600'
-                  : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                  ? 'bg-[#0080FF] text-white border-[#0080FF]'
+                  : 'bg-white text-[#555555] border-[#dddddd] hover:bg-[#f5f5f5]'
               }`}
             >
               <GraduationCap className="w-3.5 h-3.5" />
@@ -912,10 +884,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <button
               type="button"
               onClick={() => setUserRoleFilter('dosen')}
-              className={`px-3 py-1.5 rounded-lg transition cursor-pointer border flex items-center gap-1.5 ${
+              className={`px-3.5 py-2 rounded-[6px] transition cursor-pointer border flex items-center gap-1.5 ${
                 userRoleFilter === 'dosen'
-                  ? 'bg-emerald-600 text-white border-emerald-600'
-                  : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                  ? 'bg-[#009499] text-white border-[#009499]'
+                  : 'bg-white text-[#555555] border-[#dddddd] hover:bg-[#f5f5f5]'
               }`}
             >
               <BookOpen className="w-3.5 h-3.5" />
@@ -924,10 +896,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <button
               type="button"
               onClick={() => setUserRoleFilter('admin')}
-              className={`px-3 py-1.5 rounded-lg transition cursor-pointer border flex items-center gap-1.5 ${
+              className={`px-3.5 py-2 rounded-[6px] transition cursor-pointer border flex items-center gap-1.5 ${
                 userRoleFilter === 'admin'
-                  ? 'bg-purple-600 text-white border-purple-600'
-                  : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                  ? 'bg-[#7A45E5] text-white border-[#7A45E5]'
+                  : 'bg-white text-[#555555] border-[#dddddd] hover:bg-[#f5f5f5]'
               }`}
             >
               <Shield className="w-3.5 h-3.5" />
@@ -935,81 +907,79 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </button>
           </div>
 
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto border border-[#dddddd] rounded-[6px]">
             <table className="w-full text-sm text-left border-collapse min-w-[640px]">
               <thead>
-                <tr className="border-b border-slate-200 text-slate-600 font-semibold">
-                  <th className="py-3 px-3">Pengguna</th>
-                  <th className="py-3 px-3">NIDN / NIM</th>
-                  <th className="py-3 px-3">Peran (Role)</th>
-                  <th className="py-3 px-3">Keterangan / Rombel</th>
-                  <th className="py-3 px-3">Email Kampus</th>
-                  <th className="py-3 px-3 text-right">Aksi</th>
+                <tr className="bg-[#fafafa] border-b border-[#dddddd] text-[#555555] font-semibold text-xs uppercase tracking-wider">
+                  <th className="py-3.5 px-4">Pengguna</th>
+                  <th className="py-3.5 px-4">NIDN / NIM</th>
+                  <th className="py-3.5 px-4">Peran (Role)</th>
+                  <th className="py-3.5 px-4">Keterangan / Rombel</th>
+                  <th className="py-3.5 px-4">Email Kampus</th>
+                  <th className="py-3.5 px-4 text-right">Aksi</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-[#eeeeee]">
                 {filteredUsers.map((user) => (
-                  <tr key={user.id} className="hover:bg-slate-50/70 transition">
-                    <td className="py-3 px-3">
-                      <div className="flex items-center gap-2.5">
-                        <img
-                          src={user.avatarUrl || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150'}
-                          alt={user.name}
-                          className="w-8 h-8 rounded-full object-cover border border-slate-200"
-                        />
-                        <div className="font-semibold text-slate-900">{user.name}</div>
+                  <tr key={user.id} className="hover:bg-[#fafafa] transition">
+                    <td className="py-3.5 px-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-[6px] bg-[#E4F2FF] border border-[#0080FF]/20 text-[#0080FF] font-bold text-xs flex items-center justify-center shrink-0">
+                          {user.name.slice(0, 2).toUpperCase()}
+                        </div>
+                        <div className="font-semibold text-[#222222]">{user.name}</div>
                       </div>
                     </td>
-                    <td className="py-3 px-3 font-mono font-medium text-slate-900">{user.username}</td>
-                    <td className="py-3 px-3">
+                    <td className="py-3.5 px-4 font-mono font-medium text-[#222222] tabular-nums">{user.username}</td>
+                    <td className="py-3.5 px-4">
                       {user.role === 'mahasiswa' ? (
-                        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-bold bg-blue-50 text-blue-700 border border-blue-200">
-                          <GraduationCap className="w-3.5 h-3.5 text-blue-600" />
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-[4px] text-xs font-semibold bg-[#E4F2FF] text-[#015BB5]">
+                          <GraduationCap className="w-3.5 h-3.5" />
                           <span>Mahasiswa</span>
                         </span>
                       ) : user.role === 'dosen' ? (
-                        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                          <BookOpen className="w-3.5 h-3.5 text-emerald-600" />
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-[4px] text-xs font-semibold bg-[#E5F6F5] text-[#016F73]">
+                          <BookOpen className="w-3.5 h-3.5" />
                           <span>Dosen</span>
                         </span>
                       ) : (
-                        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-bold bg-purple-50 text-purple-700 border border-purple-200">
-                          <Shield className="w-3.5 h-3.5 text-purple-600" />
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-[4px] text-xs font-semibold bg-[#F2ECFC] text-[#5B34AC]">
+                          <Shield className="w-3.5 h-3.5" />
                           <span>Admin BAAK</span>
                         </span>
                       )}
                     </td>
-                    <td className="py-3 px-3 text-slate-600">
+                    <td className="py-3.5 px-4 text-[#555555]">
                       {user.role === 'mahasiswa' ? (
                         <div className="space-y-0.5">
-                          <span className="font-semibold text-slate-800">
+                          <span className="font-semibold text-[#222222]">
                             {user.rombel ? `Rombel ${user.rombel}` : '-'}
                           </span>
-                          <span className="block text-[11px] text-emerald-700 font-medium">
-                            ✓ Akun Presensi QR Aktif
+                          <span className="block text-[11px] text-[#009499] font-medium">
+                            Akun Presensi QR Aktif
                           </span>
                         </div>
                       ) : (
                         user.rombel ? `Rombel ${user.rombel}` : user.title || '-'
                       )}
                     </td>
-                    <td className="py-3 px-3">
-                      <div className="text-slate-700 font-mono text-xs">{user.email || '-'}</div>
+                    <td className="py-3.5 px-4">
+                      <div className="text-[#222222] font-mono text-xs">{user.email || '-'}</div>
                       {user.password ? (
-                        <span className="inline-flex items-center gap-1 text-[10px] text-emerald-700 font-semibold bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 mt-0.5">
-                          ✓ Sandi Kustom Aktif
+                        <span className="inline-flex items-center gap-1 text-[10px] text-[#016F73] font-semibold bg-[#E5F6F5] px-1.5 py-0.5 rounded-[4px] mt-1">
+                          Sandi Kustom Aktif
                         </span>
                       ) : (
-                        <span className="text-[10px] text-slate-400">
+                        <span className="text-[10px] text-[#777777]">
                           (Default: {user.role === 'admin' ? 'baak123' : user.role === 'dosen' ? 'dosen123' : 'pass123'})
                         </span>
                       )}
                     </td>
-                    <td className="py-3 px-3 text-right">
-                      <div className="inline-flex items-center gap-2">
+                    <td className="py-3.5 px-4 text-right">
+                      <div className="inline-flex items-center gap-1.5">
                         <button
                           onClick={() => handleOpenUserModal(user)}
-                          className="p-1.5 text-slate-500 hover:text-slate-900 transition cursor-pointer"
+                          className="p-1.5 text-[#555555] hover:text-[#222222] hover:bg-[#eeeeee] rounded-[4px] transition cursor-pointer"
                           title="Edit Pengguna"
                         >
                           <Edit2 className="w-4 h-4" />
@@ -1028,7 +998,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               },
                             });
                           }}
-                          className="p-1.5 text-slate-500 hover:text-rose-600 transition cursor-pointer"
+                          className="p-1.5 text-[#555555] hover:text-[#E54545] hover:bg-[#FCEBEC] rounded-[4px] transition cursor-pointer"
                           title="Hapus Pengguna"
                         >
                           <Trash2 className="w-4 h-4" />
@@ -1047,21 +1017,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       {activeTab === 'schedules' && (
         <div className="space-y-6">
           {/* Main Card: Schedules, Metrics & Actions */}
-          <div className="bg-white rounded-xl border border-slate-200 p-5 sm:p-6 space-y-5">
+          <div className="frost-card p-6 sm:p-7 space-y-6">
             {/* Header & Main Buttons */}
-            <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-slate-100">
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="px-2.5 py-0.5 rounded-md bg-emerald-100 text-emerald-800 text-xs font-bold uppercase tracking-wider">
-                    Sistem Akademik Terpadu
-                  </span>
-                  <span className="text-xs text-slate-400">·</span>
-                  <span className="text-xs text-slate-500 font-medium">Semester Ganjil 2026/2027</span>
+            <div className="flex flex-wrap items-center justify-between gap-4 pb-5 border-b border-[#eeeeee]">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2 text-xs text-[#555555] font-medium">
+                  <span className="text-[#009499] font-semibold">Sistem Akademik Terpadu</span>
+                  <span>·</span>
+                  <span>Semester Ganjil 2026/2027</span>
                 </div>
-                <h3 className="text-base sm:text-xl font-bold text-slate-900 mt-1">
+                <h3 className="text-base sm:text-lg font-bold text-[#222222]">
                   Manajemen Jadwal Perkuliahan ({schedules.length})
                 </h3>
-                <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
+                <p className="text-xs text-[#555555]">
                   Rombel terhubung langsung dengan database Rombel & Mahasiswa, serta Kode dan Mata Kuliah terhubung dengan database master mata kuliah.
                 </p>
               </div>
@@ -1069,100 +1037,102 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <div className="flex flex-wrap items-center gap-2.5">
                 <button
                   onClick={() => handleOpenBulkImport('schedules')}
-                  className="px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-800 rounded-lg text-sm font-semibold flex items-center gap-1.5 transition cursor-pointer"
+                  data-frost="Button"
+                  className="frost-btn frost-btn-xs frost-btn-subtle frost-btn-teal"
                   title="Impor jadwal perkuliahan dari file Excel (.xlsx)"
                 >
-                  <FileSpreadsheet className="w-4 h-4 text-emerald-700" />
+                  <FileSpreadsheet className="w-3.5 h-3.5" />
                   <span>Import Excel Jadwal</span>
                 </button>
 
                 <button
                   onClick={() => handleOpenScheduleModal()}
-                  className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-sm font-semibold flex items-center gap-2 transition cursor-pointer shadow-2xs"
+                  data-frost="Button"
+                  className="frost-btn frost-btn-xs frost-btn-solid frost-btn-brand"
                 >
-                  <Plus className="w-4 h-4" />
-                  <span>+ Tambah Jadwal Baru</span>
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Tambah Jadwal Baru</span>
                 </button>
               </div>
             </div>
 
             {/* Quick Metrics Bar: Master MK & Rombel-Mahasiswa Integration */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-              <div className="p-4 rounded-xl bg-slate-50 border border-slate-200">
-                <div className="flex items-center justify-between text-slate-500 mb-1">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="p-4 sm:p-5 rounded-[6px] bg-[#fafafa] border border-[#dddddd]">
+                <div className="flex items-center justify-between text-[#555555] mb-2">
                   <span className="text-xs font-semibold">Total Jadwal Aktif</span>
-                  <Calendar className="w-4 h-4 text-slate-400" />
+                  <Calendar className="w-4 h-4 text-[#777777]" />
                 </div>
-                <div className="text-xl sm:text-2xl font-extrabold text-slate-900">
+                <div className="text-xl sm:text-2xl font-bold text-[#222222] tabular-nums">
                   {schedules.length}
                 </div>
-                <div className="text-[11px] text-slate-500 mt-0.5">
+                <div className="text-[11px] text-[#555555] mt-1">
                   Jadwal perkuliahan mingguan
                 </div>
               </div>
 
-              <div className="p-4 rounded-xl bg-emerald-50/70 border border-emerald-200">
-                <div className="flex items-center justify-between text-emerald-800 mb-1">
+              <div className="p-4 sm:p-5 rounded-[6px] bg-[#E5F6F5]/60 border border-[#B0DFDF]">
+                <div className="flex items-center justify-between text-[#015D60] mb-2">
                   <span className="text-xs font-semibold">Terhubung Master MK</span>
-                  <BookmarkCheck className="w-4 h-4 text-emerald-600" />
+                  <BookmarkCheck className="w-4 h-4 text-[#009499]" />
                 </div>
-                <div className="text-xl sm:text-2xl font-extrabold text-emerald-900">
+                <div className="text-xl sm:text-2xl font-bold text-[#014C4F] tabular-nums">
                   {schedulesConnectedToMaster.length} / {schedules.length}
                 </div>
-                <div className="text-[11px] text-emerald-700 font-medium mt-0.5">
+                <div className="text-[11px] text-[#016F73] font-medium mt-1 tabular-nums">
                   {Math.round((schedulesConnectedToMaster.length / (schedules.length || 1)) * 100)}% Terhubung Database Master MK
                 </div>
               </div>
 
-              <div className="p-4 rounded-xl bg-blue-50/70 border border-blue-200">
-                <div className="flex items-center justify-between text-blue-800 mb-1">
+              <div className="p-4 sm:p-5 rounded-[6px] bg-[#E4F2FF]/60 border border-[#ADCEFF]">
+                <div className="flex items-center justify-between text-[#015BB5] mb-2">
                   <span className="text-xs font-semibold">Rombel Terdaftar</span>
-                  <Layers className="w-4 h-4 text-blue-600" />
+                  <Layers className="w-4 h-4 text-[#0080FF]" />
                 </div>
-                <div className="text-xl sm:text-2xl font-extrabold text-blue-900">
+                <div className="text-xl sm:text-2xl font-bold text-[#003F8A] tabular-nums">
                   {rombels.length}
                 </div>
-                <div className="text-[11px] text-blue-700 font-medium mt-0.5">
+                <div className="text-[11px] text-[#015BB5] font-medium mt-1">
                   Kelas dari Database Rombel
                 </div>
               </div>
 
-              <div className="p-4 rounded-xl bg-indigo-50/70 border border-indigo-200">
-                <div className="flex items-center justify-between text-indigo-800 mb-1">
+              <div className="p-4 sm:p-5 rounded-[6px] bg-[#F2ECFC]/60 border border-[#D4BFEE]">
+                <div className="flex items-center justify-between text-[#5B34AC] mb-2">
                   <span className="text-xs font-semibold">Mahasiswa Terhubung</span>
-                  <Users className="w-4 h-4 text-indigo-600" />
+                  <Users className="w-4 h-4 text-[#7A45E5]" />
                 </div>
-                <div className="text-xl sm:text-2xl font-extrabold text-indigo-900">
+                <div className="text-xl sm:text-2xl font-bold text-[#3D2273] tabular-nums">
                   {totalStudentsEnrolledInSchedules}
                 </div>
-                <div className="text-[11px] text-indigo-700 font-medium mt-0.5">
+                <div className="text-[11px] text-[#5B34AC] font-medium mt-1">
                   Mahasiswa otomatis tersinkron
                 </div>
               </div>
             </div>
 
             {/* Filter and Search Bar */}
-            <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
+            <div className="p-4 bg-[#fafafa] border border-[#dddddd] rounded-[6px] space-y-3">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 {/* Search */}
                 <div className="relative flex-1 min-w-[240px]">
-                  <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <Search className="w-4 h-4 text-[#777777] absolute left-3 top-1/2 -translate-y-1/2" />
                   <input
                     type="text"
                     placeholder="Cari mata kuliah, kode MK, dosen, ruang, atau rombel..."
                     value={scheduleSearch}
                     onChange={(e) => setScheduleSearch(e.target.value)}
-                    className="w-full pl-9 pr-3 py-2 bg-white border border-slate-300 rounded-lg text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-slate-900"
+                    className="frost-input frost-input-sm pl-9 pr-3"
                   />
                 </div>
 
                 {/* Dropdown Filters */}
-                <div className="flex flex-wrap items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2.5">
                   {/* Rombel Filter from Database */}
                   <select
                     value={scheduleRombelFilter}
                     onChange={(e) => setScheduleRombelFilter(e.target.value)}
-                    className="px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs sm:text-sm text-slate-800 font-semibold focus:outline-none focus:border-slate-900"
+                    className="frost-select text-xs font-semibold h-9 py-1"
                   >
                     <option value="ALL">Semua Rombel ({allDistinctRombels.length})</option>
                     {allDistinctRombels.map(rCode => {
@@ -1179,7 +1149,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <select
                     value={scheduleCourseFilter}
                     onChange={(e) => setScheduleCourseFilter(e.target.value)}
-                    className="px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs sm:text-sm text-slate-800 font-semibold focus:outline-none focus:border-slate-900 max-w-[200px]"
+                    className="frost-select text-xs font-semibold h-9 py-1 max-w-[220px]"
                   >
                     <option value="ALL">Semua Master MK ({courses.length})</option>
                     {courses.map(c => (
@@ -1193,7 +1163,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <select
                     value={scheduleDayFilter}
                     onChange={(e) => setScheduleDayFilter(e.target.value)}
-                    className="px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs sm:text-sm text-slate-800 font-semibold focus:outline-none focus:border-slate-900"
+                    className="frost-select text-xs font-semibold h-9 py-1"
                   >
                     <option value="ALL">Semua Hari</option>
                     {['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'].map(d => (
@@ -1211,7 +1181,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         setScheduleCourseFilter('ALL');
                         setScheduleDayFilter('ALL');
                       }}
-                      className="px-3 py-2 text-xs font-semibold text-rose-600 hover:bg-rose-50 border border-rose-200 rounded-lg transition cursor-pointer"
+                      data-frost="Button"
+                      className="frost-btn frost-btn-xs frost-btn-subtle frost-btn-danger"
                     >
                       Reset Filter
                     </button>
@@ -1221,26 +1192,26 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </div>
 
             {/* Schedules Table */}
-            <div className="overflow-x-auto border border-slate-200 rounded-xl">
+            <div className="overflow-x-auto border border-[#dddddd] rounded-[6px]">
               <table className="w-full text-sm text-left border-collapse min-w-[760px]">
                 <thead>
-                  <tr className="bg-slate-100/80 border-b border-slate-200 text-slate-700 font-semibold text-xs uppercase tracking-wider">
-                    <th className="py-3 px-3.5">Hari & Jam</th>
-                    <th className="py-3 px-3.5">Kode & Mata Kuliah (Master MK)</th>
-                    <th className="py-3 px-3.5 text-center">SKS</th>
-                    <th className="py-3 px-3.5">Dosen Pengampu</th>
-                    <th className="py-3 px-3.5">Ruang</th>
-                    <th className="py-3 px-3.5">Rombel & Mahasiswa</th>
-                    <th className="py-3 px-3.5 text-right">Aksi</th>
+                  <tr className="bg-[#fafafa] border-b border-[#dddddd] text-[#555555] font-semibold text-xs uppercase tracking-wider">
+                    <th className="py-3.5 px-4">Hari & Jam</th>
+                    <th className="py-3.5 px-4">Kode & Mata Kuliah (Master MK)</th>
+                    <th className="py-3.5 px-4 text-center">SKS</th>
+                    <th className="py-3.5 px-4">Dosen Pengampu</th>
+                    <th className="py-3.5 px-4">Ruang</th>
+                    <th className="py-3.5 px-4">Rombel & Mahasiswa</th>
+                    <th className="py-3.5 px-4 text-right">Aksi</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
+                <tbody className="divide-y divide-[#eeeeee]">
                   {filteredSchedules.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="py-12 text-center text-slate-500 text-sm">
+                      <td colSpan={7} className="py-12 text-center text-[#555555] text-sm">
                         <div className="max-w-md mx-auto space-y-2">
-                          <p className="font-semibold text-slate-700">Tidak ada jadwal perkuliahan yang cocok</p>
-                          <p className="text-xs text-slate-400">
+                          <p className="font-semibold text-[#222222]">Tidak ada jadwal perkuliahan yang cocok</p>
+                          <p className="text-xs text-[#777777]">
                             Coba ubah kata kunci pencarian, filter rombel, atau filter mata kuliah.
                           </p>
                         </div>
@@ -1255,39 +1226,39 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       const studentCount = getScheduleStudentCount(sch.rombel);
 
                       return (
-                        <tr key={sch.id} className="hover:bg-slate-50/70 transition">
+                        <tr key={sch.id} className="hover:bg-[#fafafa] transition">
                           {/* Hari & Jam */}
-                          <td className="py-3 px-3.5 whitespace-nowrap">
-                            <span className="font-bold text-slate-900 block">{sch.day}</span>
-                            <span className="text-xs text-slate-500 font-mono flex items-center gap-1 mt-0.5">
-                              <Clock className="w-3 h-3 text-slate-400" />
+                          <td className="py-3.5 px-4 whitespace-nowrap">
+                            <span className="font-bold text-[#222222] block">{sch.day}</span>
+                            <span className="text-xs text-[#555555] font-mono tabular-nums flex items-center gap-1 mt-0.5">
+                              <Clock className="w-3 h-3 text-[#777777]" />
                               {sch.startTime}–{sch.endTime} WIB
                             </span>
                           </td>
 
                           {/* Kode & Mata Kuliah (Master DB Sync) */}
-                          <td className="py-3 px-3.5">
+                          <td className="py-3.5 px-4">
                             <div className="flex items-center gap-2">
-                              <span className="font-mono text-xs font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-800 border border-slate-200">
+                              <span className="font-mono text-xs font-bold px-2 py-0.5 rounded-[4px] bg-[#f5f5f5] text-[#222222] border border-[#dddddd]">
                                 {sch.courseCode}
                               </span>
-                              <div className="font-bold text-slate-900">{sch.courseName}</div>
+                              <div className="font-bold text-[#222222]">{sch.courseName}</div>
                             </div>
                             
                             {/* Master Database Relation Badge */}
-                            <div className="flex items-center gap-1.5 mt-1">
+                            <div className="flex items-center gap-1.5 mt-1.5">
                               {sch.prodi === 'Lintas Program Studi' ? (
-                                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-purple-900 bg-purple-100/80 px-2 py-0.5 rounded-md border border-purple-300">
-                                  <GitMerge className="w-3 h-3 text-purple-700" />
+                                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-[#5B34AC] bg-[#F2ECFC] px-2 py-0.5 rounded-[4px]">
+                                  <GitMerge className="w-3 h-3" />
                                   <span>Lintas Program Studi</span>
                                 </span>
                               ) : masterMatch ? (
-                                <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
-                                  <BookmarkCheck className="w-3 h-3 text-emerald-600" />
+                                <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-[#016F73] bg-[#E5F6F5] px-2 py-0.5 rounded-[4px]">
+                                  <BookmarkCheck className="w-3 h-3" />
                                   <span>Master MK · Sem {masterMatch.semester || '-'} · {sch.prodi}</span>
                                 </span>
                               ) : (
-                                <span className="text-[10px] text-slate-400">
+                                <span className="text-[10px] text-[#777777]">
                                   {sch.prodi}
                                 </span>
                               )}
@@ -1295,51 +1266,51 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           </td>
 
                           {/* SKS */}
-                          <td className="py-3 px-3.5 text-center">
-                            <span className="px-2 py-1 rounded-md bg-slate-100 text-slate-800 font-bold text-xs">
+                          <td className="py-3.5 px-4 text-center">
+                            <span className="px-2 py-1 rounded-[4px] bg-[#f5f5f5] text-[#222222] font-bold text-xs tabular-nums">
                               {sch.sks} SKS
                             </span>
                           </td>
 
                           {/* Dosen Pengampu */}
-                          <td className="py-3 px-3.5">
-                            <div className="font-medium text-slate-900">{sch.lecturerName}</div>
-                            <div className="text-[11px] text-slate-500">Dosen Pengampu</div>
+                          <td className="py-3.5 px-4">
+                            <div className="font-medium text-[#222222]">{sch.lecturerName}</div>
+                            <div className="text-[11px] text-[#555555]">Dosen Pengampu</div>
                           </td>
 
                           {/* Ruang */}
-                          <td className="py-3 px-3.5 whitespace-nowrap">
-                            <span className="font-semibold px-2 py-0.5 rounded bg-slate-100 text-slate-800 border border-slate-200 text-xs">
+                          <td className="py-3.5 px-4 whitespace-nowrap">
+                            <span className="font-semibold px-2 py-0.5 rounded-[4px] bg-[#f5f5f5] text-[#222222] border border-[#dddddd] text-xs">
                               {sch.room}
                             </span>
                           </td>
 
                           {/* Rombel & Mahasiswa Connection */}
-                          <td className="py-3 px-3.5">
-                            <div className="flex flex-col gap-1.5 items-start">
-                              <span className="font-bold text-xs text-slate-900 bg-indigo-50 border border-indigo-200 text-indigo-900 px-2 py-0.5 rounded-md">
+                          <td className="py-3.5 px-4">
+                            <div className="flex flex-col gap-1 items-start">
+                              <span className="font-bold text-xs bg-[#E4F2FF] text-[#015BB5] px-2 py-0.5 rounded-[4px]">
                                 Rombel {sch.rombel}
                               </span>
                               
                               <button
                                 type="button"
                                 onClick={() => handleOpenScheduleRoster(sch)}
-                                className="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-700 hover:text-blue-900 hover:underline cursor-pointer"
+                                className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#0080FF] hover:underline cursor-pointer tabular-nums"
                                 title="Klik untuk melihat daftar mahasiswa terhubung di rombel ini"
                               >
-                                <Users className="w-3.5 h-3.5 text-blue-600" />
+                                <Users className="w-3.5 h-3.5" />
                                 <span>{studentCount} Mahasiswa Terdaftar</span>
                               </button>
                             </div>
                           </td>
 
                           {/* Action Buttons */}
-                          <td className="py-3 px-3.5 text-right whitespace-nowrap">
-                            <div className="inline-flex items-center gap-1.5">
+                          <td className="py-3.5 px-4 text-right whitespace-nowrap">
+                            <div className="inline-flex items-center gap-1">
                               <button
                                 type="button"
                                 onClick={() => handleOpenScheduleRoster(sch)}
-                                className="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition cursor-pointer"
+                                className="p-1.5 text-[#555555] hover:text-[#0080FF] hover:bg-[#E4F2FF] rounded-[4px] transition cursor-pointer"
                                 title="Lihat Daftar Mahasiswa Terhubung"
                               >
                                 <Users className="w-4 h-4" />
@@ -1347,7 +1318,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               <button
                                 type="button"
                                 onClick={() => handleOpenScheduleModal(sch)}
-                                className="p-1.5 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition cursor-pointer"
+                                className="p-1.5 text-[#555555] hover:text-[#222222] hover:bg-[#eeeeee] rounded-[4px] transition cursor-pointer"
                                 title="Edit Jadwal"
                               >
                                 <Edit2 className="w-4 h-4" />
@@ -1367,7 +1338,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                     },
                                   });
                                 }}
-                                className="p-1.5 text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
+                                className="p-1.5 text-[#555555] hover:text-[#E54545] hover:bg-[#FCEBEC] rounded-[4px] transition cursor-pointer"
                                 title="Hapus Jadwal"
                               >
                                 <Trash2 className="w-4 h-4" />
@@ -1389,49 +1360,50 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       {activeTab === 'students' && (
         <div className="space-y-6">
           {/* Main Card: Student Roster & Actions */}
-          <div className="bg-white rounded-xl border border-slate-200 p-5 sm:p-6 space-y-5">
-            <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-slate-100">
+          <div className="frost-card p-6 sm:p-7 space-y-6">
+            <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-[#eeeeee]">
               <div>
-                <div className="flex items-center gap-2">
-                  <span className="px-2.5 py-0.5 rounded-md bg-indigo-100 text-indigo-800 text-xs font-bold uppercase tracking-wider">
-                    Sistem Relasi Akademik
-                  </span>
-                  <span className="text-xs text-slate-400">·</span>
-                  <span className="text-xs text-slate-500 font-medium">Semester Ganjil 2026/2027</span>
+                <div className="flex items-center gap-2 text-xs text-[#555555] font-medium">
+                  <span className="text-[#0080FF] font-semibold">Sistem Relasi Akademik</span>
+                  <span>·</span>
+                  <span>Semester Ganjil 2026/2027</span>
                 </div>
-                <h3 className="text-base sm:text-xl font-bold text-slate-900 mt-1">
+                <h3 className="text-base sm:text-lg font-bold text-[#222222] mt-1">
                   Data Peserta Rombel Mahasiswa & Relasi Jadwal ({students.length})
                 </h3>
-                <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
+                <p className="text-xs text-[#555555] mt-0.5">
                   Mahasiswa dikelompokkan berdasarkan rombel (1 mahasiswa dapat berada di &gt;1 rombel). Setiap rombel otomatis terhubung ke jadwal mata kuliah masing-masing.
                 </p>
               </div>
 
-              <div className="flex flex-wrap items-center gap-2.5">
+              <div className="flex flex-wrap items-center gap-2">
                 <button
                   onClick={() => handleOpenBulkImport('students')}
-                  className="px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-800 rounded-lg text-sm font-semibold flex items-center gap-1.5 transition cursor-pointer"
+                  data-frost="Button"
+                  className="frost-btn frost-btn-xs frost-btn-subtle frost-btn-teal"
                   title="Impor rombel mahasiswa dari file Excel (.xlsx)"
                 >
-                  <FileSpreadsheet className="w-4 h-4 text-emerald-700" />
+                  <FileSpreadsheet className="w-3.5 h-3.5" />
                   <span>Import Excel Mahasiswa</span>
                 </button>
 
                 <button
                   onClick={() => handleOpenRombelModal()}
-                  className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-sm font-semibold flex items-center gap-2 transition cursor-pointer shadow-2xs"
+                  data-frost="Button"
+                  className="frost-btn frost-btn-xs frost-btn-solid frost-btn-neutral"
                   title="Tambah Rombel baru dan hubungkan ke beberapa jadwal mata kuliah"
                 >
-                  <Plus className="w-4 h-4" />
-                  <span>+ Buat Rombel Baru</span>
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Buat Rombel Baru</span>
                 </button>
 
                 <button
                   onClick={() => handleOpenStudentModal()}
-                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-semibold flex items-center gap-2 transition cursor-pointer shadow-2xs"
+                  data-frost="Button"
+                  className="frost-btn frost-btn-xs frost-btn-solid frost-btn-brand"
                   title="Tambah mahasiswa baru dan atur pilihan rombelnya"
                 >
-                  <UserPlus className="w-4 h-4" />
+                  <UserPlus className="w-3.5 h-3.5" />
                   <span>Tambah Mahasiswa &amp; Rombel</span>
                 </button>
               </div>
@@ -1439,22 +1411,22 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
             {/* Warning Alert Banner for Students with > 20 SKS */}
             {overLimitSksStudents.length > 0 && (
-              <div className="p-4 sm:p-5 bg-gradient-to-r from-amber-500/10 via-rose-500/10 to-orange-500/10 border-2 border-amber-300 rounded-2xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-xs animate-in fade-in">
-                <div className="flex items-start gap-3.5">
-                  <div className="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-xs mt-0.5">
+              <div className="frost-callout frost-callout-warning flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                <div className="flex items-start gap-3">
+                  <div className="w-9 h-9 rounded-[6px] bg-[#FF8001] text-white flex items-center justify-center shrink-0 mt-0.5">
                     <AlertTriangle className="w-5 h-5" />
                   </div>
                   <div>
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="px-2.5 py-0.5 rounded-full bg-rose-600 text-white text-[11px] font-bold shadow-2xs animate-pulse">
-                        ⚠️ PERINGATAN BEBAN STUDI (&gt; 20 SKS)
+                      <span className="px-2 py-0.5 rounded-[4px] bg-[#E54545] text-white text-[11px] font-bold">
+                        PERINGATAN BEBAN STUDI (&gt; 20 SKS)
                       </span>
-                      <span className="text-xs text-amber-900 font-semibold">Batas Regulasi Kampus: Maks. 20 SKS / Semester</span>
+                      <span className="text-xs text-[#914900] font-semibold">Batas Regulasi Kampus: Maks. 20 SKS / Semester</span>
                     </div>
-                    <h4 className="text-sm sm:text-base font-bold text-slate-900 mt-1">
+                    <h4 className="text-sm font-bold text-[#222222] mt-1">
                       Ditemukan {overLimitSksStudents.length} Mahasiswa Memiliki Mata Kuliah Lebih dari 20 SKS
                     </h4>
-                    <p className="text-xs text-slate-600 mt-0.5 max-w-2xl leading-relaxed">
+                    <p className="text-xs text-[#555555] mt-0.5 max-w-2xl leading-relaxed">
                       Sistem mendeteksi mahasiswa dengan beban studi melampaui batas standar 20 SKS. Anda dapat memfilter mahasiswa di bawah dan mengklik tombol <strong>"Ubah SKS"</strong> untuk menyesuaikan rombel atau mendrop mata kuliah.
                     </p>
                   </div>
@@ -1464,13 +1436,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <button
                     type="button"
                     onClick={() => setSelectedRombelFilter(selectedRombelFilter === 'OVER_20_SKS' ? 'ALL' : 'OVER_20_SKS')}
-                    className={`px-4 py-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 shadow-xs w-full md:w-auto cursor-pointer ${
+                    data-frost="Button"
+                    className={`frost-btn frost-btn-xs w-full md:w-auto ${
                       selectedRombelFilter === 'OVER_20_SKS'
-                        ? 'bg-slate-900 text-white hover:bg-slate-800'
-                        : 'bg-rose-600 hover:bg-rose-700 text-white shadow-rose-200'
+                        ? 'frost-btn-solid frost-btn-neutral'
+                        : 'frost-btn-solid frost-btn-danger'
                     }`}
                   >
-                    <AlertTriangle className="w-4 h-4" />
+                    <AlertTriangle className="w-3.5 h-3.5" />
                     <span>{selectedRombelFilter === 'OVER_20_SKS' ? 'Tampilkan Semua Mahasiswa' : `Filter ${overLimitSksStudents.length} Mahasiswa (>20 SKS)`}</span>
                   </button>
                 </div>
@@ -1478,58 +1451,58 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             )}
 
             {/* Quick Metrics Bar */}
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 sm:gap-4">
-              <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl">
-                <span className="text-xs text-slate-500 font-medium block">Total Mahasiswa</span>
-                <span className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight mt-0.5 block">
-                  {students.length} <span className="text-xs font-normal text-slate-500">Orang</span>
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+              <div className="p-3.5 bg-[#fafafa] border border-[#dddddd] rounded-[6px]">
+                <span className="text-xs text-[#555555] font-medium block">Total Mahasiswa</span>
+                <span className="text-xl font-bold text-[#222222] tracking-tight mt-0.5 block tabular-nums">
+                  {students.length} <span className="text-xs font-normal text-[#555555]">Orang</span>
                 </span>
               </div>
 
-              <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl">
-                <span className="text-xs text-slate-500 font-medium block">Rombel Aktif</span>
-                <span className="text-xl sm:text-2xl font-bold text-indigo-600 tracking-tight mt-0.5 block">
-                  {allDistinctRombels.length} <span className="text-xs font-normal text-slate-500">Rombel</span>
+              <div className="p-3.5 bg-[#fafafa] border border-[#dddddd] rounded-[6px]">
+                <span className="text-xs text-[#555555] font-medium block">Rombel Aktif</span>
+                <span className="text-xl font-bold text-[#0080FF] tracking-tight mt-0.5 block tabular-nums">
+                  {allDistinctRombels.length} <span className="text-xs font-normal text-[#555555]">Rombel</span>
                 </span>
               </div>
 
-              <div className="p-3.5 bg-purple-50 border border-purple-200 rounded-xl">
-                <span className="text-xs text-purple-700 font-medium block">Multi-Rombel (&gt;1 Rombel)</span>
-                <span className="text-xl sm:text-2xl font-bold text-purple-900 tracking-tight mt-0.5 block">
-                  {multiRombelStudentsCount} <span className="text-xs font-normal text-purple-600">Mahasiswa</span>
+              <div className="p-3.5 bg-[#F2ECFC]/60 border border-[#D4BFEE] rounded-[6px]">
+                <span className="text-xs text-[#5B34AC] font-medium block">Multi-Rombel (&gt;1 Rombel)</span>
+                <span className="text-xl font-bold text-[#3D2273] tracking-tight mt-0.5 block tabular-nums">
+                  {multiRombelStudentsCount} <span className="text-xs font-normal text-[#5B34AC]">Mahasiswa</span>
                 </span>
               </div>
 
               <button
                 type="button"
                 onClick={() => setSelectedRombelFilter(selectedRombelFilter === 'OVER_20_SKS' ? 'ALL' : 'OVER_20_SKS')}
-                className={`p-3.5 rounded-xl border text-left transition cursor-pointer ${
+                className={`p-3.5 rounded-[6px] border text-left transition cursor-pointer ${
                   selectedRombelFilter === 'OVER_20_SKS'
-                    ? 'bg-rose-100 border-rose-400 ring-2 ring-rose-400'
+                    ? 'bg-[#FCEBEC] border-[#E54545]'
                     : overLimitSksStudents.length > 0
-                      ? 'bg-rose-50/80 border-rose-300 hover:bg-rose-100/70'
-                      : 'bg-slate-50 border-slate-200'
+                      ? 'bg-[#FCEBEC]/60 border-[#F4BCBD] hover:bg-[#FCEBEC]'
+                      : 'bg-[#fafafa] border-[#dddddd]'
                 }`}
                 title="Klik untuk memfilter mahasiswa dengan beban studi melebihi 20 SKS"
               >
                 <div className="flex items-center justify-between">
-                  <span className="text-xs text-rose-700 font-bold block flex items-center gap-1">
-                    <AlertTriangle className="w-3.5 h-3.5 text-rose-600" />
+                  <span className="text-xs text-[#AC292A] font-bold flex items-center gap-1">
+                    <AlertTriangle className="w-3.5 h-3.5 text-[#E54545]" />
                     <span>SKS &gt; 20 (Flag)</span>
                   </span>
                   {overLimitSksStudents.length > 0 && (
-                    <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
+                    <span className="w-2 h-2 rounded-full bg-[#E54545]" />
                   )}
                 </div>
-                <span className="text-xl sm:text-2xl font-bold text-rose-800 tracking-tight mt-0.5 block">
-                  {overLimitSksStudents.length} <span className="text-xs font-normal text-rose-600">Mahasiswa</span>
+                <span className="text-xl font-bold text-[#731B1B] tracking-tight mt-0.5 block tabular-nums">
+                  {overLimitSksStudents.length} <span className="text-xs font-normal text-[#AC292A]">Mahasiswa</span>
                 </span>
               </button>
 
-              <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl">
-                <span className="text-xs text-slate-500 font-medium block">Jadwal Kuliah Terhubung</span>
-                <span className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight mt-0.5 block">
-                  {schedules.length} <span className="text-xs font-normal text-slate-500">Kelas</span>
+              <div className="p-3.5 bg-[#fafafa] border border-[#dddddd] rounded-[6px]">
+                <span className="text-xs text-[#555555] font-medium block">Jadwal Kuliah Terhubung</span>
+                <span className="text-xl font-bold text-[#222222] tracking-tight mt-0.5 block tabular-nums">
+                  {schedules.length} <span className="text-xs font-normal text-[#555555]">Kelas</span>
                 </span>
               </div>
             </div>
@@ -1539,38 +1512,38 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
                 {/* Search Bar */}
                 <div className="relative flex-1 max-w-md">
-                  <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[#777777]" />
                   <input
                     type="text"
                     value={studentSearch}
                     onChange={(e) => setStudentSearch(e.target.value)}
                     placeholder="Cari mahasiswa berdasarkan NIM, nama, atau rombel..."
-                    className="w-full pl-9 pr-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:border-indigo-600 transition"
+                    className="frost-input frost-input-sm pl-9 pr-14"
                   />
                   {studentSearch && (
                     <button
                       onClick={() => setStudentSearch('')}
-                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-slate-400 hover:text-slate-600 cursor-pointer"
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-[#777777] hover:text-[#222222] cursor-pointer"
                     >
                       Clear
                     </button>
                   )}
                 </div>
 
-                <div className="text-xs text-slate-500 font-medium shrink-0">
-                  Menampilkan <strong className="text-slate-900">{filteredStudents.length}</strong> dari {students.length} mahasiswa
+                <div className="text-xs text-[#555555] font-medium shrink-0 tabular-nums">
+                  Menampilkan <strong className="text-[#222222]">{filteredStudents.length}</strong> dari {students.length} mahasiswa
                 </div>
               </div>
 
               {/* Rombel Filter Tabs */}
-              <div className="flex items-center gap-1.5 overflow-x-auto pb-1.5 pt-1 scrollbar-none">
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1.5 pt-1">
                 <button
                   type="button"
                   onClick={() => setSelectedRombelFilter('ALL')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold shrink-0 transition cursor-pointer border ${
+                  className={`px-3 py-1.5 rounded-[6px] text-xs font-semibold shrink-0 transition cursor-pointer border ${
                     selectedRombelFilter === 'ALL'
-                      ? 'bg-slate-900 text-white border-slate-900 shadow-2xs'
-                      : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                      ? 'bg-[#222222] text-white border-[#222222]'
+                      : 'bg-white text-[#555555] border-[#dddddd] hover:bg-[#f5f5f5]'
                   }`}
                 >
                   Semua Rombel ({students.length})
@@ -1579,28 +1552,28 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <button
                   type="button"
                   onClick={() => setSelectedRombelFilter('OVER_20_SKS')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold shrink-0 transition cursor-pointer border flex items-center gap-1.5 ${
+                  className={`px-3 py-1.5 rounded-[6px] text-xs font-semibold shrink-0 transition cursor-pointer border flex items-center gap-1.5 ${
                     selectedRombelFilter === 'OVER_20_SKS'
-                      ? 'bg-rose-600 text-white border-rose-600 shadow-2xs'
+                      ? 'bg-[#E54545] text-white border-[#E54545]'
                       : overLimitSksStudents.length > 0
-                        ? 'bg-rose-50 text-rose-700 border-rose-300 hover:bg-rose-100 font-extrabold'
-                        : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                        ? 'bg-[#FCEBEC] text-[#AC292A] border-[#F4BCBD] hover:bg-[#F9D7D7]'
+                        : 'bg-white text-[#555555] border-[#dddddd] hover:bg-[#f5f5f5]'
                   }`}
                 >
-                  <AlertTriangle className="w-3.5 h-3.5 text-rose-500" />
-                  <span>⚠️ SKS &gt; 20 ({overLimitSksStudents.length})</span>
+                  <AlertTriangle className="w-3.5 h-3.5" />
+                  <span>SKS &gt; 20 ({overLimitSksStudents.length})</span>
                 </button>
 
                 <button
                   type="button"
                   onClick={() => setSelectedRombelFilter('MULTI')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold shrink-0 transition cursor-pointer border ${
+                  className={`px-3 py-1.5 rounded-[6px] text-xs font-semibold shrink-0 transition cursor-pointer border ${
                     selectedRombelFilter === 'MULTI'
-                      ? 'bg-purple-600 text-white border-purple-600 shadow-2xs'
-                      : 'bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100'
+                      ? 'bg-[#7A45E5] text-white border-[#7A45E5]'
+                      : 'bg-[#F2ECFC] text-[#5B34AC] border-[#D4BFEE] hover:bg-[#E6DAFA]'
                   }`}
                 >
-                  ✨ Multi-Rombel ({multiRombelStudentsCount})
+                  Multi-Rombel ({multiRombelStudentsCount})
                 </button>
 
                 {allDistinctRombels.map((rName) => {
@@ -1614,15 +1587,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       key={rName}
                       type="button"
                       onClick={() => setSelectedRombelFilter(rName)}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-bold shrink-0 transition cursor-pointer border ${
+                      className={`px-3 py-1.5 rounded-[6px] text-xs font-semibold shrink-0 transition cursor-pointer border ${
                         isSelected
-                          ? 'bg-indigo-600 text-white border-indigo-600 shadow-2xs'
-                          : 'bg-white text-slate-700 border-slate-200 hover:border-indigo-300 hover:bg-indigo-50/50'
+                          ? 'bg-[#0080FF] text-white border-[#0080FF]'
+                          : 'bg-white text-[#222222] border-[#dddddd] hover:border-[#0080FF] hover:bg-[#E4F2FF]/40'
                       }`}
                     >
                       <span>Rombel {rName}</span>
-                      <span className={`ml-1.5 px-1.5 py-0.2 rounded-full text-[10px] ${
-                        isSelected ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'
+                      <span className={`ml-1.5 px-1.5 py-0.2 rounded-[4px] text-[10px] tabular-nums ${
+                        isSelected ? 'bg-white/20 text-white' : 'bg-[#f5f5f5] text-[#555555]'
                       }`}>
                         {countInRombel}
                       </span>
@@ -1633,10 +1606,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </div>
 
             {/* Students Table */}
-            <div className="overflow-x-auto border border-slate-200 rounded-xl">
+            <div className="overflow-x-auto border border-[#dddddd] rounded-[6px]">
               <table className="w-full text-xs sm:text-sm text-left border-collapse min-w-[760px]">
                 <thead>
-                  <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold text-xs uppercase tracking-wider">
+                  <tr className="bg-[#fafafa] border-b border-[#dddddd] text-[#555555] font-semibold text-xs uppercase tracking-wider">
                     <th className="py-3 px-3.5 w-12 text-center">No</th>
                     <th className="py-3 px-3.5">NIM &amp; Akun</th>
                     <th className="py-3 px-3.5">Nama Mahasiswa</th>
@@ -1646,13 +1619,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <th className="py-3 px-3.5 text-right w-36">Aksi</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
+                <tbody className="divide-y divide-[#eeeeee]">
                   {filteredStudents.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="py-10 text-center text-slate-500">
-                        <Users className="w-8 h-8 mx-auto text-slate-400 mb-2 opacity-50" />
-                        <p className="font-semibold text-slate-700">Tidak ada data mahasiswa ditemukan</p>
-                        <p className="text-xs text-slate-400 mt-0.5">
+                      <td colSpan={7} className="py-10 text-center text-[#555555]">
+                        <Users className="w-8 h-8 mx-auto text-[#777777] mb-2 opacity-50" />
+                        <p className="font-semibold text-[#222222]">Tidak ada data mahasiswa ditemukan</p>
+                        <p className="text-xs text-[#777777] mt-0.5">
                           Coba ubah kata kunci pencarian atau pilih rombel yang lain.
                         </p>
                       </td>
@@ -1673,55 +1646,55 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           key={student.nim}
                           className={`transition ${
                             isOverSks
-                              ? 'bg-amber-50/60 hover:bg-amber-100/60 border-l-4 border-amber-500'
-                              : 'hover:bg-slate-50/80'
+                              ? 'bg-[#FFF3E4]/60 hover:bg-[#FFF3E4]'
+                              : 'hover:bg-[#fafafa]'
                           }`}
                         >
-                          <td className="py-3.5 px-3.5 text-center text-slate-400 font-mono">
+                          <td className="py-3.5 px-3.5 text-center text-[#777777] font-mono tabular-nums">
                             {idx + 1}
                           </td>
 
                           <td className="py-3.5 px-3.5">
                             <div className="flex items-center gap-1.5 flex-wrap">
-                              <span className="font-mono font-bold text-slate-900 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+                              <span className="font-mono font-bold text-[#222222] bg-[#f5f5f5] px-2 py-0.5 rounded-[4px] border border-[#dddddd] tabular-nums">
                                 {student.nim}
                               </span>
                               <span
-                                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200"
+                                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-[4px] text-[10px] font-semibold bg-[#E5F6F5] text-[#016F73]"
                                 title="Akun Pengguna Aktif untuk Login Mahasiswa & Presensi QR"
                               >
-                                <CheckCircle2 className="w-2.5 h-2.5 text-emerald-600" />
+                                <CheckCircle2 className="w-2.5 h-2.5 text-[#009499]" />
                                 <span>Akun Aktif</span>
                               </span>
                               {isOverSks && (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-rose-600 text-white font-bold text-[10px] shadow-2xs animate-pulse">
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-[4px] bg-[#E54545] text-white font-bold text-[10px]">
                                   <AlertTriangle className="w-2.5 h-2.5" />
                                   <span>Flag: &gt;20 SKS</span>
                                 </span>
                               )}
                             </div>
-                            <div className="text-[11px] text-slate-400 font-mono mt-0.5 truncate max-w-[150px]">
+                            <div className="text-[11px] text-[#777777] font-mono mt-0.5 truncate max-w-[150px]">
                               {student.email}
                             </div>
                           </td>
 
                           <td className="py-3.5 px-3.5">
-                            <div className="font-bold text-slate-900">{student.name}</div>
+                            <div className="font-bold text-[#222222]">{student.name}</div>
                             {student.phone && (
-                              <div className="text-[11px] text-slate-400">{student.phone}</div>
+                              <div className="text-[11px] text-[#777777]">{student.phone}</div>
                             )}
                             {student.excludedScheduleIds && student.excludedScheduleIds.length > 0 && (
-                              <div className="text-[10px] text-amber-700 font-semibold mt-0.5">
+                              <div className="text-[10px] text-[#B55B00] font-semibold mt-0.5">
                                 ({student.excludedScheduleIds.length} matkul di-drop)
                               </div>
                             )}
                           </td>
 
-                          <td className="py-3.5 px-3.5 text-slate-700 font-medium">
-                            <span className={`inline-block px-2 py-0.5 rounded text-[11px] font-semibold ${
+                          <td className="py-3.5 px-3.5 text-[#222222] font-medium">
+                            <span className={`inline-block px-2 py-0.5 rounded-[4px] text-[11px] font-semibold ${
                               student.prodi === 'Teknologi Informasi'
-                                ? 'bg-blue-50 text-blue-700 border border-blue-200'
-                                : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                ? 'bg-[#E4F2FF] text-[#015BB5]'
+                                : 'bg-[#E5F6F5] text-[#016F73]'
                             }`}>
                               {student.prodi}
                             </span>
@@ -1732,13 +1705,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               {rombelList.map((r) => (
                                 <span
                                   key={r}
-                                  className="px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 font-bold text-xs border border-indigo-200"
+                                  className="px-2 py-0.5 rounded-[4px] bg-[#E4F2FF] text-[#015BB5] font-bold text-xs"
                                 >
                                   {r}
                                 </span>
                               ))}
                               {isMulti && (
-                                <span className="px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 font-bold text-[10px]">
+                                <span className="px-1.5 py-0.5 rounded-[4px] bg-[#F2ECFC] text-[#5B34AC] font-bold text-[10px]">
                                   Multi ({rombelList.length})
                                 </span>
                               )}
@@ -1749,17 +1722,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             <button
                               type="button"
                               onClick={() => handleViewStudentSchedules(student)}
-                              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold border transition cursor-pointer ${
+                              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-[6px] text-xs font-semibold border transition cursor-pointer tabular-nums ${
                                 isOverSks
-                                  ? 'bg-rose-100 text-rose-900 border-rose-300 hover:bg-rose-200 font-bold shadow-2xs'
-                                  : 'bg-slate-100 hover:bg-indigo-50 hover:text-indigo-700 text-slate-700 border-slate-200 hover:border-indigo-200'
+                                  ? 'bg-[#FCEBEC] text-[#731B1B] border-[#F4BCBD] hover:bg-[#F9D7D7]'
+                                  : 'bg-[#f5f5f5] hover:bg-[#E4F2FF] hover:text-[#015BB5] text-[#222222] border-[#dddddd] hover:border-[#0080FF]/30'
                               }`}
                               title={isOverSks ? 'Peringatan: Beban SKS melebihi batas 20 SKS! Klik untuk melihat rincian' : 'Klik untuk melihat rincian jadwal dan mata kuliah mahasiswa ini'}
                             >
                               {isOverSks ? (
-                                <AlertTriangle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                                <AlertTriangle className="w-3.5 h-3.5 text-[#E54545] shrink-0" />
                               ) : (
-                                <Calendar className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                                <Calendar className="w-3.5 h-3.5 text-[#0080FF] shrink-0" />
                               )}
                               <span>{linked.length} Jadwal · {totalSks} SKS {isOverSks ? '(>20 SKS)' : ''}</span>
                             </button>
@@ -1771,7 +1744,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 <button
                                   type="button"
                                   onClick={() => handleOpenStudentModal(student)}
-                                  className="px-2.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold flex items-center gap-1 transition cursor-pointer shadow-xs"
+                                  data-frost="Button"
+                                  className="frost-btn frost-btn-xxs frost-btn-solid frost-btn-danger"
                                   title="Ubah Rombel / Sesuaikan Mata Kuliah untuk Menurunkan SKS"
                                 >
                                   <Edit2 className="w-3 h-3" />
@@ -1781,7 +1755,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 <button
                                   type="button"
                                   onClick={() => handleOpenStudentModal(student)}
-                                  className="p-1.5 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition cursor-pointer"
+                                  className="p-1.5 text-[#555555] hover:text-[#222222] hover:bg-[#eeeeee] rounded-[4px] transition cursor-pointer"
                                   title="Edit Data & Pilihan Rombel Mahasiswa"
                                 >
                                   <Edit2 className="w-4 h-4" />
@@ -1791,7 +1765,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               <button
                                 type="button"
                                 onClick={() => handleViewStudentSchedules(student)}
-                                className="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition cursor-pointer"
+                                className="p-1.5 text-[#555555] hover:text-[#0080FF] hover:bg-[#E4F2FF] rounded-[4px] transition cursor-pointer"
                                 title="Lihat Jadwal Terhubung Lengkap"
                               >
                                 <Eye className="w-4 h-4" />
@@ -1812,7 +1786,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                     },
                                   });
                                 }}
-                                className="p-1.5 text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
+                                className="p-1.5 text-[#555555] hover:text-[#E54545] hover:bg-[#FCEBEC] rounded-[4px] transition cursor-pointer"
                                 title="Hapus Mahasiswa"
                               >
                                 <Trash2 className="w-4 h-4" />
@@ -1829,42 +1803,42 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </div>
 
           {/* Secondary Card: Matriks Relasi Rombel ↔ Mata Kuliah & Jadwal */}
-          <div className="bg-white rounded-xl border border-slate-200 p-5 sm:p-6 space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-4 pb-3 border-b border-slate-100">
+          <div className="frost-card p-5 sm:p-6 space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-4 pb-3 border-b border-[#eeeeee]">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-700 flex items-center justify-center shrink-0">
+                <div className="w-10 h-10 rounded-[6px] bg-[#E4F2FF] border border-[#0080FF]/20 text-[#0080FF] flex items-center justify-center shrink-0">
                   <Layers className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-base sm:text-lg font-bold text-slate-900">
+                  <h3 className="text-base sm:text-lg font-bold text-[#222222]">
                     Matriks Relasi Rombel ↔ Mata Kuliah &amp; Jadwal Perkuliahan
                   </h3>
-                  <p className="text-xs sm:text-sm text-slate-500">
+                  <p className="text-xs text-[#555555]">
                     Setiap rombel berelasi ke mata kuliah dengan jadwal hari, jam, ruang, dan dosen pengampu masing-masing
                   </p>
                 </div>
               </div>
 
               <div className="flex items-center gap-2 flex-wrap">
-                <div className="inline-flex rounded-lg bg-slate-100 p-0.5 text-xs font-semibold">
+                <div className="inline-flex rounded-[6px] bg-[#f5f5f5] p-0.5 text-xs font-semibold border border-[#dddddd]">
                   <button
                     type="button"
                     onClick={() => setRombelStatusFilter('ALL')}
-                    className={`px-2.5 py-1 rounded-md transition cursor-pointer ${rombelStatusFilter === 'ALL' ? 'bg-white text-slate-900 shadow-2xs font-bold' : 'text-slate-600 hover:text-slate-900'}`}
+                    className={`px-2.5 py-1 rounded-[4px] transition cursor-pointer ${rombelStatusFilter === 'ALL' ? 'bg-white text-[#222222] font-bold' : 'text-[#555555] hover:text-[#222222]'}`}
                   >
                     Semua ({rombelMatrix.length})
                   </button>
                   <button
                     type="button"
                     onClick={() => setRombelStatusFilter('ACTIVE')}
-                    className={`px-2.5 py-1 rounded-md transition cursor-pointer ${rombelStatusFilter === 'ACTIVE' ? 'bg-white text-indigo-700 shadow-2xs font-bold' : 'text-slate-600 hover:text-slate-900'}`}
+                    className={`px-2.5 py-1 rounded-[4px] transition cursor-pointer ${rombelStatusFilter === 'ACTIVE' ? 'bg-white text-[#0080FF] font-bold' : 'text-[#555555] hover:text-[#222222]'}`}
                   >
                     Aktif ({rombelMatrix.filter(r => !r.rombelData?.isArchived).length})
                   </button>
                   <button
                     type="button"
                     onClick={() => setRombelStatusFilter('ARCHIVED')}
-                    className={`px-2.5 py-1 rounded-md transition cursor-pointer ${rombelStatusFilter === 'ARCHIVED' ? 'bg-white text-amber-700 shadow-2xs font-bold' : 'text-slate-600 hover:text-slate-900'}`}
+                    className={`px-2.5 py-1 rounded-[4px] transition cursor-pointer ${rombelStatusFilter === 'ARCHIVED' ? 'bg-white text-[#B55B00] font-bold' : 'text-[#555555] hover:text-[#222222]'}`}
                   >
                     Diarsipkan ({rombelMatrix.filter(r => r.rombelData?.isArchived).length})
                   </button>
@@ -1873,10 +1847,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <button
                   type="button"
                   onClick={() => handleOpenRombelModal()}
-                  className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 transition cursor-pointer shadow-2xs"
+                  data-frost="Button"
+                  className="frost-btn frost-btn-xs frost-btn-solid frost-btn-brand"
                 >
                   <Plus className="w-3.5 h-3.5" />
-                  <span>+ Rombel Baru</span>
+                  <span>Rombel Baru</span>
                 </button>
               </div>
             </div>
@@ -1890,38 +1865,38 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 return (
                   <div
                     key={item.rombel}
-                    className={`border rounded-2xl bg-white p-4 sm:p-5 flex flex-col justify-between transition shadow-2xs space-y-4 ${isArchived ? 'border-amber-300/80 bg-amber-50/20' : 'border-slate-200 hover:border-indigo-300'}`}
+                    className={`border rounded-[8px] bg-white p-4 sm:p-5 flex flex-col justify-between transition space-y-4 ${isArchived ? 'border-[#FFD49F] bg-[#FFF3E4]/30' : 'border-[#dddddd] hover:border-[#0080FF]'}`}
                   >
                     <div>
                       {/* Rombel Card Header */}
-                      <div className="flex items-start sm:items-center justify-between pb-3 border-b border-slate-100 gap-2 flex-wrap">
+                      <div className="flex items-start sm:items-center justify-between pb-3 border-b border-[#eeeeee] gap-2 flex-wrap">
                         <div className="flex items-center gap-2.5">
-                          <span className={`px-3 py-1 rounded-xl text-white font-bold text-sm shadow-2xs ${isArchived ? 'bg-amber-600' : 'bg-indigo-600'}`}>
+                          <span className={`px-3 py-1 rounded-[6px] text-white font-bold text-sm ${isArchived ? 'bg-[#DA6E00]' : 'bg-[#0080FF]'}`}>
                             Rombel {item.rombel}
                           </span>
                           <div>
                             <div className="flex items-center gap-1.5">
-                              <span className="text-xs font-bold text-slate-800">
+                              <span className="text-xs font-bold text-[#222222]">
                                 {item.name}
                               </span>
                               {isArchived && (
-                                <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 text-[10px] font-bold flex items-center gap-0.5">
+                                <span className="px-1.5 py-0.5 rounded-[4px] bg-[#FFF3E4] text-[#914900] text-[10px] font-bold flex items-center gap-0.5">
                                   <Archive className="w-2.5 h-2.5" />
                                   <span>Diarsipkan</span>
                                 </span>
                               )}
                             </div>
-                            <span className="text-[11px] text-slate-500">
+                            <span className="text-[11px] text-[#555555]">
                               {item.prodi} {item.semester ? `· Sem ${item.semester}` : ''}
                             </span>
                           </div>
                         </div>
 
                         <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 text-xs font-bold">
+                          <span className="px-2.5 py-1 rounded-[4px] bg-[#f5f5f5] text-[#222222] text-xs font-bold tabular-nums">
                             {item.students.length} Mhs
                           </span>
-                          <span className="px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-200 text-xs font-bold">
+                          <span className="px-2.5 py-1 rounded-[4px] bg-[#E4F2FF] text-[#015BB5] text-xs font-bold tabular-nums">
                             {item.schedules.length} Jadwal · {item.totalSks} SKS
                           </span>
 
@@ -1937,7 +1912,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               isArchived,
                               scheduleIds: item.schedules.map(s => s.id)
                             })}
-                            className="p-1.5 rounded-lg bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 transition cursor-pointer"
+                            className="p-1.5 rounded-[4px] bg-white hover:bg-[#f5f5f5] text-[#222222] border border-[#dddddd] transition cursor-pointer"
                             title={`Edit Rombel ${item.rombel}`}
                           >
                             <Edit2 className="w-3.5 h-3.5" />
@@ -1955,7 +1930,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               isArchived,
                               scheduleIds: item.schedules.map(s => s.id)
                             })}
-                            className="p-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 transition cursor-pointer"
+                            className="p-1.5 rounded-[4px] bg-[#E4F2FF] hover:bg-[#C8E4FF] text-[#015BB5] transition cursor-pointer"
                             title={`Atur atau hubungkan jadwal mata kuliah untuk Rombel ${item.rombel}`}
                           >
                             <Settings2 className="w-3.5 h-3.5" />
@@ -1966,7 +1941,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             <button
                               type="button"
                               onClick={() => restoreRombel(item.rombel)}
-                              className="p-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 transition cursor-pointer"
+                              className="p-1.5 rounded-[4px] bg-[#FFF3E4] hover:bg-[#FFE3C1] text-[#914900] border border-[#FFD49F] transition cursor-pointer"
                               title={`Pulihkan Rombel ${item.rombel} dari Arsip`}
                             >
                               <ArchiveRestore className="w-3.5 h-3.5" />
@@ -1975,7 +1950,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             <button
                               type="button"
                               onClick={() => archiveRombel(item.rombel)}
-                              className="p-1.5 rounded-lg text-slate-400 hover:text-amber-700 hover:bg-amber-50 border border-transparent hover:border-amber-200 transition cursor-pointer"
+                              className="p-1.5 rounded-[4px] text-[#777777] hover:text-[#B55B00] hover:bg-[#FFF3E4] transition cursor-pointer"
                               title={`Arsipkan Rombel ${item.rombel}`}
                             >
                               <Archive className="w-3.5 h-3.5" />
@@ -1992,7 +1967,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 isArchived,
                               });
                             }}
-                            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer"
+                            className="p-1.5 rounded-[4px] text-[#777777] hover:text-[#E54545] hover:bg-[#FCEBEC] transition cursor-pointer"
                             title={`Hapus Rombel ${item.rombel} (Dicegah jika berelasi)`}
                           >
                             <Trash2 className="w-3.5 h-3.5" />
@@ -2003,7 +1978,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       {/* Course Schedules in this Rombel */}
                       <div className="mt-3.5 space-y-2">
                         <div className="flex items-center justify-between">
-                          <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
+                          <span className="text-[11px] font-bold text-[#777777] uppercase tracking-wider block">
                             Mata Kuliah &amp; Jadwal ({item.schedules.length} Kelas):
                           </span>
                           <button
@@ -2016,7 +1991,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               semester: item.semester || 1,
                               scheduleIds: item.schedules.map(s => s.id)
                             })}
-                            className="text-[11px] text-indigo-600 hover:text-indigo-800 font-semibold flex items-center gap-1 cursor-pointer"
+                            className="text-[11px] text-[#0080FF] hover:underline font-semibold flex items-center gap-1 cursor-pointer"
                           >
                             <Link className="w-3 h-3" />
                             <span>+ Hubungkan Jadwal</span>
@@ -2024,9 +1999,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         </div>
 
                         {item.schedules.length === 0 ? (
-                          <div className="p-4 text-center text-xs text-slate-400 bg-slate-50 rounded-xl border border-dashed border-slate-200">
-                            <Calendar className="w-5 h-5 mx-auto mb-1 text-slate-300" />
-                            <p className="font-semibold text-slate-600">Belum ada jadwal yang dikaitkan ke rombel ini</p>
+                          <div className="p-4 text-center text-xs text-[#777777] bg-[#fafafa] rounded-[6px] border border-dashed border-[#dddddd]">
+                            <Calendar className="w-5 h-5 mx-auto mb-1 text-[#aaaaaa]" />
+                            <p className="font-semibold text-[#555555]">Belum ada jadwal yang dikaitkan ke rombel ini</p>
                             <button
                               type="button"
                               onClick={() => handleOpenRombelModal(item.rombelData || {
@@ -2037,7 +2012,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 semester: item.semester || 1,
                                 scheduleIds: item.schedules.map(s => s.id)
                               })}
-                              className="mt-1.5 px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg font-bold text-[11px] inline-flex items-center gap-1"
+                              className="mt-1.5 px-2.5 py-1 bg-[#E4F2FF] hover:bg-[#C8E4FF] text-[#015BB5] rounded-[4px] font-bold text-[11px] inline-flex items-center gap-1"
                             >
                               <Plus className="w-3 h-3" />
                               <span>Pilih &amp; Hubungkan Jadwal</span>
@@ -2048,24 +2023,24 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             {item.schedules.map((sch) => (
                               <div
                                 key={sch.id}
-                                className="p-2.5 bg-slate-50 hover:bg-slate-100/80 rounded-xl border border-slate-200/80 flex items-center justify-between gap-2 text-xs transition"
+                                className="p-2.5 bg-[#fafafa] hover:bg-[#f5f5f5] rounded-[6px] border border-[#dddddd] flex items-center justify-between gap-2 text-xs transition"
                               >
                                 <div className="min-w-0">
                                   <div className="flex items-center gap-1.5 flex-wrap">
-                                    <span className="font-bold text-slate-900 truncate">
+                                    <span className="font-bold text-[#222222] truncate">
                                       {sch.courseName}
                                     </span>
-                                    <span className="px-1.5 py-0.2 bg-white text-slate-600 font-mono text-[10px] rounded border border-slate-200">
+                                    <span className="px-1.5 py-0.2 bg-white text-[#555555] font-mono text-[10px] rounded-[4px] border border-[#dddddd]">
                                       {sch.courseCode}
                                     </span>
-                                    <span className="font-semibold text-indigo-700 text-[10px]">
+                                    <span className="font-semibold text-[#0080FF] text-[10px] tabular-nums">
                                       {sch.sks} SKS
                                     </span>
                                   </div>
-                                  <div className="text-[11px] text-slate-500 mt-0.5 flex items-center gap-2">
-                                    <span>{sch.day}, {sch.startTime}–{sch.endTime}</span>
+                                  <div className="text-[11px] text-[#555555] mt-0.5 flex items-center gap-2">
+                                    <span className="tabular-nums">{sch.day}, {sch.startTime}–{sch.endTime}</span>
                                     <span>·</span>
-                                    <span className="font-semibold text-slate-700">{sch.room}</span>
+                                    <span className="font-semibold text-[#222222]">{sch.room}</span>
                                     <span>·</span>
                                     <span className="truncate">{sch.lecturerName}</span>
                                   </div>
@@ -2078,15 +2053,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     </div>
 
                     {/* Enrolled Students Quick View in this Rombel */}
-                    <div className="pt-3 border-t border-slate-100">
+                    <div className="pt-3 border-t border-[#eeeeee]">
                       <div className="flex items-center justify-between mb-2">
-                        <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                        <span className="text-[11px] font-bold text-[#777777] uppercase tracking-wider">
                           Mahasiswa Terdaftar ({item.students.length}):
                         </span>
                         <button
                           type="button"
                           onClick={() => setExpandedRombelMatrix(isExpanded ? null : item.rombel)}
-                          className="text-xs text-indigo-600 hover:text-indigo-800 font-semibold flex items-center gap-0.5 cursor-pointer"
+                          className="text-xs text-[#0080FF] hover:underline font-semibold flex items-center gap-0.5 cursor-pointer"
                         >
                           <span>{isExpanded ? 'Tutup Daftar' : 'Lihat Semua'}</span>
                           {isExpanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
@@ -2095,7 +2070,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
                       <div className={`flex flex-wrap gap-1.5 ${isExpanded ? 'max-h-60 overflow-y-auto' : 'max-h-16 overflow-hidden'}`}>
                         {item.students.length === 0 ? (
-                          <div className="text-[11px] text-slate-400 italic py-1">
+                          <div className="text-[11px] text-[#777777] italic py-1">
                             Belum ada mahasiswa yang terdaftar di rombel ini.
                           </div>
                         ) : (
@@ -2106,17 +2081,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 key={stu.nim}
                                 type="button"
                                 onClick={() => handleViewStudentSchedules(stu)}
-                                className={`px-2 py-1 rounded-lg text-xs font-medium flex items-center gap-1.5 transition cursor-pointer border ${
+                                className={`px-2 py-1 rounded-[4px] text-xs font-medium flex items-center gap-1.5 transition cursor-pointer border ${
                                   isMulti
-                                    ? 'bg-purple-50 text-purple-800 border-purple-200 hover:bg-purple-100'
-                                    : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-indigo-50 hover:text-indigo-700 hover:border-indigo-200'
+                                    ? 'bg-[#F2ECFC] text-[#5B34AC] border-[#D4BFEE] hover:bg-[#E6DAFA]'
+                                    : 'bg-[#fafafa] text-[#222222] border-[#dddddd] hover:bg-[#E4F2FF] hover:text-[#015BB5] hover:border-[#0080FF]/30'
                                 }`}
                                 title={`Klik untuk melihat jadwal ${stu.name}`}
                               >
-                                <span className="font-mono text-[10px] text-slate-400">{stu.nim}</span>
+                                <span className="font-mono text-[10px] text-[#777777] tabular-nums">{stu.nim}</span>
                                 <span className="font-semibold truncate max-w-[120px]">{stu.name}</span>
                                 {isMulti && (
-                                  <span className="w-1.5 h-1.5 rounded-full bg-purple-500" title="Mahasiswa Multi-Rombel" />
+                                  <span className="w-1.5 h-1.5 rounded-full bg-[#7A45E5]" title="Mahasiswa Multi-Rombel" />
                                 )}
                               </button>
                             );
@@ -2131,20 +2106,20 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               {/* Add New Rombel Card */}
               <div
                 onClick={() => handleOpenRombelModal()}
-                className="border-2 border-dashed border-slate-300 hover:border-indigo-500 bg-slate-50/60 hover:bg-indigo-50/40 rounded-2xl p-6 flex flex-col items-center justify-center text-center gap-3 transition cursor-pointer group min-h-[220px]"
+                className="border-2 border-dashed border-[#cccccc] hover:border-[#0080FF] bg-[#fafafa] hover:bg-[#E4F2FF]/30 rounded-[8px] p-6 flex flex-col items-center justify-center text-center gap-3 transition cursor-pointer group min-h-[220px]"
               >
-                <div className="w-12 h-12 rounded-2xl bg-white border border-slate-200 group-hover:border-indigo-400 group-hover:bg-indigo-600 group-hover:text-white text-slate-600 flex items-center justify-center transition shadow-2xs">
-                  <Plus className="w-6 h-6" />
+                <div className="w-11 h-11 rounded-[6px] bg-white border border-[#dddddd] group-hover:border-[#0080FF] group-hover:bg-[#0080FF] group-hover:text-white text-[#555555] flex items-center justify-center transition">
+                  <Plus className="w-5 h-5" />
                 </div>
                 <div>
-                  <h4 className="text-sm font-bold text-slate-800 group-hover:text-indigo-900">
-                    + Tambah Rombel Baru
+                  <h4 className="text-sm font-bold text-[#222222]">
+                    Tambah Rombel Baru
                   </h4>
-                  <p className="text-xs text-slate-500 max-w-xs mt-1">
+                  <p className="text-xs text-[#555555] max-w-xs mt-1">
                     Buat rombel kelas baru dan hubungkan ke beberapa jadwal mata kuliah sekaligus
                   </p>
                 </div>
-                <span className="text-xs font-bold text-indigo-600 group-hover:underline">
+                <span className="text-xs font-bold text-[#0080FF] group-hover:underline">
                   Buka Formulir Rombel &rarr;
                 </span>
               </div>
@@ -2157,100 +2132,102 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       {activeTab === 'courses' && (
         <div className="space-y-6">
           {/* Main Card: Master Mata Kuliah Header & Metrics */}
-          <div className="bg-white rounded-2xl border border-slate-200 p-5 sm:p-6 shadow-2xs space-y-5">
-            <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-slate-100">
+          <div className="frost-card p-5 sm:p-6 space-y-5">
+            <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-[#eeeeee]">
               <div className="flex items-center gap-3">
-                <div className="w-11 h-11 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-700 flex items-center justify-center shrink-0">
-                  <BookOpen className="w-6 h-6" />
+                <div className="w-10 h-10 rounded-[6px] bg-[#E5F6F5] border border-[#009499]/20 text-[#009499] flex items-center justify-center shrink-0">
+                  <BookOpen className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-base sm:text-lg font-bold text-slate-900 flex items-center gap-2">
+                  <h3 className="text-base sm:text-lg font-bold text-[#222222] flex items-center gap-2">
                     <span>Master Mata Kuliah Kurikulum</span>
-                    <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-xs font-extrabold">
+                    <span className="px-2 py-0.5 rounded-[4px] bg-[#E5F6F5] text-[#016F73] text-xs font-bold tabular-nums">
                       {courses.length} MK
                     </span>
                   </h3>
-                  <p className="text-xs sm:text-sm text-slate-500">
+                  <p className="text-xs text-[#555555]">
                     Katalog master mata kuliah kurikulum STMIK PGRI Arungbinang Kebumen yang terhubung ke Jadwal dan Presensi
                   </p>
                 </div>
               </div>
 
-              <div className="flex flex-wrap items-center gap-2.5">
+              <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
                   onClick={() => handleOpenBulkImport('courses')}
-                  className="px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-800 rounded-xl text-xs sm:text-sm font-semibold flex items-center gap-1.5 transition cursor-pointer"
+                  data-frost="Button"
+                  className="frost-btn frost-btn-xs frost-btn-subtle frost-btn-teal"
                   title="Impor master mata kuliah dari file Excel (.xlsx)"
                 >
-                  <FileSpreadsheet className="w-4 h-4 text-emerald-700" />
+                  <FileSpreadsheet className="w-3.5 h-3.5" />
                   <span>Import Excel MK</span>
                 </button>
 
                 <button
                   type="button"
                   onClick={() => handleOpenCourseModal()}
-                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 shadow-xs transition cursor-pointer"
+                  data-frost="Button"
+                  className="frost-btn frost-btn-xs frost-btn-solid frost-btn-teal"
                 >
-                  <Plus className="w-4 h-4" />
-                  <span>+ Tambah Mata Kuliah</span>
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Tambah Mata Kuliah</span>
                 </button>
               </div>
             </div>
 
             {/* Metrics Cards */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <div className="p-3.5 bg-slate-50 border border-slate-200/80 rounded-xl">
-                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
+              <div className="p-3.5 bg-[#fafafa] border border-[#dddddd] rounded-[6px]">
+                <span className="text-[11px] font-bold text-[#555555] uppercase tracking-wider block">
                   Total Mata Kuliah
                 </span>
-                <span className="text-xl sm:text-2xl font-black text-slate-900 mt-0.5 block">
+                <span className="text-xl sm:text-2xl font-bold text-[#222222] mt-0.5 block tabular-nums">
                   {courses.length}
                 </span>
-                <span className="text-[11px] text-slate-400 mt-0.5 block">Kurikulum Terdaftar</span>
+                <span className="text-[11px] text-[#777777] mt-0.5 block">Kurikulum Terdaftar</span>
               </div>
 
-              <div className="p-3.5 bg-emerald-50/60 border border-emerald-200/80 rounded-xl">
-                <span className="text-[11px] font-bold text-emerald-700 uppercase tracking-wider block">
+              <div className="p-3.5 bg-[#E5F6F5]/60 border border-[#B0DFDF] rounded-[6px]">
+                <span className="text-[11px] font-bold text-[#016F73] uppercase tracking-wider block">
                   Mata Kuliah Aktif
                 </span>
-                <span className="text-xl sm:text-2xl font-black text-emerald-900 mt-0.5 block">
+                <span className="text-xl sm:text-2xl font-bold text-[#014C4F] mt-0.5 block tabular-nums">
                   {courses.filter(c => !c.isArchived).length}
                 </span>
-                <span className="text-[11px] text-emerald-600 mt-0.5 block">Siap Ditugaskan</span>
+                <span className="text-[11px] text-[#009499] mt-0.5 block">Siap Ditugaskan</span>
               </div>
 
-              <div className="p-3.5 bg-amber-50/60 border border-amber-200/80 rounded-xl">
-                <span className="text-[11px] font-bold text-amber-700 uppercase tracking-wider block">
+              <div className="p-3.5 bg-[#FFF3E4]/60 border border-[#FFD49F] rounded-[6px]">
+                <span className="text-[11px] font-bold text-[#B55B00] uppercase tracking-wider block">
                   Diarsipkan
                 </span>
-                <span className="text-xl sm:text-2xl font-black text-amber-900 mt-0.5 block">
+                <span className="text-xl sm:text-2xl font-bold text-[#914900] mt-0.5 block tabular-nums">
                   {courses.filter(c => c.isArchived).length}
                 </span>
-                <span className="text-[11px] text-amber-600 mt-0.5 block">Non-Aktif / Arsip</span>
+                <span className="text-[11px] text-[#DA6E00] mt-0.5 block">Non-Aktif / Arsip</span>
               </div>
 
-              <div className="p-3.5 bg-indigo-50/60 border border-indigo-200/80 rounded-xl">
-                <span className="text-[11px] font-bold text-indigo-700 uppercase tracking-wider block">
+              <div className="p-3.5 bg-[#E4F2FF]/60 border border-[#ADCEFF] rounded-[6px]">
+                <span className="text-[11px] font-bold text-[#015BB5] uppercase tracking-wider block">
                   Terhubung ke Jadwal
                 </span>
-                <span className="text-xl sm:text-2xl font-black text-indigo-900 mt-0.5 block">
+                <span className="text-xl sm:text-2xl font-bold text-[#003F8A] mt-0.5 block tabular-nums">
                   {new Set(schedules.map(s => s.courseCode.toUpperCase())).size}
                 </span>
-                <span className="text-[11px] text-indigo-600 mt-0.5 block">Aktif di Semester Ini</span>
+                <span className="text-[11px] text-[#0080FF] mt-0.5 block">Aktif di Semester Ini</span>
               </div>
             </div>
 
             {/* Search & Filter Toolbar */}
             <div className="pt-2 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
               <div className="relative flex-1">
-                <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <Search className="w-4 h-4 text-[#777777] absolute left-3.5 top-1/2 -translate-y-1/2" />
                 <input
                   type="text"
                   value={courseSearch}
                   onChange={(e) => setCourseSearch(e.target.value)}
                   placeholder="Cari kode MK, nama mata kuliah, atau dosen pengampu..."
-                  className="w-full pl-9.5 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm text-slate-900 focus:outline-none focus:border-emerald-500 focus:bg-white"
+                  className="frost-input frost-input-sm pl-9.5 pr-4"
                 />
               </div>
 
@@ -2259,7 +2236,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <select
                   value={courseProdiFilter}
                   onChange={(e) => setCourseProdiFilter(e.target.value)}
-                  className="px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none"
+                  className="frost-select text-xs font-semibold h-9 py-1"
                 >
                   <option value="ALL">Semua Program Studi</option>
                   <option value="Teknologi Informasi">Teknologi Informasi (TI)</option>
@@ -2270,7 +2247,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <select
                   value={courseSemesterFilter}
                   onChange={(e) => setCourseSemesterFilter(e.target.value)}
-                  className="px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none"
+                  className="frost-select text-xs font-semibold h-9 py-1"
                 >
                   <option value="ALL">Semua Semester</option>
                   {[1, 2, 3, 4, 5, 6, 7, 8].map(sem => (
@@ -2279,25 +2256,25 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </select>
 
                 {/* Archive Status filter */}
-                <div className="inline-flex rounded-xl bg-slate-100 p-0.5 text-xs font-semibold">
+                <div className="inline-flex rounded-[6px] bg-[#f5f5f5] p-0.5 text-xs font-semibold border border-[#dddddd]">
                   <button
                     type="button"
                     onClick={() => setCourseStatusFilter('ALL')}
-                    className={`px-3 py-1.5 rounded-lg transition cursor-pointer ${courseStatusFilter === 'ALL' ? 'bg-white text-slate-900 shadow-2xs font-bold' : 'text-slate-600 hover:text-slate-900'}`}
+                    className={`px-3 py-1 rounded-[4px] transition cursor-pointer ${courseStatusFilter === 'ALL' ? 'bg-white text-[#222222] font-bold' : 'text-[#555555] hover:text-[#222222]'}`}
                   >
                     Semua ({courses.length})
                   </button>
                   <button
                     type="button"
                     onClick={() => setCourseStatusFilter('ACTIVE')}
-                    className={`px-3 py-1.5 rounded-lg transition cursor-pointer ${courseStatusFilter === 'ACTIVE' ? 'bg-white text-emerald-700 shadow-2xs font-bold' : 'text-slate-600 hover:text-slate-900'}`}
+                    className={`px-3 py-1 rounded-[4px] transition cursor-pointer ${courseStatusFilter === 'ACTIVE' ? 'bg-white text-[#009499] font-bold' : 'text-[#555555] hover:text-[#222222]'}`}
                   >
                     Aktif ({courses.filter(c => !c.isArchived).length})
                   </button>
                   <button
                     type="button"
                     onClick={() => setCourseStatusFilter('ARCHIVED')}
-                    className={`px-3 py-1.5 rounded-lg transition cursor-pointer ${courseStatusFilter === 'ARCHIVED' ? 'bg-white text-amber-700 shadow-2xs font-bold' : 'text-slate-600 hover:text-slate-900'}`}
+                    className={`px-3 py-1 rounded-[4px] transition cursor-pointer ${courseStatusFilter === 'ARCHIVED' ? 'bg-white text-[#B55B00] font-bold' : 'text-[#555555] hover:text-[#222222]'}`}
                   >
                     Diarsipkan ({courses.filter(c => c.isArchived).length})
                   </button>
@@ -2315,20 +2292,20 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               return (
                 <div
                   key={course.id}
-                  className={`p-5 rounded-2xl border bg-white flex flex-col justify-between transition shadow-2xs space-y-4 ${isArchived ? 'border-amber-300/80 bg-amber-50/20' : 'border-slate-200 hover:border-emerald-400'}`}
+                  className={`p-5 rounded-[8px] border bg-white flex flex-col justify-between transition space-y-4 ${isArchived ? 'border-[#FFD49F] bg-[#FFF3E4]/30' : 'border-[#dddddd] hover:border-[#009499]'}`}
                 >
                   <div>
                     {/* Course Card Top Badges & Actions */}
                     <div className="flex items-start justify-between gap-2 mb-2">
                       <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="font-mono text-xs font-bold text-slate-800 bg-slate-100 px-2.5 py-1 rounded-lg">
+                        <span className="font-mono text-xs font-bold text-[#222222] bg-[#f5f5f5] border border-[#dddddd] px-2 py-0.5 rounded-[4px]">
                           {course.code}
                         </span>
-                        <span className="text-xs font-bold px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-800 border border-emerald-200">
+                        <span className="text-xs font-bold px-2 py-0.5 rounded-[4px] bg-[#E5F6F5] text-[#016F73] tabular-nums">
                           {course.sks} SKS
                         </span>
                         {isArchived && (
-                          <span className="px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 text-[10px] font-bold flex items-center gap-1">
+                          <span className="px-2 py-0.5 rounded-[4px] bg-[#FFF3E4] text-[#914900] text-[10px] font-bold flex items-center gap-1">
                             <Archive className="w-3 h-3" />
                             <span>Diarsipkan</span>
                           </span>
@@ -2341,7 +2318,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         <button
                           type="button"
                           onClick={() => handleOpenCourseModal(course)}
-                          className="p-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 transition cursor-pointer"
+                          className="p-1.5 rounded-[4px] bg-[#fafafa] hover:bg-[#eeeeee] text-[#222222] border border-[#dddddd] transition cursor-pointer"
                           title={`Edit Mata Kuliah ${course.name}`}
                         >
                           <Edit2 className="w-3.5 h-3.5" />
@@ -2352,7 +2329,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           <button
                             type="button"
                             onClick={() => restoreCourse(course.id)}
-                            className="p-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 transition cursor-pointer"
+                            className="p-1.5 rounded-[4px] bg-[#FFF3E4] hover:bg-[#FFE3C1] text-[#914900] border border-[#FFD49F] transition cursor-pointer"
                             title={`Pulihkan ${course.name} dari Arsip`}
                           >
                             <ArchiveRestore className="w-3.5 h-3.5" />
@@ -2361,7 +2338,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           <button
                             type="button"
                             onClick={() => archiveCourse(course.id)}
-                            className="p-1.5 rounded-lg text-slate-400 hover:text-amber-700 hover:bg-amber-50 border border-transparent hover:border-amber-200 transition cursor-pointer"
+                            className="p-1.5 rounded-[4px] text-[#777777] hover:text-[#B55B00] hover:bg-[#FFF3E4] transition cursor-pointer"
                             title={`Arsipkan Mata Kuliah ${course.name}`}
                           >
                             <Archive className="w-3.5 h-3.5" />
@@ -2372,7 +2349,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         <button
                           type="button"
                           onClick={() => handleDeleteCourseRequest(course)}
-                          className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer"
+                          className="p-1.5 rounded-[4px] text-[#777777] hover:text-[#E54545] hover:bg-[#FCEBEC] transition cursor-pointer"
                           title={`Hapus Mata Kuliah ${course.name} (Dicegah jika berelasi)`}
                         >
                           <Trash2 className="w-3.5 h-3.5" />
@@ -2380,36 +2357,36 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       </div>
                     </div>
 
-                    <h4 className="text-base font-bold text-slate-900 mt-2 line-clamp-1">
+                    <h4 className="text-base font-bold text-[#222222] mt-2 line-clamp-1">
                       {course.name}
                     </h4>
-                    <p className="text-xs text-slate-500 mt-1">
+                    <p className="text-xs text-[#555555] mt-1">
                       {course.prodi} · Semester {course.semester} {course.semester % 2 === 1 ? '(Ganjil)' : '(Genap)'}
                     </p>
 
                     {course.description && (
-                      <p className="text-xs text-slate-600 mt-2 line-clamp-2 bg-slate-50 p-2 rounded-lg">
+                      <p className="text-xs text-[#555555] mt-2 line-clamp-2 bg-[#fafafa] p-2 rounded-[4px]">
                         {course.description}
                       </p>
                     )}
                   </div>
 
-                  <div className="pt-3 border-t border-slate-100 space-y-2">
-                    <div className="flex items-center justify-between text-xs text-slate-600">
+                  <div className="pt-3 border-t border-[#eeeeee] space-y-2">
+                    <div className="flex items-center justify-between text-xs text-[#555555]">
                       <span>Dosen Pengampu:</span>
-                      <span className="font-semibold text-slate-800 text-right truncate max-w-[160px]">
+                      <span className="font-semibold text-[#222222] text-right truncate max-w-[160px]">
                         {course.defaultLecturerName}
                       </span>
                     </div>
 
                     <div className="flex items-center justify-between text-xs pt-1">
-                      <span className="text-slate-400 text-[11px]">Relasi Jadwal:</span>
+                      <span className="text-[#777777] text-[11px]">Relasi Jadwal:</span>
                       {linkedSchedules.length > 0 ? (
-                        <span className="px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200 text-[11px] font-bold">
+                        <span className="px-2 py-0.5 rounded-[4px] bg-[#E4F2FF] text-[#015BB5] text-[11px] font-bold tabular-nums">
                           {linkedSchedules.length} Kelas Aktif
                         </span>
                       ) : (
-                        <span className="text-[11px] text-slate-400 italic">
+                        <span className="text-[11px] text-[#777777] italic">
                           Belum ada jadwal
                         </span>
                       )}
@@ -2422,20 +2399,20 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             {/* Quick Add Course Card */}
             <div
               onClick={() => handleOpenCourseModal()}
-              className="border-2 border-dashed border-slate-300 hover:border-emerald-500 bg-slate-50/60 hover:bg-emerald-50/30 rounded-2xl p-6 flex flex-col items-center justify-center text-center gap-3 transition cursor-pointer group min-h-[220px]"
+              className="border-2 border-dashed border-[#cccccc] hover:border-[#009499] bg-[#fafafa] hover:bg-[#E5F6F5]/30 rounded-[8px] p-6 flex flex-col items-center justify-center text-center gap-3 transition cursor-pointer group min-h-[220px]"
             >
-              <div className="w-12 h-12 rounded-2xl bg-white border border-slate-200 group-hover:border-emerald-400 group-hover:bg-emerald-600 group-hover:text-white text-slate-600 flex items-center justify-center transition shadow-2xs">
-                <Plus className="w-6 h-6" />
+              <div className="w-11 h-11 rounded-[6px] bg-white border border-[#dddddd] group-hover:border-[#009499] group-hover:bg-[#009499] group-hover:text-white text-[#555555] flex items-center justify-center transition">
+                <Plus className="w-5 h-5" />
               </div>
               <div>
-                <h4 className="text-sm font-bold text-slate-800 group-hover:text-emerald-900">
-                  + Tambah Mata Kuliah Baru
+                <h4 className="text-sm font-bold text-[#222222]">
+                  Tambah Mata Kuliah Baru
                 </h4>
-                <p className="text-xs text-slate-500 max-w-xs mt-1">
+                <p className="text-xs text-[#555555] max-w-xs mt-1">
                   Masukkan mata kuliah baru ke dalam master kurikulum akademik kampus
                 </p>
               </div>
-              <span className="text-xs font-bold text-emerald-600 group-hover:underline">
+              <span className="text-xs font-bold text-[#009499] group-hover:underline">
                 Buka Formulir Mata Kuliah &rarr;
               </span>
             </div>
@@ -2464,10 +2441,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
       {/* TAB 6: CAMPUS DEVICE SESSIONS & ANTI-HIJACKING */}
       {activeTab === 'devices' && (
-        <div className="bg-white border border-slate-200 rounded-2xl p-5 sm:p-6 shadow-2xs space-y-4">
-          <div className="border-b border-slate-200 pb-4">
-            <h3 className="text-lg font-bold text-slate-900">Manajemen Sesi Perangkat Terdaftar Seluruh Kampus</h3>
-            <p className="text-xs text-slate-500 mt-1">
+        <div className="frost-card p-5 sm:p-6 space-y-4">
+          <div className="border-b border-[#eeeeee] pb-4">
+            <h3 className="text-lg font-bold text-[#222222]">Manajemen Sesi Perangkat Terdaftar Seluruh Kampus</h3>
+            <p className="text-xs text-[#555555] mt-1">
               Pantau seluruh perangkat browser mahasiswa, dosen, dan staf yang aktif atau tersimpan. BAAK dapat memutuskan sesi mencurigakan untuk melindungi integritas sistem presensi.
             </p>
           </div>
@@ -2477,43 +2454,43 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
       {/* User Modal */}
       {isUserModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fadeIn">
-          <div className="bg-white rounded-xl shadow-2xl border border-slate-200 max-w-md w-full p-6 space-y-4">
-            <h3 className="text-base sm:text-lg font-bold text-slate-900">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-fadeIn">
+          <div className="frost-card shadow-lg max-w-md w-full p-6 space-y-4">
+            <h3 className="text-base sm:text-lg font-bold text-[#222222]">
               {editingUserId ? 'Edit Akun Pengguna' : 'Tambah Pengguna Baru'}
             </h3>
 
             <form onSubmit={handleSaveUser} className="space-y-4 text-sm">
               <div>
-                <label className="block font-semibold text-slate-700 mb-1.5">Nama Lengkap & Gelar</label>
+                <label className="frost-label">Nama Lengkap & Gelar</label>
                 <input
                   type="text"
                   value={userName}
                   onChange={(e) => setUserName(e.target.value)}
                   placeholder="Contoh: Budi Santoso, M.Kom."
-                  className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-md font-medium text-slate-900"
+                  className="frost-input"
                   required
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1.5">NIM / NIDN</label>
+                  <label className="frost-label">NIM / NIDN</label>
                   <input
                     type="text"
                     value={userUsername}
                     onChange={(e) => setUserUsername(e.target.value)}
                     placeholder="26TI0010"
-                    className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-md font-mono text-slate-900"
+                    className="frost-input font-mono"
                     required
                   />
                 </div>
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1.5">Peran (Role)</label>
+                  <label className="frost-label">Peran (Role)</label>
                   <select
                     value={userRole}
                     onChange={(e) => setUserRole(e.target.value as Role)}
-                    className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-md font-semibold text-slate-900"
+                    className="frost-select"
                   >
                     <option value="dosen">Dosen</option>
                     <option value="mahasiswa">Mahasiswa</option>
@@ -2523,20 +2500,20 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
 
               <div>
-                <label className="block font-semibold text-slate-700 mb-1.5">Email</label>
+                <label className="frost-label">Email</label>
                 <input
                   type="email"
                   value={userEmail}
                   onChange={(e) => setUserEmail(e.target.value)}
                   placeholder="email@stmik-arungbinang.ac.id"
-                  className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-md text-slate-900"
+                  className="frost-input"
                 />
               </div>
 
               <div>
-                <label className="block font-semibold text-slate-700 mb-1.5 flex items-center justify-between">
+                <label className="frost-label flex items-center justify-between">
                   <span>Kata Sandi Akun</span>
-                  <span className="text-xs font-normal text-slate-500">
+                  <span className="text-xs font-normal text-[#777777]">
                     {editingUserId ? 'Kosongkan jika tidak diubah' : 'Default sesuai role jika kosong'}
                   </span>
                 </label>
@@ -2546,18 +2523,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     value={userPassword}
                     onChange={(e) => setUserPassword(e.target.value)}
                     placeholder={editingUserId ? 'Masukkan kata sandi baru untuk akun ini' : 'pass123 / dosen123 / baak123'}
-                    className="w-full px-3.5 py-2 pr-10 bg-white border border-slate-300 rounded-md font-mono text-slate-900 text-sm"
+                    className="frost-input pr-10 font-mono text-sm"
                   />
                   <button
                     type="button"
                     onClick={() => setShowUserPassword(!showUserPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 p-1 cursor-pointer"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[#777777] hover:text-[#222222] p-1 cursor-pointer"
                     title={showUserPassword ? 'Sembunyikan sandi' : 'Tampilkan sandi'}
                   >
                     {showUserPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
-                <p className="text-[11px] text-slate-500 mt-1">
+                <p className="text-[11px] text-[#555555] mt-1">
                   Perubahan email dan kata sandi otomatis tersimpan di database dan langsung diselaraskan ke seluruh sistem.
                 </p>
               </div>
@@ -2565,21 +2542,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               {userRole === 'mahasiswa' && (
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block font-semibold text-slate-700 mb-1.5">Rombel / Kelas</label>
+                    <label className="frost-label">Rombel / Kelas</label>
                     <input
                       type="text"
                       value={userRombel}
                       onChange={(e) => setUserRombel(e.target.value)}
                       placeholder="TI 3"
-                      className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-md text-slate-900"
+                      className="frost-input"
                     />
                   </div>
                   <div>
-                    <label className="block font-semibold text-slate-700 mb-1.5">Program Studi</label>
+                    <label className="frost-label">Program Studi</label>
                     <select
                       value={userProdi}
                       onChange={(e) => setUserProdi(e.target.value as ProgramStudi)}
-                      className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-md text-slate-900"
+                      className="frost-select"
                     >
                       <option value="Teknologi Informasi">Teknologi Informasi</option>
                       <option value="Manajemen Informatika">Manajemen Informatika</option>
@@ -2590,28 +2567,30 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
               {userRole === 'dosen' && (
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1.5">Jabatan / Gelar</label>
+                  <label className="frost-label">Jabatan / Gelar</label>
                   <input
                     type="text"
                     value={userTitle}
                     onChange={(e) => setUserTitle(e.target.value)}
                     placeholder="Contoh: Dosen Tetap / Dosen Wali"
-                    className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-md text-slate-900"
+                    className="frost-input"
                   />
                 </div>
               )}
 
-              <div className="pt-4 flex items-center justify-end gap-2.5">
+              <div className="pt-4 flex items-center justify-end gap-2">
                 <button
                   type="button"
                   onClick={() => setIsUserModalOpen(false)}
-                  className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 rounded-lg cursor-pointer"
+                  data-frost="Button"
+                  className="frost-btn frost-btn-sm frost-btn-outline frost-btn-neutral"
                 >
                   Batal
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-sm font-semibold cursor-pointer"
+                  data-frost="Button"
+                  className="frost-btn frost-btn-sm frost-btn-solid frost-btn-brand"
                 >
                   Simpan Pengguna
                 </button>

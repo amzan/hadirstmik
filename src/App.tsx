@@ -216,12 +216,14 @@ const AppContent: React.FC = () => {
     setInactivityNotice(null);
     setActiveRoleTab('mahasiswa');
     setIsStudentLoginOpen(false);
+    setIsUnifiedLoginOpen(false);
   }, []);
 
   const handleOpenDosenLogin = useCallback(() => {
     setInactivityNotice(null);
     setActiveRoleTab('dosen');
-    setIsUnifiedLoginOpen(true);
+    setIsStudentLoginOpen(false);
+    setIsUnifiedLoginOpen(false);
   }, []);
 
   const handleLoginSuccess = useCallback((user: any) => {
@@ -294,10 +296,11 @@ const AppContent: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-50 font-sans text-slate-900 w-full max-w-full overflow-x-hidden">
+    <div className="min-h-screen flex flex-col bg-[#fafafa] font-sans text-[#222222] w-full max-w-full overflow-x-hidden">
       {/* Campus Header & System Bar */}
       <Header
         isLoggedOut={!isAuthenticated}
+        activeRoleTab={activeRoleTab}
         onOpenStudentLogin={handleOpenStudentLogin}
         onOpenDosenLogin={handleOpenDosenLogin}
         onOpenDosenProfile={() => {
@@ -323,7 +326,7 @@ const AppContent: React.FC = () => {
       />
 
       {/* Main View Port */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-3 py-4 sm:p-6 lg:p-8 min-w-0 overflow-x-hidden">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 py-6 sm:px-6 sm:py-8 lg:px-8 lg:py-10 min-w-0 overflow-x-hidden">
         {!isAuthenticated ? (
           /* Default Tampilan Awal / Home Page with Role Tab Switcher (Mahasiswa & Dosen ONLY) */
           <HomePage
@@ -350,28 +353,28 @@ const AppContent: React.FC = () => {
       </main>
 
       {/* Campus Footer */}
-      <footer className="bg-white border-t border-slate-200 mt-auto py-5 px-3 sm:px-6 text-sm text-slate-500 w-full max-w-full">
-        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 text-center sm:text-left">
-          <div>
-            <p className="font-semibold text-slate-900">
+      <footer className="bg-white border-t border-[#dddddd] mt-auto py-6 px-4 sm:px-6 lg:px-8 text-xs sm:text-sm text-[#555555] w-full max-w-full">
+        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-center sm:text-left">
+          <div className="space-y-1">
+            <p className="font-semibold text-[#222222]">
               {CAMPUS_INFO.name}
             </p>
-            <p className="text-slate-500 mt-0.5">
+            <p className="text-[#777777] text-xs">
               {CAMPUS_INFO.address}
             </p>
           </div>
-          <div className="flex flex-wrap items-center justify-center sm:justify-end gap-3 text-slate-500 font-medium text-xs sm:text-sm">
-            <span>Sistem Presensi Berbasis QR Real-Time</span>
-            <span>·</span>
-            <span className="text-slate-900 font-semibold">{CAMPUS_INFO.semester}</span>
-            <span>·</span>
+          <div className="flex flex-wrap items-center justify-center sm:justify-end gap-3 text-[#555555] font-medium text-xs">
+            <span>Sistem Presensi QR Perkuliahan</span>
+            <span aria-hidden="true">·</span>
+            <span className="text-[#222222] font-semibold">{CAMPUS_INFO.semester}</span>
+            <span aria-hidden="true">·</span>
             <button
               type="button"
               onClick={() => navigateTo('/portaladmin')}
-              className="inline-flex items-center gap-1 text-slate-500 hover:text-indigo-600 font-medium transition cursor-pointer"
+              className="inline-flex items-center gap-1.5 text-[#555555] hover:text-[#0080FF] font-medium transition cursor-pointer"
               title="Akses Konsol Administrator BAAK (/portaladmin)"
             >
-              <Shield className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+              <Shield className="w-3.5 h-3.5 text-[#0080FF] shrink-0" />
               <span>Portal Admin</span>
             </button>
           </div>

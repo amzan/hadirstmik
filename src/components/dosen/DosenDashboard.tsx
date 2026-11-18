@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useAttendance } from '../../context/AttendanceContext';
-import { AttendanceSession, ScheduleItem, AttendanceStatus } from '../../types/attendance';
+import { AttendanceSession, ScheduleItem } from '../../types/attendance';
 import { QrSessionModal } from './QrSessionModal';
 import { CreateSessionModal } from './CreateSessionModal';
 import { ManualAttendanceModal } from './ManualAttendanceModal';
@@ -11,8 +11,8 @@ import { MeetingDatesModal } from './MeetingDatesModal';
 import { BukaSesiModal } from './BukaSesiModal';
 import { DosenProfileModal } from './DosenProfileModal';
 import {
-  QrCode, Plus, Download, Users, Clock, MapPin,
-  Calendar, FileText, Check, Search, UserCheck, BookOpen, Lock, Play, UserCog
+  QrCode, Plus, Download, Users,
+  Calendar, FileText, Search, UserCheck, BookOpen, Lock, Play, UserCog
 } from 'lucide-react';
 
 export const DosenDashboard: React.FC = () => {
@@ -25,7 +25,6 @@ export const DosenDashboard: React.FC = () => {
     students,
     leaveRequests,
     reviewLeaveRequest,
-    manualUpdateAttendance,
     markStudentAttendanceDirectly,
     closeSession,
     createSession,
@@ -43,7 +42,7 @@ export const DosenDashboard: React.FC = () => {
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [isManualModalOpen, setIsManualModalOpen] = useState(false);
   const [manualSessionId, setManualSessionId] = useState<string | null>(null);
-  const [scheduleToStart, setScheduleToStart] = useState<ScheduleItem | null>(null);
+  const [scheduleToStart] = useState<ScheduleItem | null>(null);
   const [sessionToClose, setSessionToClose] = useState<AttendanceSession | null>(null);
   const [selectedMeetingByCourse, setSelectedMeetingByCourse] = useState<Record<string, number>>({});
   const [scheduleForMeetingDates, setScheduleForMeetingDates] = useState<ScheduleItem | null>(null);
@@ -52,6 +51,16 @@ export const DosenDashboard: React.FC = () => {
   const [exportCourseCode, setExportCourseCode] = useState<string>('MKTI0109');
   const [exportRombel, setExportRombel] = useState<string>('TI 3');
   const [exportReportType, setExportReportType] = useState<'attendance' | 'teachingLog'>('teachingLog');
+
+  const getInitials = (name: string) => {
+    const parts = name
+      .replace(/[.,]/g, '')
+      .split(' ')
+      .filter(p => p.length > 1 && !['Dr', 'Ir', 'MKom', 'SKom', 'MT', 'MM', 'MSi'].includes(p));
+    if (parts.length === 0) return name.slice(0, 2).toUpperCase();
+    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+    return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+  };
 
   // Helper to get or default the meeting number for a course
   const getSelectedMeetingForCourse = (sch: ScheduleItem): number => {
@@ -80,6 +89,8 @@ export const DosenDashboard: React.FC = () => {
   // Tabs: Courses first by priority
   const [activeTab, setActiveTab] = useState<'courses' | 'sessions' | 'students' | 'leave'>('courses');
   const [selectedCourseFilter, setSelectedCourseFilter] = useState<string>('ALL');
+  const [sessionCourseTab, setSessionCourseTab] = useState<string>('ALL');
+  const [sessionRombelFilter, setSessionRombelFilter] = useState<string>('ALL');
   const [courseDayFilter, setCourseDayFilter] = useState<string>('ALL');
   const [courseViewMode, setCourseViewMode] = useState<'cards' | 'calendar'>('cards');
   const [searchStudent, setSearchStudent] = useState<string>('');
@@ -87,8 +98,68 @@ export const DosenDashboard: React.FC = () => {
   // Data filters
   const mySessions = sessions.filter(s => s.lecturerId === currentUser.id || s.lecturerName.includes(currentUser.name));
   const activeSessions = mySessions.filter(s => s.isOpen);
-  const mySchedules = schedules.filter(s => s.lecturerId === currentUser.id);
+  const mySchedules = schedules.filter(s => s.lecturerId === currentUser.id || s.lecturerName.includes(currentUser.name));
   const myLeaveRequests = leaveRequests.filter(req => mySchedules.some(sch => sch.courseCode === req.courseCode));
+
+  // Build classified course groups for Session History tabs
+  const lecturerCourseTabs = React.useMemo(() => {
+    const map = new Map<string, {
+      courseCode: string;
+      courseName: string;
+      sks: number;
+      prodi: string;
+      rombels: string[];
+      schedules: ScheduleItem[];
+      sessions: AttendanceSession[];
+    }>();
+
+    mySchedules.forEach(sch => {
+      const existing = map.get(sch.courseCode);
+      if (existing) {
+        if (!existing.rombels.includes(sch.rombel)) {
+          existing.rombels.push(sch.rombel);
+        }
+        existing.schedules.push(sch);
+      } else {
+        map.set(sch.courseCode, {
+          courseCode: sch.courseCode,
+          courseName: sch.courseName,
+          sks: sch.sks,
+          prodi: sch.prodi,
+          rombels: [sch.rombel],
+          schedules: [sch],
+          sessions: [],
+        });
+      }
+    });
+
+    mySessions.forEach(ses => {
+      const existing = map.get(ses.courseCode);
+      if (existing) {
+        if (!existing.rombels.includes(ses.rombel)) {
+          existing.rombels.push(ses.rombel);
+        }
+        existing.sessions.push(ses);
+      } else {
+        const matchedCourse = courses.find(c => c.code === ses.courseCode);
+        map.set(ses.courseCode, {
+          courseCode: ses.courseCode,
+          courseName: ses.courseName,
+          sks: matchedCourse?.sks || 2,
+          prodi: matchedCourse?.prodi || currentUser.prodi || 'Teknologi Informasi',
+          rombels: [ses.rombel],
+          schedules: [],
+          sessions: [ses],
+        });
+      }
+    });
+
+    const list = Array.from(map.values());
+    list.forEach(group => {
+      group.sessions.sort((a, b) => a.meetingNumber - b.meetingNumber);
+    });
+    return list;
+  }, [mySchedules, mySessions, courses, currentUser.prodi]);
 
   const handleOpenScheduleSession = (schedule: ScheduleItem) => {
     setScheduleForBukaSesi(schedule);
@@ -98,57 +169,35 @@ export const DosenDashboard: React.FC = () => {
     setSelectedSessionIdForQr(sessionId);
   };
 
-  // Direct handlers for course-based attendance with chosen meeting number
-  const handleOpenQrForCourse = (sch: ScheduleItem) => {
-    const meetingNum = getSelectedMeetingForCourse(sch);
-    let target = sessions.find(
-      s => s.courseCode === sch.courseCode && s.rombel === sch.rombel && s.meetingNumber === meetingNum
-    );
-
-    if (target) {
-      setSelectedSessionIdForQr(target.id);
-    } else {
-      const newSession = createSession({
-        scheduleId: sch.id,
-        courseCode: sch.courseCode,
-        courseName: sch.courseName,
-        rombel: sch.rombel,
-        room: sch.room,
-        meetingNumber: meetingNum,
-        topic: `Perkuliahan Pertemuan ${meetingNum}: ${sch.courseName}`,
-        isDynamicQr: true,
-      });
-      setSelectedSessionIdForQr(newSession.id);
-    }
-  };
-
-  const handleOpenManualForCourse = (sch: ScheduleItem) => {
-    const meetingNum = getSelectedMeetingForCourse(sch);
-    let target = sessions.find(
-      s => s.courseCode === sch.courseCode && s.rombel === sch.rombel && s.meetingNumber === meetingNum
-    );
-
-    if (!target) {
-      target = createSession({
-        scheduleId: sch.id,
-        courseCode: sch.courseCode,
-        courseName: sch.courseName,
-        rombel: sch.rombel,
-        room: sch.room,
-        meetingNumber: meetingNum,
-        topic: `Perkuliahan Pertemuan ${meetingNum}: ${sch.courseName}`,
-        isDynamicQr: false,
-      });
-    }
-
-    setManualSessionId(target.id);
-    setIsManualModalOpen(true);
-  };
-
   const handleExportForCourse = (sch: ScheduleItem, reportType: 'attendance' | 'teachingLog' = 'teachingLog') => {
     setSelectedCourseFilter(sch.courseCode);
     setExportCourseCode(sch.courseCode);
     setExportRombel(sch.rombel);
+    setExportReportType(reportType);
+    setIsExportModalOpen(true);
+  };
+
+  const handleExportByCourseCode = (
+    courseCode?: string,
+    rombel?: string,
+    reportType: 'attendance' | 'teachingLog' = 'teachingLog'
+  ) => {
+    const targetGroup =
+      lecturerCourseTabs.find(g => g.courseCode === (courseCode || (sessionCourseTab !== 'ALL' ? sessionCourseTab : undefined))) ||
+      lecturerCourseTabs[0];
+
+    if (targetGroup) {
+      const resolvedRombel =
+        rombel && targetGroup.rombels.includes(rombel)
+          ? rombel
+          : sessionRombelFilter !== 'ALL' && targetGroup.rombels.includes(sessionRombelFilter)
+          ? sessionRombelFilter
+          : targetGroup.rombels[0] || 'TI 3';
+
+      setSelectedCourseFilter(targetGroup.courseCode);
+      setExportCourseCode(targetGroup.courseCode);
+      setExportRombel(resolvedRombel);
+    }
     setExportReportType(reportType);
     setIsExportModalOpen(true);
   };
@@ -169,93 +218,86 @@ export const DosenDashboard: React.FC = () => {
   const pendingLeaveCount = myLeaveRequests.filter(l => l.status === 'PENDING').length;
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto">
-      {/* Clean Minimalist Header: Identity & Priority Actions */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-slate-200">
-        <div className="flex items-center gap-3.5">
-          <div
+    <div className="space-y-6 sm:space-y-8 max-w-7xl mx-auto">
+      {/* Header: Frost-UI Identity & Priority Actions */}
+      <div className="frost-card p-6 sm:p-7 flex flex-col lg:flex-row lg:items-center justify-between gap-5">
+        <div className="flex items-center gap-4">
+          <button
+            type="button"
             onClick={() => setIsProfileModalOpen(true)}
-            className="relative group cursor-pointer shrink-0"
+            className="w-12 h-12 sm:w-14 sm:h-14 rounded-[8px] bg-[#E4F2FF] border border-[#CCE6FF] text-[#0080FF] font-semibold text-base sm:text-lg flex items-center justify-center shrink-0 hover:bg-[#CCE6FF] transition cursor-pointer"
             title="Klik untuk konfigurasi profil dosen"
           >
-            <img
-              src={currentUser.avatarUrl || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150'}
-              alt={currentUser.name}
-              className="w-13 h-13 sm:w-16 sm:h-16 rounded-2xl object-cover border-2 border-slate-200 group-hover:border-blue-500 shadow-2xs transition"
-            />
-            <div className="absolute inset-0 bg-slate-900/40 rounded-2xl opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition">
-              <UserCog className="w-4 h-4 sm:w-5 sm:h-5" />
-            </div>
-          </div>
-          <div>
-            <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 text-xs sm:text-sm text-slate-500 font-medium">
+            {getInitials(currentUser.name)}
+          </button>
+          <div className="space-y-1">
+            <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 text-xs sm:text-sm text-[#555555] font-medium">
               <span>Dosen Pengampu</span>
               <span aria-hidden="true">·</span>
-              <span className="font-mono text-slate-700 font-semibold">NIDN {currentUser.nidn || currentUser.username}</span>
+              <span className="font-mono tabular-nums text-[#222222] font-semibold">NIDN {currentUser.nidn || currentUser.username}</span>
               <span aria-hidden="true">·</span>
-              <span>{mySchedules.length} Kelas</span>
+              <span className="tabular-nums">{mySchedules.length} Kelas</span>
               {currentUser.academicRank && (
                 <>
                   <span aria-hidden="true">·</span>
-                  <span className="hidden md:inline px-2 py-0.5 rounded-full text-[11px] bg-slate-100 text-slate-700 font-medium">
+                  <span className="hidden md:inline text-[#555555]">
                     {currentUser.academicRank}
                   </span>
                 </>
               )}
             </div>
-            <div className="flex items-center gap-2 mt-0.5">
-              <h2 className="text-xl sm:text-2xl lg:text-3xl font-bold text-slate-900 tracking-tight">
-                {currentUser.name}
-              </h2>
-              <button
-                onClick={() => setIsProfileModalOpen(true)}
-                className="p-1 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition cursor-pointer"
-                title="Konfigurasi Profil Dosen"
-              >
-                <UserCog className="w-4 h-4 sm:w-5 sm:h-5" />
-              </button>
-            </div>
-            <p className="text-xs text-slate-500 mt-0.5 hidden sm:block">
+            <h2 className="text-xl sm:text-2xl lg:text-3xl font-semibold text-[#222222] tracking-tight">
+              {currentUser.name}
+            </h2>
+            <p className="text-xs sm:text-sm text-[#555555] hidden sm:block">
               {currentUser.prodi || 'Program Studi STMIK PGRI'} {currentUser.officeRoom ? `· ${currentUser.officeRoom}` : ''}
             </p>
           </div>
         </div>
 
-        {/* Priority Actions */}
-        <div className="flex flex-wrap items-center gap-2 sm:gap-2.5">
+        {/* Priority Actions (Frost-UI Buttons) */}
+        <div className="flex flex-wrap items-center gap-2.5">
           <button
+            type="button"
+            data-frost="Button"
             onClick={() => setIsProfileModalOpen(true)}
-            className="px-3.5 py-2.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-lg text-sm font-semibold flex items-center gap-2 transition cursor-pointer shadow-2xs"
+            className="frost-btn frost-btn-md frost-btn-outline frost-btn-brand"
             title="Buka Formulir Konfigurasi Profil Dosen"
           >
-            <UserCog className="w-4 h-4 text-blue-600" />
-            <span>Konfigurasi Profil</span>
+            <UserCog className="w-4 h-4 text-[#0080FF] shrink-0" />
+            <span className="label">Konfigurasi Profil</span>
           </button>
 
           <button
+            type="button"
+            data-frost="Button"
             onClick={() => {
               setScheduleForBukaSesi(mySchedules[0] || schedules[0] || null);
             }}
-            className="px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-sm font-semibold flex items-center gap-2 transition cursor-pointer"
+            className="frost-btn frost-btn-md frost-btn-solid frost-btn-brand"
           >
-            <Plus className="w-4 h-4" />
-            <span>Buka Sesi Presensi</span>
+            <Plus className="w-4 h-4 shrink-0" />
+            <span className="label">Buka Sesi Presensi</span>
           </button>
 
           <button
+            type="button"
+            data-frost="Button"
             onClick={() => {
               setManualSessionId(activeSessions[0]?.id || mySessions[0]?.id || null);
               setIsManualModalOpen(true);
             }}
-            className="px-4 py-2.5 bg-white hover:bg-slate-50 text-slate-800 border border-slate-300 rounded-lg text-sm font-semibold flex items-center gap-2 transition cursor-pointer"
+            className="frost-btn frost-btn-md frost-btn-outline frost-btn-brand"
           >
-            <UserCheck className="w-4 h-4 text-slate-600" />
-            <span>Presensi Manual</span>
+            <UserCheck className="w-4 h-4 text-[#555555] shrink-0" />
+            <span className="label">Presensi Manual</span>
           </button>
 
           <button
-            onClick={() => setIsExportModalOpen(true)}
-            className="p-2.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-lg text-sm transition cursor-pointer"
+            type="button"
+            data-frost="Button"
+            onClick={() => handleExportByCourseCode()}
+            className="frost-btn frost-btn-md frost-btn-outline frost-btn-brand frost-btn-icon-only"
             title="Ekspor Rekapitulasi Presensi (PDF & Excel)"
           >
             <Download className="w-4 h-4" />
@@ -263,21 +305,18 @@ export const DosenDashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* Quick Summary Statistics Component */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Stat 1: Classes Today */}
-        <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-5 flex flex-col justify-between hover:border-slate-300 transition">
-          <div className="flex items-center justify-between text-slate-500">
-            <span className="text-sm font-medium">Kelas Hari Ini</span>
-            <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-slate-700">
-              <Calendar className="w-4 h-4" />
-            </div>
+      {/* Quick Summary Statistics (Frost-UI Surface Cards) */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
+        <div className="frost-card p-5 sm:p-6 flex flex-col justify-between gap-4">
+          <div className="flex items-center justify-between text-[#555555]">
+            <span className="text-xs sm:text-sm font-medium">Kelas Hari Ini</span>
+            <Calendar className="w-4 h-4 text-[#555555]" />
           </div>
-          <div className="mt-3">
-            <div className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">
+          <div className="space-y-1.5">
+            <div className="text-2xl sm:text-3xl font-semibold text-[#222222] tracking-tight tabular-nums">
               {todayLecturerSchedules.length} Kelas
             </div>
-            <p className="text-sm text-slate-500 mt-1">
+            <p className="text-xs sm:text-sm text-[#555555]">
               {todayLecturerSchedules.length > 0
                 ? `${activeDay} (${todayLecturerSchedules.map(s => s.room).join(', ')})`
                 : `Tidak ada jadwal mengajar hari ${activeDay}`}
@@ -285,22 +324,16 @@ export const DosenDashboard: React.FC = () => {
           </div>
         </div>
 
-        {/* Stat 2: Active Sessions */}
-        <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-5 flex flex-col justify-between hover:border-slate-300 transition">
-          <div className="flex items-center justify-between text-slate-500">
-            <span className="text-sm font-medium">Sesi Terbuka</span>
-            <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-slate-700">
-              <QrCode className="w-4 h-4" />
-            </div>
+        <div className="frost-card p-5 sm:p-6 flex flex-col justify-between gap-4">
+          <div className="flex items-center justify-between text-[#555555]">
+            <span className="text-xs sm:text-sm font-medium">Sesi Terbuka</span>
+            <QrCode className="w-4 h-4 text-[#0080FF]" />
           </div>
-          <div className="mt-3">
-            <div className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
-              <span>{activeSessions.length} Sesi</span>
-              {activeSessions.length > 0 && (
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
-              )}
+          <div className="space-y-1.5">
+            <div className="text-2xl sm:text-3xl font-semibold text-[#222222] tracking-tight tabular-nums">
+              {activeSessions.length} Sesi
             </div>
-            <p className="text-sm text-slate-500 mt-1 truncate">
+            <p className="text-xs sm:text-sm text-[#555555] truncate">
               {activeSessions.length > 0
                 ? `${activeSessions[0].courseName} (${activeSessions[0].rombel})`
                 : 'Belum ada sesi presensi aktif'}
@@ -308,39 +341,33 @@ export const DosenDashboard: React.FC = () => {
           </div>
         </div>
 
-        {/* Stat 3: Average Attendance Rate */}
-        <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-5 flex flex-col justify-between hover:border-slate-300 transition">
-          <div className="flex items-center justify-between text-slate-500">
-            <span className="text-sm font-medium">Rata-rata Kehadiran</span>
-            <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-slate-700">
-              <UserCheck className="w-4 h-4" />
-            </div>
+        <div className="frost-card p-5 sm:p-6 flex flex-col justify-between gap-4">
+          <div className="flex items-center justify-between text-[#555555]">
+            <span className="text-xs sm:text-sm font-medium">Rata-rata Kehadiran</span>
+            <UserCheck className="w-4 h-4 text-[#009499]" />
           </div>
-          <div className="mt-3">
-            <div className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">
+          <div className="space-y-1.5">
+            <div className="text-2xl sm:text-3xl font-semibold text-[#222222] tracking-tight tabular-nums">
               {avgAttendanceRate}%
             </div>
-            <p className="text-sm text-slate-500 mt-1">
+            <p className="text-xs sm:text-sm text-[#555555] tabular-nums">
               {totalLecturerHadir} dari {totalLecturerRecords} rekaman hadir
             </p>
           </div>
         </div>
 
-        {/* Stat 4: Students Taught & Pending Leaves */}
-        <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-5 flex flex-col justify-between hover:border-slate-300 transition">
-          <div className="flex items-center justify-between text-slate-500">
-            <span className="text-sm font-medium">Mahasiswa Diampu</span>
-            <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-slate-700">
-              <Users className="w-4 h-4" />
-            </div>
+        <div className="frost-card p-5 sm:p-6 flex flex-col justify-between gap-4">
+          <div className="flex items-center justify-between text-[#555555]">
+            <span className="text-xs sm:text-sm font-medium">Mahasiswa Diampu</span>
+            <Users className="w-4 h-4 text-[#555555]" />
           </div>
-          <div className="mt-3">
-            <div className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">
+          <div className="space-y-1.5">
+            <div className="text-2xl sm:text-3xl font-semibold text-[#222222] tracking-tight tabular-nums">
               {totalStudentsTaught} Mhs
             </div>
-            <p className="text-sm text-slate-500 mt-1">
+            <p className="text-xs sm:text-sm text-[#555555] tabular-nums">
               {pendingLeaveCount > 0 ? (
-                <span className="text-amber-700 font-semibold">{pendingLeaveCount} permohonan izin pending</span>
+                <span className="text-[#DE6F01] font-medium">{pendingLeaveCount} permohonan izin menunggu</span>
               ) : (
                 <span>Semua izin/sakit telah ditinjau</span>
               )}
@@ -349,115 +376,111 @@ export const DosenDashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* Active Session Notification (Quiet Clean Bar) */}
+      {/* Active Session Notification (Frost-UI Teal Callout) */}
       {activeSessions.length > 0 && (
-        <div className="border border-emerald-300 bg-emerald-50/70 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
-            <div className="text-sm">
-              <span className="font-bold text-slate-900">
-                Sesi Berlangsung: {activeSessions[0].courseName}
-              </span>
-              <span className="text-slate-600 ml-2">
-                Pertemuan {activeSessions[0].meetingNumber} · {activeSessions[0].rombel} · Ruang {activeSessions[0].room} ·{' '}
-                <strong className="text-emerald-800 font-bold">
-                  {records.filter(r => r.sessionId === activeSessions[0].id && r.status === 'HADIR').length}/
-                  {getStudentsForRombel(activeSessions[0].rombel).length} Hadir
-                </strong>
-              </span>
-            </div>
+        <div data-frost="Callout" className="frost-callout frost-callout-success flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="text-sm leading-relaxed">
+            <span className="font-semibold text-[#004343]">
+              Sesi Berlangsung: {activeSessions[0].courseName}
+            </span>
+            <span className="text-[#017171] ml-2 tabular-nums">
+              Pertemuan {activeSessions[0].meetingNumber} · {activeSessions[0].rombel} · Ruang {activeSessions[0].room} ·{' '}
+              <strong className="text-[#004343] font-semibold">
+                {records.filter(r => r.sessionId === activeSessions[0].id && r.status === 'HADIR').length}/
+                {getStudentsForRombel(activeSessions[0].rombel).length} Hadir
+              </strong>
+            </span>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2.5 shrink-0">
             <button
+              type="button"
+              data-frost="Button"
               onClick={() => setSelectedSessionIdForQr(activeSessions[0].id)}
-              className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md text-sm font-semibold flex items-center gap-1.5 cursor-pointer transition"
+              className="frost-btn frost-btn-sm frost-btn-solid frost-btn-teal"
             >
               <QrCode className="w-4 h-4" />
-              <span>Proyektor QR</span>
+              <span className="label">Proyektor QR</span>
             </button>
             <button
+              type="button"
+              data-frost="Button"
               onClick={() => {
                 setManualSessionId(activeSessions[0].id);
                 setIsManualModalOpen(true);
               }}
-              className="px-3.5 py-1.5 bg-white hover:bg-slate-50 text-slate-800 border border-slate-300 rounded-md text-sm font-medium cursor-pointer transition flex items-center gap-1.5"
+              className="frost-btn frost-btn-sm frost-btn-outline frost-btn-brand"
             >
-              <UserCheck className="w-4 h-4 text-slate-600" />
-              <span>Presensi Manual</span>
+              <UserCheck className="w-4 h-4 text-[#555555]" />
+              <span className="label">Presensi Manual</span>
             </button>
             <button
+              type="button"
+              data-frost="Button"
               onClick={() => setSessionToClose(activeSessions[0])}
-              className="px-3 py-1.5 text-rose-700 hover:bg-rose-100/60 rounded-md text-sm font-semibold cursor-pointer transition flex items-center gap-1.5"
+              className="frost-btn frost-btn-sm frost-btn-subtle frost-btn-danger"
             >
               <Lock className="w-3.5 h-3.5" />
-              <span>Tutup Sesi</span>
+              <span className="label">Tutup Sesi</span>
             </button>
           </div>
         </div>
       )}
 
-      {/* Clean Navigation Tabs */}
-      <div className="flex overflow-x-auto border-b border-slate-200 gap-4 sm:gap-8 text-sm sm:text-base font-medium no-scrollbar whitespace-nowrap">
+      {/* Frost-UI Navigation Tabs (Tab-BQdeouhM.css specification) */}
+      <div className="frost-tabs no-scrollbar">
         <button
+          type="button"
+          data-frost="Button"
           onClick={() => setActiveTab('courses')}
-          className={`pb-3 border-b-2 shrink-0 transition cursor-pointer ${
-            activeTab === 'courses'
-              ? 'border-slate-900 text-slate-900 font-bold'
-              : 'border-transparent text-slate-500 hover:text-slate-900'
-          }`}
+          className={`frost-tab-btn ${activeTab === 'courses' ? 'frost-tab-btn-active' : ''}`}
         >
-          Mata Kuliah & Jadwal ({mySchedules.length})
+          <span className="label tabular-nums">Mata Kuliah & Jadwal ({mySchedules.length})</span>
         </button>
 
         <button
+          type="button"
+          data-frost="Button"
           onClick={() => setActiveTab('sessions')}
-          className={`pb-3 border-b-2 shrink-0 transition cursor-pointer ${
-            activeTab === 'sessions'
-              ? 'border-slate-900 text-slate-900 font-bold'
-              : 'border-transparent text-slate-500 hover:text-slate-900'
-          }`}
+          className={`frost-tab-btn ${activeTab === 'sessions' ? 'frost-tab-btn-active' : ''}`}
         >
-          Riwayat Sesi ({mySessions.length})
+          <span className="label tabular-nums">Riwayat Sesi ({mySessions.length})</span>
         </button>
 
         <button
+          type="button"
+          data-frost="Button"
           onClick={() => setActiveTab('students')}
-          className={`pb-3 border-b-2 shrink-0 transition cursor-pointer ${
-            activeTab === 'students'
-              ? 'border-slate-900 text-slate-900 font-bold'
-              : 'border-transparent text-slate-500 hover:text-slate-900'
-          }`}
+          className={`frost-tab-btn ${activeTab === 'students' ? 'frost-tab-btn-active' : ''}`}
         >
-          Rekap Kehadiran Mahasiswa
+          <span className="label">Rekap Kehadiran Mahasiswa</span>
         </button>
 
         <button
+          type="button"
+          data-frost="Button"
           onClick={() => setActiveTab('leave')}
-          className={`pb-3 border-b-2 shrink-0 transition cursor-pointer ${
-            activeTab === 'leave'
-              ? 'border-slate-900 text-slate-900 font-bold'
-              : 'border-transparent text-slate-500 hover:text-slate-900'
-          }`}
+          className={`frost-tab-btn ${activeTab === 'leave' ? 'frost-tab-btn-active' : ''}`}
         >
-          Izin & Sakit ({myLeaveRequests.filter(l => l.status === 'PENDING').length})
+          <span className="label tabular-nums">Izin & Sakit ({myLeaveRequests.filter(l => l.status === 'PENDING').length})</span>
         </button>
       </div>
 
       {/* TAB 1: COURSES & SCHEDULE (PRIMARY) */}
       {activeTab === 'courses' && (
-        <div className="space-y-4">
+        <div className="space-y-5">
           {/* Minimalist Filter Bar */}
           <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
-            <div className="flex overflow-x-auto no-scrollbar whitespace-nowrap items-center gap-1 p-1 bg-slate-100 rounded-lg max-w-full">
+            <div className="flex overflow-x-auto no-scrollbar whitespace-nowrap items-center gap-1 p-1 bg-[#eeeeee] rounded-[6px] max-w-full">
               {['ALL', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat'].map(day => (
                 <button
                   key={day}
+                  type="button"
                   onClick={() => setCourseDayFilter(day)}
-                  className={`px-3.5 py-1.5 rounded-md transition text-sm cursor-pointer ${
+                  className={`px-3.5 py-1.5 rounded-[4px] transition text-xs sm:text-sm cursor-pointer whitespace-nowrap shrink-0 ${
                     courseDayFilter === day
-                      ? 'bg-white text-slate-900 font-semibold shadow-xs'
-                      : 'text-slate-600 hover:text-slate-900'
+                      ? 'bg-white text-[#222222] font-medium shadow-[0_1px_2px_rgba(0,0,0,0.05)]'
+                      : 'text-[#555555] hover:text-[#222222]'
                   }`}
                 >
                   {day === 'ALL' ? 'Semua Hari' : day}
@@ -465,23 +488,25 @@ export const DosenDashboard: React.FC = () => {
               ))}
             </div>
 
-            <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-lg">
+            <div className="flex items-center gap-1 p-1 bg-[#eeeeee] rounded-[6px]">
               <button
+                type="button"
                 onClick={() => setCourseViewMode('cards')}
-                className={`px-3.5 py-1.5 rounded-md transition text-sm cursor-pointer ${
+                className={`px-3.5 py-1.5 rounded-[4px] transition text-xs sm:text-sm cursor-pointer whitespace-nowrap shrink-0 ${
                   courseViewMode === 'cards'
-                    ? 'bg-white text-slate-900 font-semibold shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900'
+                    ? 'bg-white text-[#222222] font-medium shadow-[0_1px_2px_rgba(0,0,0,0.05)]'
+                    : 'text-[#555555] hover:text-[#222222]'
                 }`}
               >
                 Kartu Mata Kuliah
               </button>
               <button
+                type="button"
                 onClick={() => setCourseViewMode('calendar')}
-                className={`px-3.5 py-1.5 rounded-md transition text-sm cursor-pointer ${
+                className={`px-3.5 py-1.5 rounded-[4px] transition text-xs sm:text-sm cursor-pointer whitespace-nowrap shrink-0 ${
                   courseViewMode === 'calendar'
-                    ? 'bg-white text-slate-900 font-semibold shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900'
+                    ? 'bg-white text-[#222222] font-medium shadow-[0_1px_2px_rgba(0,0,0,0.05)]'
+                    : 'text-[#555555] hover:text-[#222222]'
                 }`}
               >
                 Jadwal Mingguan
@@ -490,11 +515,11 @@ export const DosenDashboard: React.FC = () => {
           </div>
 
           {courseViewMode === 'calendar' ? (
-            <div className="bg-white border border-slate-200 rounded-xl p-5">
+            <div className="frost-card p-6">
               <ScheduleCalendar onSelectScheduleForSession={handleOpenScheduleSession} />
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5 sm:gap-6">
               {mySchedules
                 .filter(sch => courseDayFilter === 'ALL' || sch.day === courseDayFilter)
                 .map(sch => {
@@ -508,63 +533,63 @@ export const DosenDashboard: React.FC = () => {
                   return (
                     <div
                       key={sch.id}
-                      className={`bg-white border rounded-xl p-5 transition-colors flex flex-col justify-between gap-5 ${
+                      className={`frost-card p-6 transition-colors flex flex-col justify-between gap-6 ${
                         isNow
-                          ? 'border-emerald-500 ring-1 ring-emerald-500'
+                          ? 'border-[#009499]'
                           : openSession
-                          ? 'border-slate-400'
-                          : 'border-slate-200 hover:border-slate-300'
+                          ? 'border-[#0080FF]'
+                          : 'border-[#dddddd] hover:border-[#cccccc]'
                       }`}
                     >
-                      <div>
-                        {/* Status line */}
-                        <div className="flex items-center justify-between text-sm text-slate-500">
-                          <div className="flex items-center gap-2 font-medium">
-                            <span className="font-mono text-slate-900 font-semibold">{sch.courseCode}</span>
-                            <span aria-hidden="true">·</span>
-                            <span>{sch.sks} SKS</span>
-                            <span aria-hidden="true">·</span>
-                            <span>{sch.prodi}</span>
+                      <div className="space-y-4">
+                        <div className="space-y-1.5">
+                          {/* Status line (Unboxed Metadata) */}
+                          <div className="flex items-center justify-between text-xs sm:text-sm text-[#555555]">
+                            <div className="flex items-center gap-2 font-medium tabular-nums">
+                              <span className="font-mono text-[#222222] font-semibold">{sch.courseCode}</span>
+                              <span aria-hidden="true">·</span>
+                              <span>{sch.sks} SKS</span>
+                              <span aria-hidden="true">·</span>
+                              <span>{sch.prodi}</span>
+                            </div>
+
+                            {isNow ? (
+                              <span className="text-[#017171] font-semibold text-xs sm:text-sm">
+                                Aktif Sekarang
+                              </span>
+                            ) : openSession ? (
+                              <span className="text-[#0080FF] font-semibold text-xs sm:text-sm">
+                                Sesi Terbuka
+                              </span>
+                            ) : (
+                              <span className="font-medium">{sch.day}</span>
+                            )}
                           </div>
 
-                          {isNow ? (
-                            <span className="text-emerald-700 font-semibold flex items-center gap-1.5 text-sm">
-                              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                              Aktif Sekarang
-                            </span>
-                          ) : openSession ? (
-                            <span className="text-slate-900 font-semibold text-sm">
-                              Sesi Terbuka
-                            </span>
-                          ) : (
-                            <span className="font-medium">{sch.day}</span>
-                          )}
-                        </div>
+                          {/* Title */}
+                          <h3 className="text-lg sm:text-xl font-semibold text-[#222222]">
+                            {sch.courseName}
+                          </h3>
 
-                        {/* Title */}
-                        <h3 className="text-lg sm:text-xl font-bold text-slate-900 mt-2">
-                          {sch.courseName}
-                        </h3>
-
-                        {/* Details */}
-                        <div className="flex flex-wrap items-center gap-2 text-sm text-slate-600 mt-2 font-medium">
-                          <span>{sch.day}, {sch.startTime}–{sch.endTime} WIB</span>
-                          <span aria-hidden="true">·</span>
-                          <span>Ruang {sch.room}</span>
-                          <span aria-hidden="true">·</span>
-                          <span>{sch.rombel} ({enrolled.length} mhs)</span>
+                          {/* Details */}
+                          <div className="flex flex-wrap items-center gap-2 text-xs sm:text-sm text-[#555555] font-medium tabular-nums">
+                            <span>{sch.day}, {sch.startTime}–{sch.endTime} WIB</span>
+                            <span aria-hidden="true">·</span>
+                            <span>Ruang {sch.room}</span>
+                            <span aria-hidden="true">·</span>
+                            <span>{sch.rombel} ({enrolled.length} mhs)</span>
+                          </div>
                         </div>
 
                         {/* Meeting & Date Configurator */}
-                        <div className="mt-4 pt-3 border-t border-slate-100 flex flex-col gap-2.5 bg-slate-50/80 p-3 rounded-xl border border-slate-200/60">
-                          {/* Row 1: Select Pertemuan & Status */}
-                          <div className="flex items-center justify-between gap-2 text-xs sm:text-sm">
-                            <div className="flex items-center gap-2">
-                              <label className="text-slate-700 font-semibold whitespace-nowrap">Pertemuan:</label>
+                        <div className="pt-4 border-t border-[#eeeeee] flex flex-col gap-3">
+                          <div className="flex items-center justify-between gap-3 text-xs sm:text-sm">
+                            <div className="flex items-center gap-2.5">
+                              <label className="text-[#555555] font-medium whitespace-nowrap">Pertemuan:</label>
                               <select
                                 value={currentMeeting}
                                 onChange={(e) => handleSelectMeeting(sch.id, Number(e.target.value))}
-                                className="px-2.5 py-1 bg-white border border-slate-300 rounded-lg font-bold text-slate-900 focus:outline-none focus:border-slate-500 cursor-pointer text-xs sm:text-sm"
+                                className="frost-select frost-select-sm w-auto font-medium cursor-pointer"
                               >
                                 {Array.from({ length: 16 }, (_, i) => i + 1).map(num => {
                                   const ses = sessions.find(s => s.courseCode === sch.courseCode && s.rombel === sch.rombel && s.meetingNumber === num);
@@ -582,31 +607,29 @@ export const DosenDashboard: React.FC = () => {
                             <div className="text-xs sm:text-sm font-medium">
                               {meetingSession ? (
                                 meetingSession.isOpen ? (
-                                  <span className="text-emerald-700 font-semibold flex items-center gap-1.5">
-                                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                                  <span className="text-[#017171] font-semibold">
                                     Sesi Aktif
                                   </span>
                                 ) : (
-                                  <span className="text-slate-600">✓ Sesi Selesai</span>
+                                  <span className="text-[#555555]">Sesi Selesai</span>
                                 )
                               ) : (
-                                <span className="text-slate-400">Siap Mulai</span>
+                                <span className="text-[#777777]">Siap Mulai</span>
                               )}
                             </div>
                           </div>
 
-                          {/* Row 2: Date Picker explicitly bound to this selected Pertemuan */}
-                          <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-200/60 text-xs">
-                            <div className="flex items-center gap-1.5">
-                              <span className="text-slate-600 font-semibold flex items-center gap-1">
-                                <Calendar className="w-3.5 h-3.5 text-blue-600" />
+                          <div className="flex flex-wrap items-center justify-between gap-3 text-xs">
+                            <div className="flex items-center gap-2.5">
+                              <span className="text-[#555555] font-medium flex items-center gap-1.5 tabular-nums">
+                                <Calendar className="w-3.5 h-3.5 text-[#0080FF]" />
                                 <span>Tanggal P-{currentMeeting}:</span>
                               </span>
                               <input
                                 type="date"
                                 value={getMeetingDateForSchedule(sch, currentMeeting)}
                                 onChange={(e) => setScheduleMeetingDate(sch.id, currentMeeting, e.target.value)}
-                                className="px-2 py-1 bg-white border border-slate-300 rounded-md font-semibold text-slate-900 focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600 transition cursor-pointer text-xs"
+                                className="frost-input frost-input-sm w-auto font-mono tabular-nums cursor-pointer"
                                 title={`Tentukan tanggal terkait untuk Pertemuan ke-${currentMeeting}`}
                               />
                             </div>
@@ -614,50 +637,58 @@ export const DosenDashboard: React.FC = () => {
                             <button
                               type="button"
                               onClick={() => setScheduleForMeetingDates(sch)}
-                              className="text-blue-600 hover:text-blue-800 font-semibold underline cursor-pointer text-xs flex items-center gap-1"
+                              className="text-[#0080FF] hover:text-[#016FDE] font-medium hover:underline cursor-pointer text-xs"
                               title="Buka kalender lengkap untuk mengatur tanggal ke-16 pertemuan"
                             >
-                              <span>Atur 16 Pertemuan</span>
+                              Atur 16 Pertemuan
                             </button>
                           </div>
                         </div>
                       </div>
 
-                      {/* Clean Action Bar */}
-                      <div className="flex flex-wrap items-center gap-2.5 pt-4 border-t border-slate-100">
+                      {/* Frost-UI Action Bar */}
+                      <div className="flex flex-wrap items-center gap-2.5 pt-4 border-t border-[#eeeeee]">
                         {!isMeetingOpen ? (
                           <button
+                            type="button"
+                            data-frost="Button"
                             onClick={() => setScheduleForBukaSesi(sch)}
-                            className="flex-1 py-2 px-3.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-sm font-semibold flex items-center justify-center gap-2 transition cursor-pointer min-h-[40px]"
+                            className="frost-btn frost-btn-md frost-btn-solid frost-btn-brand flex-1"
                           >
-                            <Play className="w-4 h-4 text-emerald-400" />
-                            <span>Buka Sesi</span>
+                            <Play className="w-4 h-4" />
+                            <span className="label">Buka Sesi</span>
                           </button>
                         ) : (
                           <>
                             <button
+                              type="button"
+                              data-frost="Button"
                               onClick={() => setSelectedSessionIdForQr(meetingSession.id)}
-                              className="flex-1 py-2 px-3.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-semibold flex items-center justify-center gap-2 transition cursor-pointer min-h-[40px]"
+                              className="frost-btn frost-btn-md frost-btn-solid frost-btn-teal flex-1"
                               title="Tampilkan Layar QR Presensi"
                             >
                               <QrCode className="w-4 h-4" />
-                              <span>Layar QR</span>
+                              <span className="label">Layar QR</span>
                             </button>
 
                             <button
+                              type="button"
+                              data-frost="Button"
                               onClick={() => setSessionToClose(meetingSession)}
-                              className="flex-1 py-2 px-3.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-sm font-semibold transition cursor-pointer flex items-center justify-center gap-1.5 min-h-[40px]"
+                              className="frost-btn frost-btn-md frost-btn-solid frost-btn-danger flex-1"
                               title={`Akhiri sesi presensi Pertemuan ${currentMeeting}`}
                             >
                               <Lock className="w-4 h-4" />
-                              <span>Tutup Sesi</span>
+                              <span className="label">Tutup Sesi</span>
                             </button>
                           </>
                         )}
 
                         <button
+                          type="button"
+                          data-frost="Button"
                           onClick={() => handleExportForCourse(sch)}
-                          className="p-2.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-lg text-sm transition cursor-pointer min-h-[40px] flex items-center justify-center"
+                          className="frost-btn frost-btn-md frost-btn-outline frost-btn-brand frost-btn-icon-only"
                           title="Unduh Laporan Presensi"
                         >
                           <Download className="w-4 h-4" />
@@ -671,110 +702,379 @@ export const DosenDashboard: React.FC = () => {
         </div>
       )}
 
-      {/* TAB 2: SESSIONS HISTORY */}
-      {activeTab === 'sessions' && (
-        <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
-          <div className="p-4 sm:p-5 border-b border-slate-200 flex items-center justify-between">
-            <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">
-              Daftar Sesi Perkuliahan
-            </h3>
-            <button
-              onClick={() => setIsExportModalOpen(true)}
-              className="text-sm font-semibold text-slate-700 hover:text-slate-900 flex items-center gap-1.5 cursor-pointer"
-            >
-              <Download className="w-4 h-4" />
-              <span>Ekspor Laporan</span>
-            </button>
-          </div>
+      {/* TAB 2: SESSIONS HISTORY (With Course Separator Tabs) */}
+      {activeTab === 'sessions' && (() => {
+        const activeCourseGroup = sessionCourseTab !== 'ALL'
+          ? lecturerCourseTabs.find(g => g.courseCode === sessionCourseTab) || null
+          : null;
 
-          <div className="divide-y divide-slate-100">
-            {mySessions.length === 0 ? (
-              <div className="p-8 text-center text-sm text-slate-400">
-                Belum ada sesi presensi yang dibuat.
+        const displayedCourseGroups = activeCourseGroup
+          ? [activeCourseGroup]
+          : lecturerCourseTabs;
+
+        return (
+          <div className="frost-card overflow-hidden">
+            {/* Header & Tab Pemisah Mata Kuliah */}
+            <div className="border-b border-[#dddddd] bg-[#fafafa]">
+              <div className="p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base sm:text-lg font-semibold text-[#222222]">
+                      Daftar Sesi Perkuliahan
+                    </h3>
+                    <span className="text-xs text-[#555555] font-mono tabular-nums">
+                      · {mySessions.length} Total Sesi
+                    </span>
+                  </div>
+                  <p className="text-xs sm:text-sm text-[#555555]">
+                    Pilih tab mata kuliah di bawah untuk mengklasifikasikan riwayat sesi dan menyesuaikan ekspor laporan
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2.5">
+                  <button
+                    type="button"
+                    data-frost="Button"
+                    onClick={() => handleExportByCourseCode(
+                      activeCourseGroup?.courseCode,
+                      sessionRombelFilter !== 'ALL' ? sessionRombelFilter : activeCourseGroup?.rombels[0],
+                      'teachingLog'
+                    )}
+                    className="frost-btn frost-btn-sm frost-btn-outline frost-btn-brand"
+                    title="Ekspor Log Aktivitas Mengajar (BAP) sesuai mata kuliah terpilih"
+                  >
+                    <FileText className="w-4 h-4 text-[#0080FF]" />
+                    <span className="label">
+                      {activeCourseGroup
+                        ? `Ekspor BAP (${activeCourseGroup.courseCode})`
+                        : 'Ekspor Log Mengajar (BAP)'}
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    data-frost="Button"
+                    onClick={() => handleExportByCourseCode(
+                      activeCourseGroup?.courseCode,
+                      sessionRombelFilter !== 'ALL' ? sessionRombelFilter : activeCourseGroup?.rombels[0],
+                      'attendance'
+                    )}
+                    className="frost-btn frost-btn-sm frost-btn-solid frost-btn-brand"
+                    title="Ekspor Rekapitulasi Presensi Mahasiswa sesuai mata kuliah terpilih"
+                  >
+                    <Download className="w-4 h-4" />
+                    <span className="label">
+                      {activeCourseGroup
+                        ? `Ekspor Laporan: ${activeCourseGroup.courseName}`
+                        : 'Ekspor Laporan Presensi'}
+                    </span>
+                  </button>
+                </div>
               </div>
-            ) : (
-              mySessions.map((session) => {
-                const sRecords = records.filter(r => r.sessionId === session.id);
-                const hadirCount = sRecords.filter(r => r.status === 'HADIR').length;
-                const enrolled = getStudentsForRombel(session.rombel);
 
-                return (
-                  <div key={session.id} className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-slate-50/50 transition">
-                    <div>
-                      <div className="flex items-center gap-2.5">
-                        <span className="font-bold text-slate-900 text-sm sm:text-base">
-                          Pertemuan {session.meetingNumber} · {session.courseName}
-                        </span>
-                        {session.isOpen ? (
-                          <span className="text-xs font-semibold text-emerald-700 flex items-center gap-1">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                            Terbuka
-                          </span>
-                        ) : (
-                          <span className="text-xs text-slate-400">Ditutup</span>
-                        )}
-                      </div>
-                      <div className="flex flex-wrap items-center gap-2 text-sm text-slate-500 mt-1">
-                        <span>{session.date}</span>
-                        <span aria-hidden="true">·</span>
-                        <span>Ruang {session.room}</span>
-                        <span aria-hidden="true">·</span>
-                        <span>{session.rombel}</span>
-                        <span aria-hidden="true">·</span>
-                        <span className="font-semibold text-slate-800">{hadirCount} / {enrolled.length} Hadir</span>
-                      </div>
-                    </div>
+              {/* Tab Pemisah Antar Setiap Mata Kuliah (Frost-UI Tabs) */}
+              <div className="frost-tabs px-5 sm:px-6 no-scrollbar bg-white">
+                <button
+                  type="button"
+                  data-frost="Button"
+                  onClick={() => {
+                    setSessionCourseTab('ALL');
+                    setSessionRombelFilter('ALL');
+                  }}
+                  className={`frost-tab-btn ${sessionCourseTab === 'ALL' ? 'frost-tab-btn-active' : ''}`}
+                >
+                  <BookOpen className="w-4 h-4 shrink-0" />
+                  <span className="label">Semua Mata Kuliah</span>
+                  <span className="text-xs font-mono tabular-nums opacity-75">({mySessions.length})</span>
+                </button>
 
-                    <div className="flex items-center gap-2">
+                {lecturerCourseTabs.map((group) => {
+                  const isSelected = sessionCourseTab === group.courseCode;
+                  return (
+                    <button
+                      key={group.courseCode}
+                      type="button"
+                      data-frost="Button"
+                      onClick={() => {
+                        setSessionCourseTab(group.courseCode);
+                        setSessionRombelFilter('ALL');
+                      }}
+                      className={`frost-tab-btn ${isSelected ? 'frost-tab-btn-active' : ''}`}
+                    >
+                      <span className="font-mono text-xs opacity-75">{group.courseCode}</span>
+                      <span className="label truncate max-w-[180px] sm:max-w-[220px]">
+                        {group.courseName}
+                      </span>
+                      <span className="text-xs font-mono tabular-nums opacity-75">
+                        ({group.sessions.length})
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Sub-filter Rombel jika Mata Kuliah terpilih memiliki > 1 Rombel */}
+              {activeCourseGroup && activeCourseGroup.rombels.length > 1 && (
+                <div className="px-5 sm:px-6 py-3 bg-white border-t border-[#eeeeee] flex flex-wrap items-center justify-between gap-2.5 text-xs">
+                  <div className="flex items-center gap-2.5">
+                    <span className="font-medium text-[#555555]">Filter Kelas / Rombel:</span>
+                    <div className="flex flex-wrap items-center gap-2">
                       <button
-                        onClick={() => {
-                          setManualSessionId(session.id);
-                          setIsManualModalOpen(true);
-                        }}
-                        className="px-3.5 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-100 rounded-md border border-slate-200 transition cursor-pointer"
-                      >
-                        Presensi Manual
-                      </button>
-
-                      <button
-                        onClick={() => setSelectedSessionIdForQr(session.id)}
-                        className={`px-4 py-1.5 rounded-md text-sm font-semibold transition cursor-pointer ${
-                          session.isOpen
-                            ? 'bg-slate-900 text-white hover:bg-slate-800'
-                            : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                        type="button"
+                        data-frost="Button"
+                        onClick={() => setSessionRombelFilter('ALL')}
+                        className={`frost-btn frost-btn-xxs ${
+                          sessionRombelFilter === 'ALL'
+                            ? 'frost-btn-brand frost-btn-solid'
+                            : 'frost-btn-brand frost-btn-outline'
                         }`}
                       >
-                        {session.isOpen ? 'Layar QR' : 'Detail'}
+                        Semua Rombel ({activeCourseGroup.sessions.length})
                       </button>
-
-                      {session.isOpen && (
-                        <button
-                          onClick={() => setSessionToClose(session)}
-                          className="px-3 py-1.5 text-sm font-semibold text-rose-700 hover:bg-rose-50 rounded-md border border-rose-200 transition cursor-pointer flex items-center gap-1"
-                          title="Akhiri sesi perkuliahan ini"
-                        >
-                          <Lock className="w-3.5 h-3.5" />
-                          <span>Tutup Sesi</span>
-                        </button>
-                      )}
+                      {activeCourseGroup.rombels.map(r => {
+                        const rCount = activeCourseGroup.sessions.filter(s => s.rombel === r).length;
+                        return (
+                          <button
+                            key={r}
+                            type="button"
+                            data-frost="Button"
+                            onClick={() => setSessionRombelFilter(r)}
+                            className={`frost-btn frost-btn-xxs ${
+                              sessionRombelFilter === r
+                                ? 'frost-btn-brand frost-btn-solid'
+                                : 'frost-btn-brand frost-btn-outline'
+                            }`}
+                          >
+                            Rombel {r} ({rCount})
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
-                );
-              })
-            )}
+                </div>
+              )}
+            </div>
+
+            {/* Daftar Sesi Terklasifikasi per Mata Kuliah */}
+            <div className="divide-y divide-[#dddddd]">
+              {displayedCourseGroups.length === 0 ? (
+                <div className="p-10 text-center text-sm text-[#777777]">
+                  Belum ada mata kuliah atau sesi presensi yang tercatat.
+                </div>
+              ) : (
+                displayedCourseGroups.map((group) => {
+                  const filteredGroupSessions = group.sessions.filter(
+                    s => sessionRombelFilter === 'ALL' || s.rombel === sessionRombelFilter
+                  );
+
+                  const totalGroupHadir = filteredGroupSessions.reduce((acc, ses) => {
+                    return acc + records.filter(r => r.sessionId === ses.id && r.status === 'HADIR').length;
+                  }, 0);
+                  const totalGroupExpected = filteredGroupSessions.reduce((acc, ses) => {
+                    return acc + Math.max(getStudentsForRombel(ses.rombel).length, 1);
+                  }, 0);
+                  const groupAttendanceRate = filteredGroupSessions.length > 0
+                    ? Math.min(100, Math.round((totalGroupHadir / totalGroupExpected) * 100))
+                    : 0;
+
+                  const primarySchedule = group.schedules[0] || mySchedules.find(s => s.courseCode === group.courseCode);
+
+                  return (
+                    <div key={group.courseCode} className="bg-white">
+                      {/* Header Pemisah Klasifikasi Mata Kuliah */}
+                      <div className="px-5 sm:px-6 py-4 bg-[#fafafa] border-b border-[#eeeeee] flex flex-col sm:flex-row sm:items-center justify-between gap-3.5">
+                        <div className="space-y-1">
+                          <div className="flex flex-wrap items-center gap-2 text-xs sm:text-sm">
+                            <span className="font-mono font-semibold text-[#0080FF]">{group.courseCode}</span>
+                            <span aria-hidden="true" className="text-[#cccccc]">·</span>
+                            <h4 className="font-semibold text-[#222222] text-sm sm:text-base">
+                              {group.courseName}
+                            </h4>
+                            <span aria-hidden="true" className="text-[#cccccc]">·</span>
+                            <span className="text-xs text-[#555555] tabular-nums">{group.sks} SKS</span>
+                            <span aria-hidden="true" className="text-[#cccccc]">·</span>
+                            <span className="text-xs text-[#555555]">Rombel {group.rombels.join(', ')}</span>
+                          </div>
+                          <p className="text-xs text-[#555555] tabular-nums">
+                            {filteredGroupSessions.length} dari 16 Pertemuan Terlaksana · Rata-rata Kehadiran Kelas:{' '}
+                            <strong className="text-[#017171] font-semibold">{groupAttendanceRate}%</strong>
+                          </p>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-2">
+                          {primarySchedule && (
+                            <button
+                              type="button"
+                              data-frost="Button"
+                              onClick={() => setScheduleForBukaSesi(primarySchedule)}
+                              className="frost-btn frost-btn-xs frost-btn-outline frost-btn-brand"
+                            >
+                              <Plus className="w-3.5 h-3.5 text-[#009499]" />
+                              <span className="label">Buka Sesi Baru</span>
+                            </button>
+                          )}
+
+                          <button
+                            type="button"
+                            data-frost="Button"
+                            onClick={() => handleExportByCourseCode(
+                              group.courseCode,
+                              sessionRombelFilter !== 'ALL' && group.rombels.includes(sessionRombelFilter)
+                                ? sessionRombelFilter
+                                : group.rombels[0],
+                              'teachingLog'
+                            )}
+                            className="frost-btn frost-btn-xs frost-btn-subtle frost-btn-brand"
+                            title={`Ekspor BAP & Presensi untuk ${group.courseName}`}
+                          >
+                            <Download className="w-3.5 h-3.5" />
+                            <span className="label">Ekspor Laporan MK Ini</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Daftar Sesi di dalam Mata Kuliah Ini */}
+                      {filteredGroupSessions.length === 0 ? (
+                        <div className="p-8 text-center space-y-3">
+                          <p className="text-sm text-[#777777]">
+                            Belum ada riwayat sesi perkuliahan untuk mata kuliah <strong className="text-[#333333]">{group.courseName}</strong>.
+                          </p>
+                          {primarySchedule && (
+                            <button
+                              type="button"
+                              data-frost="Button"
+                              onClick={() => setScheduleForBukaSesi(primarySchedule)}
+                              className="frost-btn frost-btn-sm frost-btn-solid frost-btn-brand"
+                            >
+                              <Play className="w-3.5 h-3.5" />
+                              <span className="label">Buka Sesi Pertemuan Pertama</span>
+                            </button>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="divide-y divide-[#eeeeee]">
+                          {filteredGroupSessions.map((session) => {
+                            const sRecords = records.filter(r => r.sessionId === session.id);
+                            const hadirCount = sRecords.filter(r => r.status === 'HADIR').length;
+                            const izinCount = sRecords.filter(r => r.status === 'IZIN').length;
+                            const sakitCount = sRecords.filter(r => r.status === 'SAKIT').length;
+                            const alphaCount = sRecords.filter(r => r.status === 'ALPHA').length;
+                            const enrolled = getStudentsForRombel(session.rombel);
+                            const attendancePct = enrolled.length > 0
+                              ? Math.round((hadirCount / enrolled.length) * 100)
+                              : 0;
+
+                            return (
+                              <div
+                                key={session.id}
+                                className="p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-[#fafafa] transition-colors"
+                              >
+                                <div className="space-y-1.5">
+                                  <div className="flex flex-wrap items-center gap-2 text-xs sm:text-sm">
+                                    <span className="font-mono tabular-nums font-semibold text-[#222222]">
+                                      Pertemuan {session.meetingNumber}
+                                      {session.meetingNumber === 8 ? ' (UTS)' : session.meetingNumber === 16 ? ' (UAS)' : ''}
+                                    </span>
+                                    <span aria-hidden="true" className="text-[#cccccc]">·</span>
+                                    <span className="font-semibold text-[#222222] text-sm sm:text-base">
+                                      {session.topic || session.courseName}
+                                    </span>
+                                    <span aria-hidden="true" className="text-[#cccccc]">·</span>
+                                    {session.isOpen ? (
+                                      <span className="text-xs font-semibold text-[#017171]">
+                                        Terbuka
+                                      </span>
+                                    ) : (
+                                      <span className="text-xs font-medium text-[#777777]">
+                                        Selesai
+                                      </span>
+                                    )}
+                                  </div>
+
+                                  <div className="flex flex-wrap items-center gap-2 text-xs sm:text-sm text-[#555555] tabular-nums">
+                                    <span className="font-medium text-[#333333]">{session.date}</span>
+                                    <span aria-hidden="true">·</span>
+                                    <span>{session.startTime}–{session.endTime} WIB</span>
+                                    <span aria-hidden="true">·</span>
+                                    <span>Ruang {session.room}</span>
+                                    <span aria-hidden="true">·</span>
+                                    <span className="font-medium text-[#333333]">Rombel {session.rombel}</span>
+                                    <span aria-hidden="true">·</span>
+                                    <span className="font-semibold text-[#222222]">
+                                      {hadirCount}/{enrolled.length} Hadir ({attendancePct}%)
+                                    </span>
+                                    {(izinCount > 0 || sakitCount > 0 || alphaCount > 0) && (
+                                      <span className="text-xs text-[#777777]">
+                                        ({izinCount > 0 ? `${izinCount} Izin ` : ''}
+                                        {sakitCount > 0 ? `${sakitCount} Sakit ` : ''}
+                                        {alphaCount > 0 ? `${alphaCount} Alpha` : ''})
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+
+                                <div className="flex flex-wrap items-center gap-2 shrink-0">
+                                  <button
+                                    type="button"
+                                    data-frost="Button"
+                                    onClick={() => {
+                                      setManualSessionId(session.id);
+                                      setIsManualModalOpen(true);
+                                    }}
+                                    className="frost-btn frost-btn-xs frost-btn-outline frost-btn-brand"
+                                  >
+                                    <span className="label">Presensi Manual</span>
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    data-frost="Button"
+                                    onClick={() => setSelectedSessionIdForQr(session.id)}
+                                    className={`frost-btn frost-btn-xs ${
+                                      session.isOpen
+                                        ? 'frost-btn-brand frost-btn-solid'
+                                        : 'frost-btn-brand frost-btn-subtle'
+                                    }`}
+                                  >
+                                    <span className="label">{session.isOpen ? 'Layar QR' : 'Detail'}</span>
+                                  </button>
+
+                                  {session.isOpen && (
+                                    <button
+                                      type="button"
+                                      data-frost="Button"
+                                      onClick={() => setSessionToClose(session)}
+                                      className="frost-btn frost-btn-xs frost-btn-subtle frost-btn-danger"
+                                      title="Akhiri sesi perkuliahan ini"
+                                    >
+                                      <Lock className="w-3.5 h-3.5" />
+                                      <span className="label">Tutup Sesi</span>
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* TAB 3: STUDENT ATTENDANCE MATRIX */}
       {activeTab === 'students' && (
-        <div className="bg-white border border-slate-200 rounded-xl overflow-hidden p-5 space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex flex-wrap items-center gap-2.5">
+        <div className="frost-card overflow-hidden p-6 sm:p-7 space-y-5">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="flex flex-wrap items-center gap-3">
               <select
                 value={selectedCourseFilter}
                 onChange={(e) => setSelectedCourseFilter(e.target.value)}
-                className="px-3 py-1.5 bg-white border border-slate-300 rounded-md text-sm font-medium text-slate-800 focus:outline-none focus:border-slate-500 cursor-pointer"
+                className="frost-select frost-select-sm w-auto cursor-pointer"
               >
                 <option value="ALL">Semua Kelas</option>
                 {mySchedules.map(s => (
@@ -785,42 +1085,44 @@ export const DosenDashboard: React.FC = () => {
               </select>
 
               <div className="relative">
-                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <Search className="w-4 h-4 text-[#777777] absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
                   type="text"
                   placeholder="Cari NIM atau nama..."
                   value={searchStudent}
                   onChange={(e) => setSearchStudent(e.target.value)}
-                  className="pl-9 pr-3 py-1.5 bg-white border border-slate-300 rounded-md text-sm focus:outline-none focus:border-slate-500"
+                  className="frost-input frost-input-sm pl-9 pr-3 w-60"
                 />
               </div>
             </div>
 
             <button
+              type="button"
+              data-frost="Button"
               onClick={() => {
                 setManualSessionId(activeSessions[0]?.id || mySessions[0]?.id || null);
                 setIsManualModalOpen(true);
               }}
-              className="px-4 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-md text-sm font-semibold flex items-center gap-2 transition cursor-pointer"
+              className="frost-btn frost-btn-sm frost-btn-solid frost-btn-brand"
             >
               <UserCheck className="w-4 h-4" />
-              <span>Lembar Roll-Call Lengkap</span>
+              <span className="label">Lembar Roll-Call Lengkap</span>
             </button>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm text-left border-collapse">
+          <div className="overflow-x-auto border border-[#dddddd] rounded-[6px]">
+            <table className="w-full text-sm text-left border-collapse min-w-[600px]">
               <thead>
-                <tr className="border-b border-slate-200 text-slate-600 font-semibold">
-                  <th className="py-3 px-4">No</th>
-                  <th className="py-3 px-4">NIM</th>
-                  <th className="py-3 px-4">Nama Mahasiswa</th>
-                  <th className="py-3 px-4">Rombel</th>
-                  <th className="py-3 px-4">Status Sesi Ini</th>
-                  <th className="py-3 px-4 text-right">Aksi Cepat</th>
+                <tr className="bg-[#fafafa] border-b border-[#dddddd] text-[#555555] font-semibold text-xs uppercase tracking-wider">
+                  <th className="py-3.5 px-4">No</th>
+                  <th className="py-3.5 px-4">NIM</th>
+                  <th className="py-3.5 px-4">Nama Mahasiswa</th>
+                  <th className="py-3.5 px-4">Rombel</th>
+                  <th className="py-3.5 px-4">Status Sesi Ini</th>
+                  <th className="py-3.5 px-4 text-right">Aksi Cepat</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-[#eeeeee]">
                 {students
                   .filter(stu => {
                     const q = searchStudent.toLowerCase();
@@ -836,45 +1138,53 @@ export const DosenDashboard: React.FC = () => {
                     const currentStatus = rec ? rec.status : 'BELUM';
 
                     return (
-                      <tr key={stu.nim} className="hover:bg-slate-50/60">
-                        <td className="py-3 px-4 text-slate-400">{idx + 1}</td>
-                        <td className="py-3 px-4 font-mono font-medium text-slate-900">{stu.nim}</td>
-                        <td className="py-3 px-4 font-semibold text-slate-900">{stu.name}</td>
-                        <td className="py-3 px-4 text-slate-600">{stu.rombel}</td>
-                        <td className="py-3 px-4">
-                          <span className={`font-semibold ${
-                            currentStatus === 'HADIR' ? 'text-emerald-700' :
-                            currentStatus === 'IZIN' ? 'text-blue-700' :
-                            currentStatus === 'SAKIT' ? 'text-amber-700' :
-                            currentStatus === 'ALPHA' ? 'text-rose-700' : 'text-slate-400'
+                      <tr key={stu.nim} className="hover:bg-[#fafafa] transition-colors">
+                        <td className="py-3.5 px-4 text-[#777777] font-mono tabular-nums">{idx + 1}</td>
+                        <td className="py-3.5 px-4 font-mono tabular-nums font-medium text-[#222222]">{stu.nim}</td>
+                        <td className="py-3.5 px-4 font-medium text-[#222222]">{stu.name}</td>
+                        <td className="py-3.5 px-4 text-[#555555]">{stu.rombel}</td>
+                        <td className="py-3.5 px-4">
+                          <span className={`font-semibold text-xs ${
+                            currentStatus === 'HADIR' ? 'text-[#017171]' :
+                            currentStatus === 'IZIN' ? 'text-[#016FDE]' :
+                            currentStatus === 'SAKIT' ? 'text-[#DE6F01]' :
+                            currentStatus === 'ALPHA' ? 'text-[#C73C3C]' : 'text-[#999999]'
                           }`}>
                             {currentStatus}
                           </span>
                         </td>
-                        <td className="py-3 px-4 text-right">
+                        <td className="py-3.5 px-4 text-right">
                           {targetSession && (
                             <div className="inline-flex items-center gap-1.5">
                               <button
+                                type="button"
+                                data-frost="Button"
                                 onClick={() => markStudentAttendanceDirectly(targetSession.id, stu.nim, 'HADIR')}
-                                className="px-2.5 py-1 text-xs text-emerald-700 hover:bg-emerald-50 rounded border border-emerald-200 cursor-pointer font-semibold"
+                                className="frost-btn frost-btn-xxs frost-btn-subtle frost-btn-teal"
                               >
                                 H
                               </button>
                               <button
+                                type="button"
+                                data-frost="Button"
                                 onClick={() => markStudentAttendanceDirectly(targetSession.id, stu.nim, 'IZIN')}
-                                className="px-2.5 py-1 text-xs text-blue-700 hover:bg-blue-50 rounded border border-blue-200 cursor-pointer font-semibold"
+                                className="frost-btn frost-btn-xxs frost-btn-subtle frost-btn-brand"
                               >
                                 I
                               </button>
                               <button
+                                type="button"
+                                data-frost="Button"
                                 onClick={() => markStudentAttendanceDirectly(targetSession.id, stu.nim, 'SAKIT')}
-                                className="px-2.5 py-1 text-xs text-amber-700 hover:bg-amber-50 rounded border border-amber-200 cursor-pointer font-semibold"
+                                className="frost-btn frost-btn-xxs frost-btn-outline frost-btn-brand"
                               >
                                 S
                               </button>
                               <button
+                                type="button"
+                                data-frost="Button"
                                 onClick={() => markStudentAttendanceDirectly(targetSession.id, stu.nim, 'ALPHA')}
-                                className="px-2.5 py-1 text-xs text-rose-700 hover:bg-rose-50 rounded border border-rose-200 cursor-pointer font-semibold"
+                                className="frost-btn frost-btn-xxs frost-btn-subtle frost-btn-danger"
                               >
                                 A
                               </button>
@@ -892,57 +1202,64 @@ export const DosenDashboard: React.FC = () => {
 
       {/* TAB 4: LEAVE REQUESTS */}
       {activeTab === 'leave' && (
-        <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
-          <div className="p-5 border-b border-slate-200">
-            <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">
+        <div className="frost-card overflow-hidden">
+          <div className="p-6 border-b border-[#dddddd]">
+            <h3 className="text-base sm:text-lg font-semibold text-[#222222]">
               Permohonan Izin & Sakit Mahasiswa
             </h3>
           </div>
 
-          <div className="divide-y divide-slate-100">
+          <div className="divide-y divide-[#eeeeee]">
             {myLeaveRequests.length === 0 ? (
-              <div className="p-8 text-center text-sm text-slate-400">
+              <div className="p-10 text-center text-sm text-[#777777]">
                 Tidak ada permohonan izin atau sakit.
               </div>
             ) : (
               myLeaveRequests.map((req) => (
-                <div key={req.id} className="p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-slate-50/50 transition">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold text-slate-900 text-sm sm:text-base">
-                        {req.studentName} ({req.studentNim})
+                <div key={req.id} className="p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-[#fafafa] transition-colors">
+                  <div className="space-y-1">
+                    <div className="flex flex-wrap items-center gap-2 text-sm">
+                      <span className="font-semibold text-[#222222]">
+                        {req.studentName}
                       </span>
-                      <span className="text-sm text-slate-500">· {req.rombel}</span>
-                      <span className={`text-sm font-semibold ${
-                        req.type === 'IZIN' ? 'text-blue-700' : 'text-amber-700'
+                      <span className="font-mono tabular-nums text-xs text-[#555555]">({req.studentNim})</span>
+                      <span aria-hidden="true" className="text-[#cccccc]">·</span>
+                      <span className="text-xs text-[#555555]">{req.rombel}</span>
+                      <span aria-hidden="true" className="text-[#cccccc]">·</span>
+                      <span className={`text-xs font-semibold ${
+                        req.type === 'IZIN' ? 'text-[#016FDE]' : 'text-[#DE6F01]'
                       }`}>
-                        · {req.type}
+                        {req.type}
                       </span>
                     </div>
-                    <p className="text-sm text-slate-600 mt-1">
+                    <p className="text-xs sm:text-sm text-[#555555] tabular-nums">
                       {req.courseName} · {req.date} · Alasan: {req.reason}
                     </p>
                   </div>
 
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2.5 shrink-0">
                     {req.status === 'PENDING' ? (
                       <>
                         <button
+                          type="button"
+                          data-frost="Button"
                           onClick={() => reviewLeaveRequest(req.id, 'APPROVED')}
-                          className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md text-sm font-medium cursor-pointer transition"
+                          className="frost-btn frost-btn-sm frost-btn-solid frost-btn-teal"
                         >
-                          Setujui
+                          <span className="label">Setujui</span>
                         </button>
                         <button
+                          type="button"
+                          data-frost="Button"
                           onClick={() => reviewLeaveRequest(req.id, 'REJECTED')}
-                          className="px-3.5 py-1.5 text-slate-700 hover:bg-slate-100 rounded-md text-sm font-medium cursor-pointer transition border border-slate-200"
+                          className="frost-btn frost-btn-sm frost-btn-outline frost-btn-danger"
                         >
-                          Tolak
+                          <span className="label">Tolak</span>
                         </button>
                       </>
                     ) : (
-                      <span className={`text-sm font-medium ${
-                        req.status === 'APPROVED' ? 'text-emerald-700' : 'text-rose-700'
+                      <span className={`text-xs font-semibold ${
+                        req.status === 'APPROVED' ? 'text-[#017171]' : 'text-[#C73C3C]'
                       }`}>
                         {req.status === 'APPROVED' ? 'Disetujui' : 'Ditolak'}
                       </span>

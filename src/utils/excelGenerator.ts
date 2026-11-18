@@ -71,7 +71,7 @@ export function generateAttendanceExcel(
     });
 
     const totalHeld = sortedSessions.length;
-    const percentage = totalHeld > 0 ? Math.round((hadirCount / totalHeld) * 100) : 100;
+    const percentage = totalHeld > 0 ? Math.round((hadirCount / totalHeld) * 100) : 0;
 
     worksheetData.push([
       index + 1,

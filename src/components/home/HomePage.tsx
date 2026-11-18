@@ -1,11 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useAttendance } from '../../context/AttendanceContext';
-import { CAMPUS_INFO } from '../../data/initialData';
 import { User } from '../../types/attendance';
 import {
   GraduationCap, BookOpen, ArrowRight,
-  AlertTriangle, Calendar, Eye, EyeOff,
-  CheckCircle2, Sparkles, KeyRound
+  AlertTriangle, Eye, EyeOff,
+  CheckCircle2, KeyRound
 } from 'lucide-react';
 
 interface HomePageProps {
@@ -23,7 +22,6 @@ export const HomePage: React.FC<HomePageProps> = ({
   activeRoleTab: externalRoleTab = 'mahasiswa',
   onChangeRoleTab,
   onOpenForgotPassword,
-  onNavigateToAdmin,
   inactivityNotice,
   onDismissInactivityNotice,
 }) => {
@@ -37,6 +35,8 @@ export const HomePage: React.FC<HomePageProps> = ({
   useEffect(() => {
     if (externalRoleTab === 'dosen' || externalRoleTab === 'mahasiswa') {
       setActiveTab(externalRoleTab);
+      setErrorMessage('');
+      setSuccessMessage('');
     }
   }, [externalRoleTab]);
 
@@ -107,24 +107,20 @@ export const HomePage: React.FC<HomePageProps> = ({
 
     setTimeout(() => {
       // 1. MAHASISWA LOGIN
-      // 1. MAHASISWA LOGIN
       if (activeTab === 'mahasiswa') {
         const cleanNim = cleanInput.toUpperCase();
         const lowerInput = cleanInput.toLowerCase();
 
-        // Cari user di database users (bisa via NIM atau via Email terbaru)
         const existingUser = users.find(
           u => (u.username.toUpperCase() === cleanNim || (u.email && u.email.toLowerCase() === lowerInput)) && u.role === 'mahasiswa'
         );
 
-        // Cari di database master students (bisa via NIM atau via Email terbaru)
         const foundStudent = students.find(
           s => s.nim.toUpperCase() === cleanNim || (s.email && s.email.toLowerCase() === lowerInput)
         );
 
         const currentPassword = existingUser?.password || foundStudent?.password;
 
-        // Jika user mahasiswa sudah memiliki kata sandi kustom / pernah ganti password, pass123 tidak berlaku lagi jika berbeda
         if (currentPassword) {
           if (passwordInput !== currentPassword) {
             setIsLoading(false);
@@ -136,7 +132,6 @@ export const HomePage: React.FC<HomePageProps> = ({
             return;
           }
         } else {
-          // Belum pernah ganti password: password default mahasiswa adalah 'pass123'
           if (passwordInput !== 'pass123') {
             setIsLoading(false);
             setErrorMessage('Kata sandi salah. Silakan periksa kembali kata sandi Anda atau gunakan fitur Lupa Kata Sandi.');
@@ -169,7 +164,7 @@ export const HomePage: React.FC<HomePageProps> = ({
             prodi: foundStudent.prodi,
             rombel: foundStudent.rombel,
             phone: foundStudent.phone,
-            avatarUrl: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150',
+            avatarUrl: '',
           };
           addUser(newStudentUser);
           saveRememberedState(foundStudent.nim);
@@ -207,7 +202,6 @@ export const HomePage: React.FC<HomePageProps> = ({
           return;
         }
 
-        // Jika dosen sudah pernah mengganti password via email, password default 'dosen123' TIDAK BERLAKU LAGI!
         if (matchedDosen.password) {
           if (passwordInput !== matchedDosen.password) {
             setIsLoading(false);
@@ -219,7 +213,6 @@ export const HomePage: React.FC<HomePageProps> = ({
             return;
           }
         } else {
-          // Belum pernah ganti password: password default dosen adalah 'dosen123' atau username dosen
           if (passwordInput !== 'dosen123' && passwordInput !== matchedDosen.username) {
             setIsLoading(false);
             setErrorMessage('Kata sandi dosen salah. Silakan periksa kembali atau gunakan fitur Lupa Kata Sandi.');
@@ -233,199 +226,123 @@ export const HomePage: React.FC<HomePageProps> = ({
         setTimeout(() => onLoginSuccess(matchedDosen), 400);
         return;
       }
-
-      // 3. BAAK / ADMIN LOGIN
-      if (activeTab === 'admin') {
-        const lowerInput = cleanInput.toLowerCase();
-        const adminUser = users.find(u => u.role === 'admin') || {
-          id: 'user-admin-1',
-          username: 'baak',
-          name: 'Administrator Akademik (BAAK)',
-          email: 'baak@stmik-arungbinang.ac.id',
-          role: 'admin',
-          avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150',
-          title: 'Kepala BAAK',
-          phone: '081234567890',
-        };
-
-        const isMatch = (
-          lowerInput === 'baak' ||
-          lowerInput === 'admin' ||
-          lowerInput === adminUser.username.toLowerCase() ||
-          (adminUser.email && lowerInput === adminUser.email.toLowerCase())
-        );
-
-        if (!isMatch) {
-          setIsLoading(false);
-          setErrorMessage('Username atau email administrator tidak valid.');
-          return;
-        }
-
-        // Jika admin sudah pernah mengganti password via email, password default 'baak123' TIDAK BERLAKU LAGI!
-        if (adminUser.password) {
-          if (passwordInput !== adminUser.password) {
-            setIsLoading(false);
-            if (passwordInput === 'baak123' || passwordInput === 'admin123') {
-              setErrorMessage('Kata sandi default administrator (baak123) sudah tidak berlaku karena Anda telah memperbarui kata sandi via email. Silakan gunakan kata sandi baru Anda.');
-            } else {
-              setErrorMessage('Kata sandi administrator salah. Silakan periksa kembali kata sandi baru Anda.');
-            }
-            return;
-          }
-        } else {
-          // Belum pernah ganti password: password default administrator adalah 'baak123'
-          if (passwordInput !== 'baak123' && passwordInput !== 'admin123') {
-            setIsLoading(false);
-            setErrorMessage('Kata sandi administrator salah. Gunakan password resmi: baak123');
-            return;
-          }
-        }
-
-        saveRememberedState('baak');
-        setIsLoading(false);
-        setSuccessMessage(`Login administrator berhasil. Mengalihkan...`);
-        setTimeout(() => onLoginSuccess(adminUser), 400);
-        return;
-      }
     }, 350);
   };
 
   return (
-    <div className="py-4 sm:py-8 space-y-6 sm:space-y-8 animate-fadeIn w-full max-w-full overflow-hidden">
-      {/* Inactivity Auto-Logout Alert Banner (if triggered) */}
+    <div className="py-2 sm:py-6 space-y-8 sm:space-y-10 w-full max-w-full">
+      {/* Inactivity Auto-Logout Alert Banner (Frost-UI Warning Callout) */}
       {inactivityNotice && (
-        <div className="max-w-xl mx-auto p-3.5 sm:p-4 bg-amber-50 border-2 border-amber-300 rounded-2xl flex items-start justify-between gap-3 shadow-xs animate-fadeIn">
-          <div className="flex items-start gap-2.5 sm:gap-3">
-            <div className="p-1.5 sm:p-2 bg-amber-100 rounded-xl text-amber-700 shrink-0 mt-0.5">
-              <AlertTriangle className="w-4 h-4 sm:w-5 sm:h-5" />
-            </div>
-            <div>
-              <h4 className="text-xs sm:text-sm font-bold text-amber-900">
+        <div className="max-w-xl mx-auto frost-callout frost-callout-warning justify-between items-center">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-[#DE6F01]" />
+            <div className="space-y-1">
+              <h4 className="text-sm font-semibold text-[#6F3800]">
                 Sesi Login Berakhir Otomatis
               </h4>
-              <p className="text-xs text-amber-800 mt-0.5 leading-relaxed">
+              <p className="text-xs text-[#904900] leading-relaxed">
                 {inactivityNotice}
               </p>
             </div>
           </div>
           {onDismissInactivityNotice && (
             <button
+              type="button"
+              data-frost="Button"
               onClick={onDismissInactivityNotice}
-              className="text-amber-700 hover:text-amber-900 p-1 rounded-lg text-xs font-bold cursor-pointer"
+              className="frost-btn frost-btn-xxs frost-btn-neutral shrink-0"
             >
-              ✕
+              Tutup
             </button>
           )}
         </div>
       )}
 
-      {/* Hero Welcome Header */}
-      <div className="text-center max-w-2xl mx-auto space-y-2.5 px-3">
-        <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-blue-50 border border-blue-200 text-blue-800 rounded-full text-[11px] sm:text-xs font-bold uppercase tracking-wider shadow-2xs">
-          <Sparkles className="w-3.5 h-3.5 text-blue-600 shrink-0" />
-          <span>{CAMPUS_INFO.name}</span>
-        </div>
-
-        <h2 className="text-xl sm:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
+      {/* Hero Header (Clean Frost-UI Typography, Balanced Spacing) */}
+      <div className="text-center max-w-2xl mx-auto px-2">
+        <h2
+          className="text-2xl sm:text-3xl lg:text-4xl font-semibold text-[#222222] tracking-tight leading-tight"
+          style={{ textWrap: 'balance' }}
+        >
           Portal Presensi Perkuliahan
         </h2>
-
-        <p className="text-xs sm:text-sm text-slate-600 max-w-lg mx-auto leading-relaxed">
-          Silakan pilih peran pengguna di bawah ini untuk mengakses layanan presensi QR, absensi kelas, dan pengawasan akademik.
-        </p>
-
-        <div className="flex items-center justify-center text-xs text-slate-500 pt-0.5 font-medium">
-          <span className="flex items-center gap-1.5 bg-slate-100 px-3 py-0.5 rounded-full text-slate-700 text-[11px]">
-            <Calendar className="w-3 h-3 text-slate-500" />
-            <span>{CAMPUS_INFO.semester}</span>
-          </span>
-        </div>
       </div>
 
-      {/* UNIFIED ROLE SWITCHER & LOGIN CARD */}
-      <div className="max-w-xl mx-auto w-full px-2 sm:px-0">
-        <div className="bg-white border border-slate-200 shadow-sm rounded-2xl overflow-hidden transition-all">
-          {/* Segmented Tab Bar Switcher */}
-          <div className="p-1.5 bg-slate-100 border-b border-slate-200 grid grid-cols-2 gap-1.5 text-xs sm:text-sm font-semibold select-none">
-            {/* Tab 1: Mahasiswa */}
+      {/* UNIFIED ROLE SWITCHER & LOGIN CARD (Frost-UI Surface & Tabs) */}
+      <div className="max-w-xl mx-auto w-full">
+        <div className="frost-card overflow-hidden">
+          {/* Frost-UI Tabs Switcher (Tab-BQdeouhM.css specification) */}
+          <div className="frost-tabs grid grid-cols-2 bg-[#fafafa] gap-0">
             <button
               type="button"
+              data-frost="Button"
               onClick={() => handleTabChange('mahasiswa')}
-              className={`py-2.5 px-3 rounded-xl flex items-center justify-center gap-2 transition cursor-pointer ${
-                activeTab === 'mahasiswa'
-                  ? 'bg-blue-600 text-white shadow-xs font-bold'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+              className={`frost-tab-btn w-full h-12 ${
+                activeTab === 'mahasiswa' ? 'frost-tab-btn-active' : ''
               }`}
             >
-              <GraduationCap className={`w-4 h-4 ${activeTab === 'mahasiswa' ? 'text-white' : 'text-blue-600'}`} />
-              <span className="truncate">Portal Mahasiswa</span>
+              <GraduationCap className="w-4 h-4 shrink-0" />
+              <span className="label truncate">Portal Mahasiswa</span>
             </button>
 
-            {/* Tab 2: Dosen */}
             <button
               type="button"
+              data-frost="Button"
               onClick={() => handleTabChange('dosen')}
-              className={`py-2.5 px-3 rounded-xl flex items-center justify-center gap-2 transition cursor-pointer ${
-                activeTab === 'dosen'
-                  ? 'bg-slate-900 text-white shadow-xs font-bold'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+              className={`frost-tab-btn w-full h-12 ${
+                activeTab === 'dosen' ? 'frost-tab-btn-active' : ''
               }`}
             >
-              <BookOpen className={`w-4 h-4 ${activeTab === 'dosen' ? 'text-white' : 'text-slate-800'}`} />
-              <span className="truncate">Portal Dosen</span>
+              <BookOpen className="w-4 h-4 shrink-0" />
+              <span className="label truncate">Portal Dosen</span>
             </button>
           </div>
 
           {/* Form Content Area */}
-          <div className="p-5 sm:p-7 space-y-5">
+          <div className="p-6 sm:p-8 space-y-6">
             {/* Header info for chosen role */}
-            <div className="flex items-center justify-between gap-3 pb-3 border-b border-slate-100">
-              <div>
-                <h3 className="text-base sm:text-lg font-bold text-slate-900">
+            <div className="flex items-start justify-between gap-4 pb-5 border-b border-[#eeeeee]">
+              <div className="space-y-1">
+                <h3 className="text-base sm:text-lg font-semibold text-[#222222]">
                   {activeTab === 'mahasiswa' ? 'Login Portal Mahasiswa' : 'Login Dosen Pengampu'}
                 </h3>
-                <p className="text-xs text-slate-500 mt-0.5">
+                <p className="text-xs sm:text-sm text-[#555555] leading-relaxed">
                   {activeTab === 'mahasiswa'
-                    ? 'Akses scan QR presensi mandiri & rekap kehadiran'
+                    ? 'Akses scan QR presensi mandiri & kartu kehadiran semester'
                     : 'Buka sesi perkuliahan & tayangkan QR Code kelas'}
                 </p>
               </div>
 
-              <div className="shrink-0">
-                <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold ${
-                  activeTab === 'mahasiswa' ? 'bg-blue-50 text-blue-700 border border-blue-200' :
-                  'bg-slate-100 text-slate-800 border border-slate-300'
-                }`}>
-                  {activeTab === 'mahasiswa' ? 'NIM Mahasiswa' : 'Akun Dosen'}
-                </span>
-              </div>
+              <span className="text-xs text-[#555555] font-medium whitespace-nowrap shrink-0 pt-0.5">
+                {activeTab === 'mahasiswa' ? 'Akun Mahasiswa' : 'Akun Dosen'}
+              </span>
             </div>
 
-            {/* Error Message */}
+            {/* Error Message (Frost-UI Error Callout) */}
             {errorMessage && (
-              <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-700 text-xs sm:text-sm flex items-start gap-2 animate-fadeIn">
-                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+              <div data-frost="Callout" className="frost-callout frost-callout-error">
+                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-[#E54545]" />
                 <span>{errorMessage}</span>
               </div>
             )}
 
-            {/* Success Message */}
+            {/* Success Message (Frost-UI Success Callout) */}
             {successMessage && (
-              <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-800 text-xs sm:text-sm flex items-start gap-2 animate-fadeIn">
-                <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5 text-emerald-600" />
+              <div data-frost="Callout" className="frost-callout frost-callout-success">
+                <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5 text-[#009499]" />
                 <span>{successMessage}</span>
               </div>
             )}
 
             {/* Main Login Form */}
-            <form onSubmit={handleLoginSubmit} className="space-y-4">
-              {/* Field 1: Username / NIM */}
+            <form onSubmit={handleLoginSubmit} className="space-y-5">
+              {/* Field 1: Username / NIM (Frost-UI TextInput) */}
               <div>
-                <label className="block text-xs sm:text-sm font-semibold text-slate-700 mb-1.5">
+                <label className="frost-label">
                   {activeTab === 'mahasiswa' ? 'Nomor Induk Mahasiswa (NIM)' : 'Nama Depan / NIDN Dosen'}
                 </label>
                 <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-[#777777]">
                     {activeTab === 'mahasiswa' ? <GraduationCap className="w-4 h-4" /> : <BookOpen className="w-4 h-4" />}
                   </div>
                   <input
@@ -438,31 +355,31 @@ export const HomePage: React.FC<HomePageProps> = ({
                     placeholder={
                       activeTab === 'mahasiswa' ? 'Contoh: 26TI0001' : 'Contoh: nur / agus / teguh'
                     }
-                    className="w-full pl-9 pr-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:border-slate-900 transition"
+                    className="frost-input pl-10 pr-4"
                     disabled={isLoading}
                     autoComplete="username"
                   />
                 </div>
               </div>
 
-              {/* Field 2: Password */}
+              {/* Field 2: Password (Frost-UI TextInput) */}
               <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <label className="text-xs sm:text-sm font-semibold text-slate-700">
-                    Kata Sandi (Password)
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-[13px] font-semibold text-[#555555]">
+                    Kata Sandi
                   </label>
                   {onOpenForgotPassword && (
                     <button
                       type="button"
                       onClick={() => onOpenForgotPassword(activeTab, usernameInput)}
-                      className="text-xs text-blue-600 hover:text-blue-800 font-medium hover:underline cursor-pointer"
+                      className="text-xs text-[#0080FF] hover:text-[#016FDE] font-medium hover:underline cursor-pointer"
                     >
                       Lupa kata sandi?
                     </button>
                   )}
                 </div>
                 <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-[#777777]">
                     <KeyRound className="w-4 h-4" />
                   </div>
                   <input
@@ -472,58 +389,61 @@ export const HomePage: React.FC<HomePageProps> = ({
                       setPasswordInput(e.target.value);
                       if (errorMessage) setErrorMessage('');
                     }}
-                    placeholder="••••••••"
-                    className="w-full pl-9 pr-10 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:border-slate-900 transition"
+                    placeholder="Masukkan kata sandi"
+                    className="frost-input pl-10 pr-10"
                     disabled={isLoading}
                     autoComplete="current-password"
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 cursor-pointer"
+                    className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-[#777777] hover:text-[#222222] cursor-pointer"
+                    title={showPassword ? 'Sembunyikan sandi' : 'Tampilkan sandi'}
                   >
                     {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
               </div>
 
-              {/* Opsi Ingat Sesi Login di Browser Ini */}
-              <div className="flex items-center justify-between text-xs text-slate-600 px-0.5">
-                <label className="flex items-center gap-2 cursor-pointer select-none">
+              {/* Remember Session Option */}
+              <div className="flex items-center justify-between text-xs text-[#555555] pt-1">
+                <label className="flex items-center gap-2.5 cursor-pointer select-none">
                   <input
                     type="checkbox"
                     checked={rememberMe}
                     onChange={(e) => setRememberMe(e.target.checked)}
-                    className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer accent-blue-600"
+                    className="w-4 h-4 rounded-[4px] border-[#dddddd] text-[#0080FF] focus:ring-[#0080FF] cursor-pointer accent-[#0080FF]"
                   />
-                  <span className="font-medium text-slate-700">Ingat sesi di browser ini</span>
+                  <span className="font-medium text-[#333333]">Ingat sesi di browser ini</span>
                 </label>
-                <span className="text-[11px] text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full font-medium">Aktif 2 Jam</span>
+                <span className="text-xs text-[#777777] tabular-nums">Durasi sesi 2 jam</span>
               </div>
 
-              {/* Submit Button */}
-              <button
-                type="submit"
-                disabled={isLoading}
-                className={`w-full py-3 px-4 rounded-xl text-white text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition cursor-pointer shadow-xs disabled:opacity-70 ${
-                  activeTab === 'mahasiswa' ? 'bg-blue-600 hover:bg-blue-700 active:bg-blue-800' :
-                  'bg-slate-900 hover:bg-slate-800 active:bg-slate-950'
-                }`}
-              >
-                {isLoading ? (
-                  <span className="flex items-center gap-2">
-                    <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
-                    <span>Memverifikasi Akun...</span>
-                  </span>
-                ) : (
-                  <>
-                    <span>
-                      {activeTab === 'mahasiswa' ? 'Masuk sebagai Mahasiswa' : 'Masuk sebagai Dosen'}
+              {/* Submit Button (Frost-UI Button lg solid) */}
+              <div className="pt-1">
+                <button
+                  type="submit"
+                  data-frost="Button"
+                  disabled={isLoading}
+                  className={`frost-btn frost-btn-lg frost-btn-full frost-btn-solid ${
+                    activeTab === 'mahasiswa' ? 'frost-btn-brand' : 'frost-btn-neutral'
+                  }`}
+                >
+                  {isLoading ? (
+                    <span className="flex items-center gap-2">
+                      <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      <span>Memverifikasi Akun...</span>
                     </span>
-                    <ArrowRight className="w-4 h-4" />
-                  </>
-                )}
-              </button>
+                  ) : (
+                    <>
+                      <span className="label">
+                        {activeTab === 'mahasiswa' ? 'Masuk sebagai Mahasiswa' : 'Masuk sebagai Dosen'}
+                      </span>
+                      <ArrowRight className="w-4 h-4" />
+                    </>
+                  )}
+                </button>
+              </div>
             </form>
           </div>
         </div>

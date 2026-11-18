@@ -1,8 +1,181 @@
 @import "tailwindcss";
 
+:root {
+  /* Frost-UI Official Size & Spacing Tokens */
+  --size-0: 0rem;
+  --size-1: 0.0625rem;
+  --size-2: 0.125rem;
+  --size-4: 0.25rem;
+  --size-6: 0.375rem;
+  --size-8: 0.5rem;
+  --size-12: 0.75rem;
+  --size-14: 0.875rem;
+  --size-16: 1rem;
+  --size-18: 1.125rem;
+  --size-20: 1.25rem;
+  --size-24: 1.5rem;
+  --size-32: 2rem;
+  --size-40: 2.5rem;
+  --size-48: 3rem;
+  --size-64: 4rem;
+  --size-80: 5rem;
+  --size-96: 6rem;
+  --size-128: 8rem;
+  --size-160: 10rem;
+
+  /* Frost-UI Official Color Palette */
+  --white: #ffffff;
+  --black: #000000;
+  --grey-25: #fafafa;
+  --grey-50: #f5f5f5;
+  --grey-100: #eeeeee;
+  --grey-150: #e6e6e6;
+  --grey-200: #dddddd;
+  --grey-300: #cccccc;
+  --grey-400: #b3b3b3;
+  --grey-500: #999999;
+  --grey-600: #777777;
+  --grey-700: #555555;
+  --grey-800: #333333;
+  --grey-900: #222222;
+
+  --blue-50: #E4F2FF;
+  --blue-100: #CCE6FF;
+  --blue-200: #98CBFF;
+  --blue-300: #66B3FF;
+  --blue-400: #3199FF;
+  --blue-500: #0080FF;
+  --blue-600: #016FDE;
+  --blue-700: #015FBD;
+  --blue-800: #004990;
+  --blue-900: #00386F;
+
+  --red-50: #FCEBEC;
+  --red-100: #FADADA;
+  --red-200: #F5B5B5;
+  --red-300: #EF8F8F;
+  --red-400: #EA696A;
+  --red-500: #E54545;
+  --red-600: #C73C3C;
+  --red-700: #A93333;
+  --red-800: #822727;
+  --red-900: #641E1E;
+
+  --teal-50: #E5F6F5;
+  --teal-100: #CCEBEA;
+  --teal-200: #99D6D6;
+  --teal-300: #66C2C2;
+  --teal-400: #33ADAD;
+  --teal-500: #009499;
+  --teal-600: #038585;
+  --teal-700: #017171;
+  --teal-800: #005757;
+  --teal-900: #004343;
+
+  --purple-50: #F2ECFC;
+  --purple-100: #E4DAFB;
+  --purple-200: #C9B5F5;
+  --purple-300: #AF8FEF;
+  --purple-400: #956AE9;
+  --purple-500: #7A45E5;
+  --purple-600: #6A3CC7;
+  --purple-700: #5A33A9;
+  --purple-800: #452782;
+  --purple-900: #351E64;
+
+  --orange-50: #FFF3E4;
+  --orange-100: #FFE6CC;
+  --orange-200: #FFCC99;
+  --orange-300: #FFB366;
+  --orange-400: #FF9933;
+  --orange-500: #FF8001;
+  --orange-600: #DE6F01;
+  --orange-700: #BD5F00;
+  --orange-800: #904900;
+  --orange-900: #6F3800;
+
+  /* Frost-UI Semantic Design Tokens */
+  --color-brand: var(--blue-500);
+  --color-text-1: var(--grey-900);
+  --color-text-2: var(--grey-700);
+  --color-text-3: var(--grey-500);
+  --color-text-4: var(--grey-500);
+  --color-surface-1: var(--white);
+  --color-surface-1-hover: var(--grey-100);
+  --color-surface-2: var(--grey-25);
+  --color-surface-3: var(--grey-50);
+  --color-surface-4: var(--grey-100);
+  --color-error: var(--red-500);
+  --color-danger: var(--red-500);
+  --color-border-w3: var(--grey-50);
+  --color-border-w2: var(--grey-100);
+  --color-border-w1: var(--grey-150);
+  --color-border: var(--grey-200);
+  --color-border-s1: var(--grey-300);
+  --color-border-s2: var(--grey-400);
+  --color-border-s3: var(--grey-500);
+  --color-focus-outline: var(--grey-800);
+  --focus-outline-width: 2px;
+  --focus-outline-offset: 1.5px;
+
+  /* Frost-UI Button Tokens */
+  --btn-brand-solid-text: var(--white);
+  --btn-brand-solid-bg: var(--color-brand);
+  --btn-brand-subtle-text: var(--color-brand);
+  --btn-brand-subtle-bg: color-mix(in oklab, var(--color-brand), white 90%);
+  --btn-brand-subtle-bg-hover: color-mix(in oklab, var(--color-brand), white 85%);
+  --btn-brand-outline-text: var(--color-text-1);
+  --btn-brand-outline-bg: var(--white);
+  --btn-brand-outline-bg-hover: var(--grey-50);
+  --btn-brand-outline-border: var(--color-input-border);
+  --btn-brand-outline-box-shadow: inset 0 0 0 1px var(--color-input-border);
+
+  --btn-danger-solid-text: var(--white);
+  --btn-danger-solid-bg: var(--red-500);
+  --btn-danger-subtle-text: var(--red-500);
+  --btn-danger-subtle-bg: color-mix(in oklab, var(--red-500), white 90%);
+  --btn-danger-subtle-bg-hover: color-mix(in oklab, var(--red-500), white 85%);
+  --btn-danger-outline-text: var(--red-500);
+  --btn-danger-outline-bg: var(--white);
+  --btn-danger-outline-bg-hover: var(--btn-danger-subtle-bg);
+  --btn-danger-outline-border: var(--color-input-border);
+  --btn-danger-outline-border-hover: color-mix(in oklab, var(--red-200), white 25%);
+  --btn-danger-outline-box-shadow: inset 0 0 0 1px var(--btn-danger-outline-border);
+  --btn-danger-outline-box-shadow-hover: inset 0 0 0 1px var(--btn-danger-outline-border-hover);
+
+  --btn-disabled-solid-text: var(--white);
+  --btn-disabled-solid-bg: var(--grey-300);
+  --btn-disabled-subtle-text: var(--grey-400);
+  --btn-disabled-subtle-bg: var(--grey-50);
+  --btn-disabled-outline-text: var(--grey-400);
+  --btn-disabled-outline-bg: var(--white);
+  --btn-disabled-outline-box-shadow: inset 0 0 0 1px var(--grey-100);
+
+  /* Frost-UI Input, Radius, Shadow & Motion Tokens */
+  --color-input-border: var(--grey-200);
+  --color-input-border-hover: var(--grey-300);
+  --color-input-border-focus: var(--grey-400);
+  --color-input-placeholder: var(--grey-500);
+  --radius-sm: var(--size-4);
+  --radius-md: var(--size-6);
+  --radius-lg: var(--size-8);
+  --radius-xl: var(--size-12);
+  --radius-full: 999999px;
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-2: 0 2px 6px rgba(0, 0, 0, 0.08);
+  --motion-100: all 0.1s linear;
+  --motion-150: all 0.15s linear;
+  --motion-200: all 0.2s linear;
+}
+
 @layer base {
   *, *::before, *::after {
     box-sizing: border-box;
+  }
+
+  *::selection {
+    background-color: color-mix(in oklab, var(--color-brand) 30%, var(--white) 100%);
+    color: var(--color-text-1);
   }
 
   html {
@@ -15,15 +188,16 @@
   }
 
   body {
-    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    color: #0f172a;
-    background-color: #f8fafc;
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    color: var(--color-text-1);
+    background-color: var(--color-surface-2);
     width: 100%;
     max-width: 100%;
     overflow-x: hidden;
     position: relative;
     margin: 0;
     padding: 0;
+    line-height: 1.5;
   }
 
   #root {
@@ -34,4 +208,396 @@
     display: flex;
     flex-direction: column;
   }
+
+  .font-mono,
+  .tabular-nums {
+    font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+/* ==========================================================================
+   Frost-UI Component System (https://frost-ui.com / storybook.frost-ui.com)
+   Wrapped in @layer components so Tailwind utility classes (pl-9, p-6, etc.)
+   cleanly compose with and override base component spacing.
+   ========================================================================== */
+@layer components {
+  /* 1. FrostButton (components-button--docs) */
+  .frost-btn {
+    --button-base-size: 40px;
+    --button-color-text: var(--color-text-1);
+    --button-color-text-hover: var(--color-text-1);
+    --button-color-bg: transparent;
+    --button-color-bg-hover: var(--grey-50);
+    color: var(--button-color-text);
+    background-color: var(--button-color-bg);
+    display: inline-flex;
+    justify-content: center;
+    align-items: center;
+    gap: var(--size-8);
+    width: fit-content;
+    height: var(--button-base-size);
+    min-height: var(--button-base-size);
+    padding: var(--size-8) var(--size-16);
+    font-size: var(--size-14);
+    font-weight: 500;
+    text-align: center;
+    line-height: 1.25;
+    border: none;
+    border-radius: var(--radius-md);
+    white-space: nowrap;
+    user-select: none;
+    cursor: pointer;
+    transition: background-color 0.1s linear, color 0.1s linear, box-shadow 0.1s linear;
+    flex-shrink: 0;
+  }
+
+  .frost-btn:hover,
+  .frost-btn:focus-visible {
+    color: var(--button-color-text-hover);
+    background-color: var(--button-color-bg-hover);
+  }
+
+  .frost-btn:focus-visible {
+    outline: 2px solid color-mix(in oklab, var(--color-brand) 100%, var(--black) 10%);
+    outline-offset: 1.5px;
+  }
+
+  /* FrostButton Sizes (8pt/4pt Proportional Grid) */
+  .frost-btn-xxs {
+    --button-base-size: 28px;
+    padding: var(--size-4) var(--size-10, 0.625rem);
+    gap: var(--size-4);
+    font-size: 0.75rem;
+    border-radius: var(--radius-md);
+  }
+
+  .frost-btn-xs {
+    --button-base-size: 32px;
+    padding: var(--size-6) var(--size-12);
+    gap: var(--size-6);
+    font-size: 0.8125rem;
+    border-radius: var(--radius-md);
+  }
+
+  .frost-btn-sm {
+    --button-base-size: 36px;
+    padding: var(--size-8) var(--size-14);
+    gap: var(--size-6);
+    font-size: var(--size-14);
+    border-radius: var(--radius-md);
+  }
+
+  .frost-btn-md {
+    --button-base-size: 40px;
+    padding: var(--size-8) var(--size-16);
+    gap: var(--size-8);
+    font-size: 0.875rem;
+    border-radius: var(--radius-md);
+  }
+
+  .frost-btn-lg {
+    --button-base-size: 48px;
+    padding: var(--size-12) var(--size-20);
+    gap: var(--size-8);
+    font-size: 0.9375rem;
+    font-weight: 600;
+    line-height: var(--size-24);
+    border-radius: var(--size-8);
+  }
+
+  .frost-btn-full {
+    width: 100%;
+  }
+
+  .frost-btn-icon-only {
+    width: var(--button-base-size);
+    max-width: var(--button-base-size);
+    height: var(--button-base-size);
+    max-height: var(--button-base-size);
+    padding: 0;
+  }
+
+  /* FrostButton Variants & Tones */
+  .frost-btn-brand {
+    --button-color-text: var(--btn-brand-outline-text);
+    --button-color-text-hover: var(--btn-brand-outline-text);
+    --button-color-bg-hover: var(--btn-brand-outline-bg-hover);
+  }
+
+  .frost-btn-brand.frost-btn-solid {
+    --button-color-text: var(--btn-brand-solid-text);
+    --button-color-text-hover: var(--btn-brand-solid-text);
+    --button-color-bg: var(--btn-brand-solid-bg);
+    --button-color-bg-hover: color-mix(in oklab, var(--btn-brand-solid-bg), black 6%);
+  }
+
+  .frost-btn-brand.frost-btn-subtle {
+    --button-color-text: var(--btn-brand-subtle-text);
+    --button-color-text-hover: var(--btn-brand-subtle-text);
+    --button-color-bg: var(--btn-brand-subtle-bg);
+    --button-color-bg-hover: var(--btn-brand-subtle-bg-hover);
+  }
+
+  .frost-btn-brand.frost-btn-outline {
+    --button-color-bg: var(--btn-brand-outline-bg);
+    --button-color-bg-hover: var(--btn-brand-outline-bg-hover);
+    box-shadow: var(--btn-brand-outline-box-shadow);
+  }
+
+  /* Neutral / Dark Solid Button */
+  .frost-btn-neutral.frost-btn-solid {
+    --button-color-text: var(--white);
+    --button-color-text-hover: var(--white);
+    --button-color-bg: var(--grey-900);
+    --button-color-bg-hover: var(--black);
+  }
+
+  .frost-btn-neutral.frost-btn-subtle {
+    --button-color-text: var(--grey-900);
+    --button-color-text-hover: var(--grey-900);
+    --button-color-bg: var(--grey-100);
+    --button-color-bg-hover: var(--grey-150);
+  }
+
+  .frost-btn-neutral.frost-btn-outline {
+    --button-color-text: var(--grey-900);
+    --button-color-text-hover: var(--grey-900);
+    --button-color-bg: var(--white);
+    --button-color-bg-hover: var(--grey-50);
+    box-shadow: var(--btn-brand-outline-box-shadow);
+  }
+
+  /* Teal / Nominal Semantic Button */
+  .frost-btn-teal.frost-btn-solid {
+    --button-color-text: var(--white);
+    --button-color-text-hover: var(--white);
+    --button-color-bg: var(--teal-500);
+    --button-color-bg-hover: var(--teal-600);
+  }
+
+  .frost-btn-teal.frost-btn-subtle {
+    --button-color-text: var(--teal-700);
+    --button-color-text-hover: var(--teal-800);
+    --button-color-bg: var(--teal-50);
+    --button-color-bg-hover: var(--teal-100);
+  }
+
+  .frost-btn-teal.frost-btn-outline {
+    --button-color-text: var(--teal-700);
+    --button-color-text-hover: var(--teal-800);
+    --button-color-bg: var(--white);
+    --button-color-bg-hover: var(--teal-50);
+    box-shadow: inset 0 0 0 1px var(--teal-200);
+  }
+
+  /* Danger / Destructive Semantic Button */
+  .frost-btn-danger {
+    --button-color-text: var(--btn-danger-outline-text);
+    --button-color-text-hover: var(--btn-danger-outline-text);
+    --button-color-bg-hover: var(--btn-danger-outline-bg-hover);
+  }
+
+  .frost-btn-danger:focus-visible {
+    outline-color: var(--btn-danger-solid-bg);
+  }
+
+  .frost-btn-danger.frost-btn-solid {
+    --button-color-text: var(--btn-danger-solid-text);
+    --button-color-text-hover: var(--btn-danger-solid-text);
+    --button-color-bg: var(--btn-danger-solid-bg);
+    --button-color-bg-hover: var(--red-600);
+  }
+
+  .frost-btn-danger.frost-btn-subtle {
+    --button-color-text: var(--btn-danger-subtle-text);
+    --button-color-text-hover: var(--red-600);
+    --button-color-bg: var(--btn-danger-subtle-bg);
+    --button-color-bg-hover: var(--btn-danger-subtle-bg-hover);
+  }
+
+  .frost-btn-danger.frost-btn-outline {
+    --button-color-bg: var(--btn-danger-outline-bg);
+    --button-color-bg-hover: var(--btn-danger-outline-bg-hover);
+    box-shadow: var(--btn-danger-outline-box-shadow);
+  }
+
+  .frost-btn:disabled,
+  .frost-btn[disabled] {
+    cursor: not-allowed;
+    opacity: 0.55;
+  }
+
+  /* 2. FrostTextInput & FrostSelect */
+  .frost-input,
+  .frost-select {
+    box-sizing: border-box;
+    outline: none;
+    border: none;
+    min-height: 42px;
+    height: 42px;
+    width: 100%;
+    padding-left: var(--size-14);
+    padding-right: var(--size-14);
+    border-radius: var(--radius-md);
+    box-shadow: inset 0 0 0 1px var(--color-input-border);
+    font-size: var(--size-14);
+    line-height: 1.4;
+    color: var(--color-text-1);
+    background-color: var(--color-surface-1);
+    transition: box-shadow 0.1s linear, background-color 0.1s linear;
+  }
+
+  .frost-input:hover:not(:disabled),
+  .frost-select:hover:not(:disabled) {
+    box-shadow: inset 0 0 0 1px var(--color-input-border-hover);
+  }
+
+  .frost-input:focus,
+  .frost-select:focus {
+    outline: 2px solid color-mix(in oklab, var(--color-brand) 100%, var(--black) 10%);
+    outline-offset: -1.5px;
+    background-color: var(--color-surface-1);
+  }
+
+  .frost-input::placeholder {
+    color: var(--color-input-placeholder);
+  }
+
+  .frost-input-sm,
+  .frost-select-sm {
+    min-height: 36px;
+    height: 36px;
+    padding-left: var(--size-12);
+    padding-right: var(--size-12);
+    font-size: 0.8125rem;
+  }
+
+  .frost-input-lg {
+    min-height: 48px;
+    height: 48px;
+    padding-left: var(--size-16);
+    padding-right: var(--size-16);
+    font-size: var(--size-16);
+  }
+
+  .frost-label {
+    display: block;
+    color: var(--color-text-2);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    line-height: 1.35;
+    padding-left: var(--size-1);
+    margin-bottom: var(--size-8);
+  }
+
+  /* 3. FrostTabs (Tab-BQdeouhM.css) */
+  .frost-tabs {
+    display: flex;
+    width: 100%;
+    overflow-x: auto;
+    box-shadow: inset 0 -1px 0 0 var(--color-border);
+    gap: var(--size-4);
+  }
+
+  .frost-tab-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--size-8);
+    height: 46px;
+    padding: var(--size-8) var(--size-18);
+    font-size: var(--size-14);
+    font-weight: 500;
+    color: var(--color-text-2);
+    background-color: transparent;
+    border: none;
+    border-radius: 0;
+    border-top-left-radius: var(--radius-md);
+    border-top-right-radius: var(--radius-md);
+    box-shadow: inset 0 -1px 0 0 var(--color-border);
+    white-space: nowrap;
+    cursor: pointer;
+    user-select: none;
+    transition: all 0.1s linear;
+    flex-shrink: 0;
+  }
+
+  .frost-tab-btn:hover {
+    color: var(--color-text-1);
+    background-color: var(--grey-50);
+  }
+
+  .frost-tab-btn-active {
+    color: var(--color-brand);
+    font-weight: 600;
+    background-color: color-mix(in oklab, var(--blue-50) 100%, white 25%);
+    box-shadow: inset 0 -2px 0 0 var(--color-brand);
+  }
+
+  .frost-tab-btn-active:hover {
+    color: var(--color-brand);
+    background-color: var(--blue-50);
+  }
+
+  /* 4. FrostCard & Surface Containers */
+  .frost-card {
+    background-color: var(--color-surface-1);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-1);
+  }
+
+  .frost-surface-2 {
+    background-color: var(--color-surface-2);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+  }
+
+  /* 5. FrostCallout (Clean all-around 1px border, balanced padding) */
+  .frost-callout {
+    padding: var(--size-16) var(--size-20);
+    font-size: var(--size-14);
+    line-height: 1.5;
+    border-radius: var(--radius-lg);
+    display: flex;
+    align-items: flex-start;
+    gap: var(--size-12);
+    border: 1px solid var(--color-border);
+    background-color: var(--grey-50);
+    color: var(--color-text-1);
+  }
+
+  .frost-callout-info {
+    background-color: var(--blue-50);
+    border-color: var(--blue-100);
+    color: var(--blue-700);
+  }
+
+  .frost-callout-success {
+    background-color: var(--teal-50);
+    border-color: var(--teal-100);
+    color: var(--teal-700);
+  }
+
+  .frost-callout-warning {
+    background-color: var(--orange-50);
+    border-color: var(--orange-100);
+    color: var(--orange-700);
+  }
+
+  .frost-callout-error {
+    background-color: var(--red-50);
+    border-color: var(--red-100);
+    color: var(--red-600);
+  }
+}
+
+/* Scrollbar utility */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }

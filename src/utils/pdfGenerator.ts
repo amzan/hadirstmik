@@ -141,7 +141,7 @@ export function generateAttendancePDF(
     });
 
     const totalHeld = sortedSessions.length;
-    const percentage = totalHeld > 0 ? Math.round((hadirCount / totalHeld) * 100) : 100;
+    const percentage = totalHeld > 0 ? Math.round((hadirCount / totalHeld) * 100) : 0;
 
     return [
       (index + 1).toString(),

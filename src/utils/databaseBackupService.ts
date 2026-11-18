@@ -96,7 +96,7 @@ export function getLatestMasterBackup(): DatabaseBackup {
 
   return {
     version: BACKUP_FORMAT_VERSION,
-    timestamp: '2026-10-13T09:30:16.694Z',
+    timestamp: '2026-11-18T14:26:20.445Z',
     appName: 'Sistem Presensi QR Kampus - STMIK PGRI Arungbinang Kebumen',
     campusName: CAMPUS_INFO.name,
     semester: CAMPUS_INFO.semester,
@@ -126,8 +126,8 @@ export function getDefaultMasterSnapshot(): DatabaseSnapshot {
   return {
     id: DEFAULT_MASTER_SNAPSHOT_ID,
     name: 'Master Backup Database Terkini (Resmi BAAK)',
-    note: 'Database paling mutakhir: 17 Akun, 64 Mahasiswa, 35 Jadwal, 84 Presensi. Pengecualian: Matakuliah Algoritma dan Pemrograman telah dialihkan ke Dosen Ammar Fauzan, S.Pd., M.Kom. (Rabu 18.00 WIB, 2 SKS).',
-    timestamp: '2026-10-13T09:30:16.694Z',
+    note: 'Database paling mutakhir (18 Nov 2026 21:26 WIB): 78 Akun Pengguna, 66 Mahasiswa, 29 Mata Kuliah, 34 Jadwal, 26 Sesi Presensi, 533 Rekaman Kehadiran, 3 Pengajuan Izin.',
+    timestamp: '2026-11-18T14:26:20.445Z',
     summary: backup.summary,
     data: backup.data,
   };
@@ -473,19 +473,23 @@ export function formatBytes(bytes: number): string {
 // ==========================================
 
 export function loadLocalSnapshots(): DatabaseSnapshot[] {
+  const latestMaster = getDefaultMasterSnapshot();
   try {
     const saved = localStorage.getItem(STORAGE_KEY_SNAPSHOTS);
     if (saved) {
       const parsed = JSON.parse(saved);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed.map(snap => ({
-          ...snap,
-          data: sanitizeAlgoritmaCourseAndSchedules(snap.data || {}),
-        }));
+        const sanitizedList = parsed
+          .filter(snap => snap.id !== DEFAULT_MASTER_SNAPSHOT_ID)
+          .map(snap => ({
+            ...snap,
+            data: sanitizeAlgoritmaCourseAndSchedules(snap.data || {}),
+          }));
+        return [latestMaster, ...sanitizedList];
       }
     }
   } catch {}
-  return [getDefaultMasterSnapshot()];
+  return [latestMaster];
 }
 
 export function saveLocalSnapshot(
