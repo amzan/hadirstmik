@@ -10,6 +10,7 @@ import { CloseSessionDialog } from './CloseSessionDialog';
 import { MeetingDatesModal } from './MeetingDatesModal';
 import { BukaSesiModal } from './BukaSesiModal';
 import { DosenProfileModal } from './DosenProfileModal';
+import { isStudentInRombel } from '../../data/initialData';
 import {
   QrCode, Plus, Download, Users,
   Calendar, FileText, Search, UserCheck, BookOpen, Lock, Play, UserCog
@@ -1129,11 +1130,15 @@ export const DosenDashboard: React.FC = () => {
                     const matchSearch = stu.name.toLowerCase().includes(q) || stu.nim.toLowerCase().includes(q);
                     if (selectedCourseFilter === 'ALL') return matchSearch;
                     const sch = mySchedules.find(s => s.courseCode === selectedCourseFilter);
-                    return matchSearch && sch && stu.rombel.includes(sch.rombel);
+                    return matchSearch && !!sch && isStudentInRombel(stu.rombel, sch.rombel, stu.rombels);
                   })
                   .slice(0, 30)
                   .map((stu, idx) => {
-                    const targetSession = activeSessions[0] || mySessions[0];
+                    const targetSession =
+                      selectedCourseFilter !== 'ALL'
+                        ? activeSessions.find(s => s.courseCode === selectedCourseFilter) ||
+                          mySessions.find(s => s.courseCode === selectedCourseFilter)
+                        : activeSessions[0] || mySessions[0];
                     const rec = targetSession ? records.find(r => r.sessionId === targetSession.id && r.studentNim === stu.nim) : null;
                     const currentStatus = rec ? rec.status : 'BELUM';
 

@@ -1,15 +1,15 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useAttendance } from '../../context/AttendanceContext';
 import { QrScannerModal } from './QrScannerModal';
 import { LeaveRequestModal } from './LeaveRequestModal';
-import { getStudentRombelList, getStudentEnrolledSchedules, CAMPUS_INFO } from '../../data/initialData';
+import { getStudentRombelList, getStudentEnrolledSchedules, isStudentInRombel, CAMPUS_INFO } from '../../data/initialData';
 import {
   generateKartuPresensiPDF,
   KartuPresensiCourseItem,
   KartuPresensiStudentData
 } from '../../utils/pdfGenerator';
 import {
-  QrCode, FileText, Calendar, UserCheck, Clock, UserCog, FileDown, CheckCircle2, Loader2, ShieldCheck
+  QrCode, FileText, Calendar, UserCheck, Clock, UserCog, FileDown, CheckCircle2, Loader2, ShieldCheck, RefreshCw, Shield, Zap, HeartPulse, Skull, Award
 } from 'lucide-react';
 
 interface MahasiswaDashboardProps {
@@ -22,11 +22,13 @@ export const MahasiswaDashboard: React.FC<MahasiswaDashboardProps> = ({
   const {
     currentUser,
     records,
+    sessions,
     schedules,
     students,
     activeDay,
     simulatedTime,
-    getAttendanceRateForStudent
+    getAttendanceRateForStudent,
+    syncStudentData
   } = useAttendance();
 
   const [isScannerOpen, setIsScannerOpen] = useState(false);
@@ -34,20 +36,85 @@ export const MahasiswaDashboard: React.FC<MahasiswaDashboardProps> = ({
   const [selectedCourseTab, setSelectedCourseTab] = useState<string>('ALL');
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const [pdfSuccessNotice, setPdfSuccessNotice] = useState<string | null>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [lastSyncedAt, setLastSyncedAt] = useState<string>(() =>
+    new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })
+  );
+  const [syncNotice, setSyncNotice] = useState<string | null>(null);
 
-  const studentNim = currentUser.username;
-  const studentRombelList = (currentUser.rombels && currentUser.rombels.length > 0)
-    ? currentUser.rombels
-    : getStudentRombelList(currentUser.rombel || 'TI 3');
+  const studentNim = (currentUser.username || '').trim().toUpperCase();
+  const matchedStudent = students.find(s => s.nim.trim().toUpperCase() === studentNim);
+
+  const studentRombelList = (matchedStudent?.rombels && matchedStudent.rombels.length > 0)
+    ? matchedStudent.rombels
+    : (currentUser.rombels && currentUser.rombels.length > 0)
+      ? currentUser.rombels
+      : getStudentRombelList(matchedStudent?.rombel || currentUser.rombel || 'TI 3');
+
+  // Auto-synchronize relational data when student dashboard mounts or student NIM changes
+  useEffect(() => {
+    if (studentNim) {
+      const res = syncStudentData(studentNim);
+      if (res.syncedAt) {
+        setLastSyncedAt(res.syncedAt);
+      }
+    }
+  }, [studentNim]);
+
+  // Manual trigger to refresh relational data from Dosen & Admin BAAK
+  const handleSyncData = () => {
+    setIsSyncing(true);
+    setSyncNotice(null);
+    setTimeout(() => {
+      const res = syncStudentData(studentNim);
+      setLastSyncedAt(res.syncedAt);
+      setSyncNotice(res.message);
+      setIsSyncing(false);
+      setTimeout(() => setSyncNotice(null), 8000);
+    }, 300);
+  };
 
   // Overall attendance rate
   const overallRate = getAttendanceRateForStudent(studentNim);
 
-  // Filter personal attendance records (STRICT: only their own records)
-  const myRecords = records.filter(r => r.studentNim === studentNim);
+  // Filter personal attendance records strictly matched & deduplicated against student's valid sessions
+  const myRecords = useMemo(() => {
+    const activeStudent = matchedStudent || currentUser;
+    const validSessionMap = new Map(
+      sessions
+        .filter(session => {
+          if (session.scheduleId && activeStudent.excludedScheduleIds?.includes(session.scheduleId)) {
+            return false;
+          }
+          const isCustomIncluded = session.scheduleId && activeStudent.customScheduleIds?.includes(session.scheduleId);
+          return isCustomIncluded || isStudentInRombel(activeStudent.rombel, session.rombel, activeStudent.rombels);
+        })
+        .map(s => [s.id, s])
+    );
+
+    const dedupBySession = new Map<string, typeof records[number]>();
+    records.forEach(r => {
+      if (r.studentNim.trim().toUpperCase() !== studentNim) return;
+      if (!validSessionMap.has(r.sessionId)) return;
+
+      const existing = dedupBySession.get(r.sessionId);
+      if (!existing) {
+        dedupBySession.set(r.sessionId, r);
+      } else {
+        const tExisting = new Date(existing.scannedAt || 0).getTime();
+        const tCurr = new Date(r.scannedAt || 0).getTime();
+        if (tCurr >= tExisting) {
+          dedupBySession.set(r.sessionId, r);
+        }
+      }
+    });
+
+    return Array.from(dedupBySession.values()).sort(
+      (a, b) => new Date(b.scannedAt || 0).getTime() - new Date(a.scannedAt || 0).getTime()
+    );
+  }, [records, sessions, matchedStudent, currentUser, studentNim]);
 
   // Enrolled schedules for this student, respecting any individual exclusions
-  const matchedStudent = students.find(s => s.nim.toUpperCase() === studentNim.toUpperCase());
   const mySchedules = getStudentEnrolledSchedules(matchedStudent || currentUser, schedules);
 
   // Today's classes
@@ -85,8 +152,8 @@ export const MahasiswaDashboard: React.FC<MahasiswaDashboardProps> = ({
 
       const studentData: KartuPresensiStudentData = {
         nim: studentNim,
-        name: currentUser.name,
-        prodi: currentUser.prodi || matchedStudent?.prodi || 'Teknologi Informasi',
+        name: matchedStudent?.name || currentUser.name,
+        prodi: matchedStudent?.prodi || currentUser.prodi || 'Teknologi Informasi',
         rombel: studentRombelList.join(', ') || currentUser.rombel || 'TI 3',
         academicYear: '2026/2027 Ganjil',
         semester: CAMPUS_INFO.semester,
@@ -105,127 +172,280 @@ export const MahasiswaDashboard: React.FC<MahasiswaDashboardProps> = ({
     }
   };
 
-  const studentProdi = currentUser.prodi || matchedStudent?.prodi || 'Teknologi Informasi';
+  const studentProdi = matchedStudent?.prodi || currentUser.prodi || 'Teknologi Informasi';
+  const studentDisplayName = matchedStudent?.name || currentUser.name;
   const studentAvatarUrl = currentUser.avatarUrl;
-  const studentInitials = currentUser.name
+  const studentInitials = studentDisplayName
     .split(' ')
     .filter(Boolean)
     .slice(0, 2)
     .map(part => part[0]?.toUpperCase() || '')
     .join('');
 
+  // Light Mode Game Card Color & Visual Accents derived from overall attendance rate
+  const gameRankInfo = useMemo(() => {
+    const pct = overallRate.percentage;
+    const hasSessions = overallRate.totalSessions > 0;
+    if (!hasSessions) {
+      return {
+        tier: 'Student',
+        badgeBg: 'bg-slate-100 border-slate-200 text-slate-600',
+        barGradient: 'from-slate-400 to-slate-500',
+        glowRing: 'shadow-[0_6px_18px_-4px_rgba(148,163,184,0.35)]',
+      };
+    }
+    if (pct >= 95) {
+      return {
+        tier: 'Student',
+        badgeBg: 'bg-amber-50 border-amber-200 text-amber-700',
+        barGradient: 'from-amber-400 via-sky-500 to-emerald-500',
+        glowRing: 'shadow-[0_6px_20px_-4px_rgba(0,128,255,0.28)]',
+      };
+    }
+    if (pct >= 85) {
+      return {
+        tier: 'Student',
+        badgeBg: 'bg-[#E4F2FF] border-[#CCE6FF] text-[#0080FF]',
+        barGradient: 'from-[#0080FF] via-cyan-500 to-emerald-500',
+        glowRing: 'shadow-[0_6px_20px_-4px_rgba(0,128,255,0.25)]',
+      };
+    }
+    if (pct >= 75) {
+      return {
+        tier: 'Student',
+        badgeBg: 'bg-emerald-50 border-emerald-200 text-emerald-700',
+        barGradient: 'from-emerald-500 to-teal-500',
+        glowRing: 'shadow-[0_6px_18px_-4px_rgba(16,185,129,0.25)]',
+      };
+    }
+    return {
+      tier: 'Student',
+      badgeBg: 'bg-rose-50 border-rose-200 text-rose-700',
+      barGradient: 'from-rose-500 to-orange-500',
+      glowRing: 'shadow-[0_6px_18px_-4px_rgba(244,63,94,0.25)]',
+    };
+  }, [overallRate.percentage, overallRate.totalSessions]);
+
   return (
     <div className="space-y-6 sm:space-y-8 max-w-7xl mx-auto">
-      {/* Top 2-Column Section: Left = Portrait Student ID Card, Right = Quick Actions & Kartu Presensi Panel */}
+      {/* Top 2-Column Section: Left = Portrait Student Game Card (Light Mode), Right = Quick Actions & Kartu Presensi Panel */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
-        {/* Left Column: Portrait Student ID Card (Rounded Corner) */}
+        {/* Left Column: Portrait Student ID Card (Light Mode Game Card + Frost-UI Typography & Spacing) */}
         <div className="lg:col-span-4 xl:col-span-4 flex">
-          <div className="w-full bg-white border border-[#dddddd] rounded-2xl overflow-hidden flex flex-col justify-between shadow-xs">
-            {/* ID Card Top Lanyard Slot & Institution Header */}
-            <div>
-              <div className="bg-[#0080FF] px-5 pt-4 pb-12 text-white relative">
-                {/* Lanyard punch hole */}
-                <div className="w-12 h-2 bg-white/30 rounded-full mx-auto mb-3.5" aria-hidden="true" />
-                <div className="flex items-center justify-center gap-2 text-center">
-                  <div className="space-y-0.5">
-                    <p className="text-[10px] uppercase tracking-widest font-semibold text-white/85">
+          <div className="w-full relative rounded-2xl p-[1.5px] bg-gradient-to-b from-[#0080FF]/45 via-[#38bdf8]/35 to-[#6366F1]/40 shadow-sm flex flex-col justify-between overflow-hidden group select-none font-sans">
+            {/* Inner Light Mode Card Chassis */}
+            <div className="w-full h-full bg-white rounded-[14.5px] overflow-hidden flex flex-col justify-between relative text-[#222222]">
+              {/* Subtle Light Tactical Grid & Soft Blue Ambient Glow */}
+              <div
+                className="absolute inset-0 opacity-60 pointer-events-none"
+                style={{
+                  backgroundImage:
+                    'linear-gradient(to right, rgba(0,128,255,0.045) 1px, transparent 1px), linear-gradient(to bottom, rgba(0,128,255,0.045) 1px, transparent 1px)',
+                  backgroundSize: '20px 20px',
+                }}
+                aria-hidden="true"
+              />
+              <div
+                className="absolute -top-24 left-1/2 -translate-x-1/2 w-72 h-44 bg-[#0080FF]/10 blur-3xl rounded-full pointer-events-none"
+                aria-hidden="true"
+              />
+
+              {/* Top Section: Card Header, Portrait & Academic Identity */}
+              <div className="relative z-10">
+                {/* Top Bar: Student Badge & Institution Header */}
+                <div className="px-6 pt-5 pb-4 bg-gradient-to-b from-[#F4F9FF] to-white border-b border-[#E5EEF8]">
+                  <div className="flex items-center justify-between gap-2 mb-3">
+                    <span
+                      className={`inline-flex items-center px-2.5 py-0.5 rounded-md border text-xs font-semibold ${gameRankInfo.badgeBg}`}
+                    >
+                      <span>{gameRankInfo.tier}</span>
+                    </span>
+                  </div>
+
+                  {/* Institution Banner */}
+                  <div className="text-center space-y-1">
+                    <p className="text-[11px] uppercase tracking-wider text-[#0080FF] font-semibold">
                       Kartu Identitas Mahasiswa
                     </p>
-                    <h3 className="text-xs sm:text-sm font-bold tracking-tight text-white leading-snug">
+                    <h3 className="text-xs sm:text-sm font-semibold tracking-tight text-[#222222] leading-snug line-clamp-2">
                       {CAMPUS_INFO.name}
                     </h3>
                   </div>
                 </div>
+
+                {/* Portrait Profile Photo & Identity Details */}
+                <div className="px-6 pt-5 pb-5 flex flex-col items-center text-center relative">
+                  <div className="relative">
+                    <div
+                      className={`p-1 rounded-2xl bg-gradient-to-br from-[#0080FF] via-sky-400 to-indigo-500 ${gameRankInfo.glowRing} transition-transform duration-300 group-hover:scale-[1.02]`}
+                    >
+                      <div className="relative rounded-xl overflow-hidden bg-white border-2 border-white">
+                        {studentAvatarUrl ? (
+                          <img
+                            src={studentAvatarUrl}
+                            alt={studentDisplayName}
+                            className="w-24 h-28 sm:w-28 sm:h-32 object-cover"
+                          />
+                        ) : (
+                          <div className="w-24 h-28 sm:w-28 sm:h-32 bg-gradient-to-b from-[#E4F2FF] to-[#F0F7FF] text-[#0080FF] flex flex-col items-center justify-center font-bold text-2xl sm:text-3xl">
+                            <span>{studentInitials || 'MH'}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Status Badge */}
+                    <div
+                      className="absolute -bottom-2 -right-2 px-2 py-0.5 rounded-md bg-white border border-emerald-300 text-[10px] font-semibold text-emerald-700 shadow-xs flex items-center gap-1"
+                      title="Status Mahasiswa Aktif"
+                    >
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                      <span>Aktif</span>
+                    </div>
+                  </div>
+
+                  {/* Name & NIM */}
+                  <h2 className="text-lg sm:text-xl font-semibold text-[#222222] tracking-tight mt-4 leading-snug">
+                    {studentDisplayName}
+                  </h2>
+
+                  <div className="mt-1.5 inline-flex items-center gap-1.5 px-3 py-0.5 rounded-md bg-[#F4F9FF] border border-[#CCE6FF] text-xs font-mono font-semibold text-[#0080FF] tabular-nums">
+                    <span>NIM: {studentNim}</span>
+                  </div>
+
+                  {/* Program Studi & Rombel Metadata */}
+                  <div className="w-full mt-5 grid grid-cols-2 gap-2.5 text-left">
+                    <div className="p-3 rounded-xl bg-[#fafafa] border border-[#e5e7eb] relative overflow-hidden">
+                      <div className="w-1 h-full bg-[#0080FF] absolute left-0 top-0" aria-hidden="true" />
+                      <span className="text-[11px] uppercase tracking-wider text-[#777777] font-semibold block pl-1.5">
+                        Program Studi
+                      </span>
+                      <span
+                        className="text-xs font-semibold text-[#222222] mt-0.5 block truncate pl-1.5"
+                        title={studentProdi}
+                      >
+                        {studentProdi}
+                      </span>
+                    </div>
+                    <div className="p-3 rounded-xl bg-[#fafafa] border border-[#e5e7eb] relative overflow-hidden">
+                      <div className="w-1 h-full bg-indigo-500 absolute left-0 top-0" aria-hidden="true" />
+                      <span className="text-[11px] uppercase tracking-wider text-[#777777] font-semibold block pl-1.5">
+                        Kelas / Rombel
+                      </span>
+                      <span className="text-xs font-semibold text-[#0080FF] mt-0.5 block truncate pl-1.5">
+                        {studentRombelList.join(', ')}
+                      </span>
+                    </div>
+                  </div>
+                </div>
               </div>
 
-              {/* Portrait Profile Photo & Identity Details */}
-              <div className="px-6 pb-5 -mt-9 flex flex-col items-center text-center">
-                <div className="relative">
-                  {studentAvatarUrl ? (
-                    <img
-                      src={studentAvatarUrl}
-                      alt={currentUser.name}
-                      className="w-20 h-24 sm:w-24 sm:h-28 rounded-xl object-cover border-4 border-white bg-[#f5f5f5] shadow-xs"
-                    />
-                  ) : (
-                    <div className="w-20 h-24 sm:w-24 sm:h-28 rounded-xl border-4 border-white bg-[#E4F2FF] text-[#0080FF] flex flex-col items-center justify-center font-bold text-xl sm:text-2xl shadow-xs">
-                      <span>{studentInitials || 'MH'}</span>
-                    </div>
-                  )}
-                  <span
-                    className="w-3.5 h-3.5 rounded-full bg-[#009499] border-2 border-white absolute -bottom-1 -right-1"
-                    title="Status Mahasiswa Aktif"
+              {/* Bottom Attendance Stats Section (Light Mode HUD) */}
+              <div className="relative z-10 px-6 pb-5 pt-4 bg-[#F8FAFC] border-t border-[#E5EEF8] space-y-3.5">
+                {/* Header + Sync Action + Rate */}
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5">
+                    <Award className="w-3.5 h-3.5 text-[#0080FF] shrink-0" />
+                    <span className="text-xs font-semibold text-[#333333]">
+                      Statistik Kehadiran
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleSyncData}
+                      disabled={isSyncing}
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-[#E4F2FF] border border-[#CCE6FF] text-[11px] font-medium text-[#0080FF] hover:bg-[#CCE6FF] transition cursor-pointer"
+                      title="Sinkronkan ulang relasi data kehadiran terbaru dari Dosen & Admin BAAK"
+                    >
+                      <RefreshCw className={`w-3 h-3 ${isSyncing ? 'animate-spin' : ''}`} />
+                      <span>Sinkron</span>
+                    </button>
+                  </div>
+
+                  <div className="flex items-center gap-1.5 tabular-nums">
+                    <span className="text-xs text-[#555555] font-medium">
+                      {overallRate.hadir}/{overallRate.totalSessions} Sesi
+                    </span>
+                    <span
+                      className={`text-xs font-semibold px-2 py-0.5 rounded-md border ${
+                        overallRate.percentage >= 75
+                          ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                          : 'bg-rose-50 border-rose-200 text-rose-700'
+                      }`}
+                    >
+                      {overallRate.percentage}%
+                    </span>
+                  </div>
+                </div>
+
+                {/* Segmented Game HP / EXP Energy Bar (Light Mode) */}
+                <div className="relative w-full h-2.5 bg-slate-200/80 rounded-md p-0.5 border border-slate-300/80 overflow-hidden">
+                  <div
+                    className={`h-full rounded-xs bg-gradient-to-r ${gameRankInfo.barGradient} transition-all duration-500`}
+                    style={{ width: `${overallRate.percentage}%` }}
+                  />
+                  <div
+                    className="absolute inset-0 pointer-events-none opacity-45"
+                    style={{
+                      backgroundImage:
+                        'repeating-linear-gradient(to right, transparent, transparent calc(10% - 1.5px), rgba(255,255,255,0.95) calc(10% - 1.5px), rgba(255,255,255,0.95) 10%)',
+                    }}
+                    aria-hidden="true"
                   />
                 </div>
 
-                {/* Name & NIM */}
-                <h2 className="text-lg sm:text-xl font-bold text-[#222222] tracking-tight mt-3 leading-snug">
-                  {currentUser.name}
-                </h2>
-                <div className="mt-1 inline-flex items-center gap-1.5 px-3 py-0.5 rounded-md bg-[#f5f5f5] border border-[#dddddd] text-xs font-mono font-semibold text-[#222222] tabular-nums">
-                  <span>NIM: {studentNim}</span>
-                </div>
-
-                {/* Program Studi & Rombel Metadata */}
-                <div className="w-full mt-4 pt-3.5 border-t border-[#eeeeee] grid grid-cols-2 gap-2 text-left">
-                  <div className="p-2.5 rounded-lg bg-[#fafafa] border border-[#eeeeee]">
-                    <span className="text-[10px] uppercase tracking-wider text-[#777777] font-semibold block">
-                      Program Studi
-                    </span>
-                    <span className="text-xs font-semibold text-[#222222] mt-0.5 block truncate" title={studentProdi}>
-                      {studentProdi}
+                {/* 4 Game Attribute Stat Boxes (Light Mode Pastel Surfaces) */}
+                <div className="grid grid-cols-4 gap-2 text-center pt-0.5 tabular-nums">
+                  <div
+                    className="p-2 rounded-xl bg-emerald-50/80 border border-emerald-200 flex flex-col items-center justify-center relative overflow-hidden"
+                    title="Total Hadir Efektif (termasuk toleransi Izin < 3x & Sakit < 3x per MK)"
+                  >
+                    <div className="flex items-center gap-1 text-[10px] font-medium text-emerald-700">
+                      <Zap className="w-2.5 h-2.5 text-emerald-600 shrink-0" />
+                      <span>Hadir</span>
+                    </div>
+                    <span className="text-xs font-bold text-emerald-700 mt-0.5">
+                      {overallRate.hadir}
                     </span>
                   </div>
-                  <div className="p-2.5 rounded-lg bg-[#fafafa] border border-[#eeeeee]">
-                    <span className="text-[10px] uppercase tracking-wider text-[#777777] font-semibold block">
-                      Kelas / Rombel
-                    </span>
-                    <span className="text-xs font-semibold text-[#222222] mt-0.5 block truncate">
-                      {studentRombelList.join(', ')}
+
+                  <div
+                    className="p-2 rounded-xl bg-sky-50/80 border border-sky-200 flex flex-col items-center justify-center relative overflow-hidden"
+                    title="Riwayat Izin (< 3x per MK dianggap Hadir)"
+                  >
+                    <div className="flex items-center gap-1 text-[10px] font-medium text-sky-700">
+                      <Shield className="w-2.5 h-2.5 text-sky-600 shrink-0" />
+                      <span>Izin</span>
+                    </div>
+                    <span className="text-xs font-bold text-sky-800 mt-0.5">
+                      {overallRate.izin}
                     </span>
                   </div>
-                </div>
-              </div>
-            </div>
 
-            {/* ID Card Bottom Section: Attendance Statistics */}
-            <div className="px-6 pb-5 pt-3 border-t border-[#eeeeee] bg-[#fafafa] space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-[#555555]">
-                  Statistik Kehadiran
-                </span>
-                <span className={`text-sm font-bold tabular-nums ${
-                  overallRate.percentage >= 75 ? 'text-[#017171]' : 'text-[#C73C3C]'
-                }`}>
-                  {overallRate.percentage}%
-                </span>
-              </div>
+                  <div
+                    className="p-2 rounded-xl bg-amber-50/80 border border-amber-200 flex flex-col items-center justify-center relative overflow-hidden"
+                    title="Riwayat Sakit (< 3x per MK dianggap Hadir)"
+                  >
+                    <div className="flex items-center gap-1 text-[10px] font-medium text-amber-700">
+                      <HeartPulse className="w-2.5 h-2.5 text-amber-600 shrink-0" />
+                      <span>Sakit</span>
+                    </div>
+                    <span className="text-xs font-bold text-amber-800 mt-0.5">
+                      {overallRate.sakit}
+                    </span>
+                  </div>
 
-              <div className="w-full h-1.5 bg-[#e5e5e5] rounded-full overflow-hidden">
-                <div
-                  className={`h-full rounded-full transition-all ${
-                    overallRate.percentage >= 75 ? 'bg-[#009499]' : 'bg-[#E54545]'
-                  }`}
-                  style={{ width: `${overallRate.percentage}%` }}
-                />
-              </div>
-
-              <div className="grid grid-cols-4 gap-1.5 text-center pt-0.5 tabular-nums">
-                <div className="p-1.5 rounded-lg bg-white border border-[#dddddd]">
-                  <span className="text-[10px] text-[#555555] font-medium block">Hadir</span>
-                  <span className="text-xs font-bold text-[#017171]">{overallRate.hadir}</span>
-                </div>
-                <div className="p-1.5 rounded-lg bg-white border border-[#dddddd]">
-                  <span className="text-[10px] text-[#555555] font-medium block">Izin</span>
-                  <span className="text-xs font-bold text-[#222222]">{overallRate.izin}</span>
-                </div>
-                <div className="p-1.5 rounded-lg bg-white border border-[#dddddd]">
-                  <span className="text-[10px] text-[#555555] font-medium block">Sakit</span>
-                  <span className="text-xs font-bold text-[#222222]">{overallRate.sakit}</span>
-                </div>
-                <div className="p-1.5 rounded-lg bg-white border border-[#dddddd]">
-                  <span className="text-[10px] text-[#555555] font-medium block">Alpha</span>
-                  <span className="text-xs font-bold text-[#C73C3C]">{overallRate.alpha}</span>
+                  <div
+                    className="p-2 rounded-xl bg-rose-50/80 border border-rose-200 flex flex-col items-center justify-center relative overflow-hidden"
+                    title="Tidak Hadir (Alpha + kelebihan Izin/Sakit ≥ 3x)"
+                  >
+                    <div className="flex items-center gap-1 text-[10px] font-medium text-rose-700">
+                      <Skull className="w-2.5 h-2.5 text-rose-600 shrink-0" />
+                      <span>Alpha</span>
+                    </div>
+                    <span className="text-xs font-bold text-rose-700 mt-0.5">
+                      {overallRate.alpha}
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -242,6 +462,10 @@ export const MahasiswaDashboard: React.FC<MahasiswaDashboardProps> = ({
                   <span>Portal Akademik Mahasiswa</span>
                   <span aria-hidden="true">·</span>
                   <span>{CAMPUS_INFO.semester}</span>
+                  <span aria-hidden="true">·</span>
+                  <span className="text-[#017171] font-mono tabular-nums">
+                    Relasi Tersinkron: {lastSyncedAt} WIB
+                  </span>
                   {studentRombelList.length > 1 && (
                     <>
                       <span aria-hidden="true">·</span>
@@ -254,18 +478,32 @@ export const MahasiswaDashboard: React.FC<MahasiswaDashboardProps> = ({
                 </h3>
               </div>
 
-              {onOpenProfile && (
+              <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
                 <button
                   type="button"
                   data-frost="Button"
-                  onClick={onOpenProfile}
-                  className="frost-btn frost-btn-sm frost-btn-outline frost-btn-brand self-start sm:self-auto"
-                  title="Konfigurasi Profil & Ganti Sandi"
+                  onClick={handleSyncData}
+                  disabled={isSyncing}
+                  className="frost-btn frost-btn-sm frost-btn-subtle frost-btn-teal"
+                  title="Segarkan relasi data sesi, kehadiran, dan jadwal terbaru dari Dosen & Admin BAAK"
                 >
-                  <UserCog className="w-4 h-4 text-[#0080FF] shrink-0" />
-                  <span className="label">Edit Profil & Foto</span>
+                  <RefreshCw className={`w-4 h-4 shrink-0 ${isSyncing ? 'animate-spin' : ''}`} />
+                  <span className="label">{isSyncing ? 'Menyinkronkan...' : 'Sinkronisasi Data'}</span>
                 </button>
-              )}
+
+                {onOpenProfile && (
+                  <button
+                    type="button"
+                    data-frost="Button"
+                    onClick={onOpenProfile}
+                    className="frost-btn frost-btn-sm frost-btn-outline frost-btn-brand"
+                    title="Konfigurasi Profil & Ganti Sandi"
+                  >
+                    <UserCog className="w-4 h-4 text-[#0080FF] shrink-0" />
+                    <span className="label">Edit Profil & Foto</span>
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* Priority Action Buttons */}
@@ -364,6 +602,31 @@ export const MahasiswaDashboard: React.FC<MahasiswaDashboardProps> = ({
         </div>
       </div>
 
+      {/* Data Synchronization Success Notice (Frost-UI Success Callout) */}
+      {syncNotice && (
+        <div data-frost="Callout" className="frost-callout frost-callout-success justify-between items-center">
+          <div className="flex items-start gap-3">
+            <CheckCircle2 className="w-4 h-4 text-[#009499] shrink-0 mt-0.5" />
+            <div className="space-y-1">
+              <h4 className="text-sm font-semibold text-[#004343]">
+                Sinkronisasi Relasi Data Akademik Berhasil
+              </h4>
+              <p className="text-xs sm:text-sm text-[#017171] leading-relaxed">
+                {syncNotice}
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            data-frost="Button"
+            onClick={() => setSyncNotice(null)}
+            className="frost-btn frost-btn-xxs frost-btn-teal frost-btn-subtle shrink-0"
+          >
+            Tutup
+          </button>
+        </div>
+      )}
+
       {/* Kartu Presensi Download Success Notice (Frost-UI Success Callout) */}
       {pdfSuccessNotice && (
         <div data-frost="Callout" className="frost-callout frost-callout-success justify-between items-center">
@@ -439,24 +702,24 @@ export const MahasiswaDashboard: React.FC<MahasiswaDashboardProps> = ({
               {overallRate.hadir} Pertemuan
             </div>
             <p className="text-xs sm:text-sm text-[#555555] tabular-nums">
-              Dari {overallRate.totalSessions} total pertemuan terlaksana
+              {overallRate.izinAsHadir + overallRate.sakitAsHadir > 0
+                ? `Dari ${overallRate.totalSessions} sesi (${overallRate.rawHadir} hadir + ${overallRate.izinAsHadir + overallRate.sakitAsHadir} toleransi I/S)`
+                : `Dari ${overallRate.totalSessions} total pertemuan terlaksana`}
             </p>
           </div>
         </div>
 
         <div className="frost-card p-5 sm:p-6 flex flex-col justify-between gap-4">
           <div className="flex items-center justify-between text-[#555555]">
-            <span className="text-xs sm:text-sm font-medium">Izin, Sakit & Alpha</span>
+            <span className="text-xs sm:text-sm font-medium">Izin, Sakit &amp; Tidak Hadir</span>
             <FileText className="w-4 h-4 text-[#555555]" />
           </div>
           <div className="space-y-1.5">
             <div className="text-2xl sm:text-3xl font-semibold text-[#222222] tracking-tight tabular-nums">
-              {overallRate.izin + overallRate.sakit} Izin · {overallRate.alpha} Alpha
+              {overallRate.izin + overallRate.sakit} I/S · {overallRate.alpha} Alpha
             </div>
             <p className="text-xs sm:text-sm text-[#555555]">
-              {overallRate.alpha === 0
-                ? 'Tanpa catatan alpha semester ini'
-                : 'Alpha tercatat saat batas waktu scan berakhir'}
+              Izin &lt; 3x &amp; Sakit &lt; 3x terhitung Hadir; selebihnya Tidak Hadir
             </p>
           </div>
         </div>
@@ -539,7 +802,7 @@ export const MahasiswaDashboard: React.FC<MahasiswaDashboardProps> = ({
               Status Kehadiran per Mata Kuliah
             </h3>
             <p className="text-xs sm:text-sm text-[#555555]">
-              Rincian kehadiran setiap mata kuliah untuk pemenuhan syarat ujian (≥ 75%)
+              Rincian kehadiran setiap mata kuliah untuk syarat ujian ≥ 75% (Izin &lt; 3x &amp; Sakit &lt; 3x dianggap Hadir; selebihnya dianggap Tidak Hadir)
             </p>
           </div>
           <button
@@ -587,7 +850,9 @@ export const MahasiswaDashboard: React.FC<MahasiswaDashboardProps> = ({
 
                 <div className="pt-3.5 border-t border-[#eeeeee] text-sm space-y-2.5">
                   <div className="flex items-center justify-between tabular-nums">
-                    <span className="text-[#555555] text-xs font-medium">Tingkat Kehadiran</span>
+                    <span className="text-[#555555] text-xs font-medium">
+                      Tingkat Kehadiran ({courseRate.hadir}/{courseRate.totalSessions} Sesi)
+                    </span>
                     <span className={`font-semibold text-xs ${
                       courseRate.percentage >= 75 ? 'text-[#017171]' : 'text-[#C73C3C]'
                     }`}>
@@ -605,11 +870,22 @@ export const MahasiswaDashboard: React.FC<MahasiswaDashboardProps> = ({
                   </div>
 
                   <div className="flex items-center justify-between text-xs text-[#555555] font-medium tabular-nums pt-0.5">
-                    <span>Hadir: {courseRate.hadir}</span>
-                    <span>Izin: {courseRate.izin}</span>
-                    <span>Sakit: {courseRate.sakit}</span>
-                    <span>Alpha: {courseRate.alpha}</span>
+                    <span title="Total Hadir Efektif">Hadir: {courseRate.hadir}</span>
+                    <span title="Total Izin (< 3x dianggap Hadir)">Izin: {courseRate.izin}</span>
+                    <span title="Total Sakit (< 3x dianggap Hadir)">Sakit: {courseRate.sakit}</span>
+                    <span title="Total Tidak Hadir (Alpha + kelebihan Izin/Sakit)">Alpha: {courseRate.alpha}</span>
                   </div>
+
+                  {(courseRate.izinAsHadir + courseRate.sakitAsHadir > 0 || courseRate.excessIzin + courseRate.excessSakit > 0) && (
+                    <div className="text-[11px] text-[#555555] bg-[#fafafa] border border-[#eeeeee] rounded px-2 py-1 tabular-nums">
+                      {courseRate.rawHadir} Hadir Fisik
+                      {courseRate.izinAsHadir > 0 ? ` + ${courseRate.izinAsHadir} Izin (<3x)` : ''}
+                      {courseRate.sakitAsHadir > 0 ? ` + ${courseRate.sakitAsHadir} Sakit (<3x)` : ''}
+                      {courseRate.excessIzin + courseRate.excessSakit > 0
+                        ? ` · ${courseRate.excessIzin + courseRate.excessSakit} Kelebihan I/S → Tidak Hadir`
+                        : ''}
+                    </div>
+                  )}
                 </div>
               </div>
             );

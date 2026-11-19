@@ -1,5 +1,5 @@
 import * as XLSX from 'xlsx';
-import { CAMPUS_INFO } from '../data/initialData';
+import { CAMPUS_INFO, calculateCourseEffectiveAttendance } from '../data/initialData';
 import { AttendanceRecord, AttendanceSession, Student } from '../types/attendance';
 import { ReportConfig, TeachingLogConfig } from './pdfGenerator';
 
@@ -71,7 +71,13 @@ export function generateAttendanceExcel(
     });
 
     const totalHeld = sortedSessions.length;
-    const percentage = totalHeld > 0 ? Math.round((hadirCount / totalHeld) * 100) : 0;
+    const effectiveStats = calculateCourseEffectiveAttendance({
+      totalSessions: totalHeld,
+      rawHadir: hadirCount,
+      izin: izinCount,
+      sakit: sakitCount,
+      rawAlpha: alphaCount,
+    });
 
     worksheetData.push([
       index + 1,
@@ -79,12 +85,12 @@ export function generateAttendanceExcel(
       student.name,
       student.rombel,
       ...sessionCols,
-      hadirCount,
+      effectiveStats.hadir,
       izinCount,
       sakitCount,
-      alphaCount,
+      effectiveStats.alpha,
       totalHeld,
-      `${percentage}%`,
+      `${effectiveStats.percentage}%`,
     ]);
   });
 

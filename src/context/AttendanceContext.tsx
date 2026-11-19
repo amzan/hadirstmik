@@ -7,7 +7,9 @@ import {
 import {
   INITIAL_USERS, INITIAL_STUDENTS, INITIAL_COURSES, INITIAL_SCHEDULES,
   INITIAL_SESSIONS, INITIAL_RECORDS, INITIAL_LEAVE_REQUESTS, INITIAL_ROMBELS,
-  isStudentInRombel, getStudentRombelList, CAMPUS_INFO, STUDENT_AVATARS
+  isStudentInRombel, getStudentRombelList, getStudentEnrolledSchedules,
+  calculateCourseEffectiveAttendance, EffectiveAttendanceStats,
+  CAMPUS_INFO, STUDENT_AVATARS
 } from '../data/initialData';
 import {
   loadLocalSnapshots, saveLocalSnapshot, deleteLocalSnapshot,
@@ -123,7 +125,21 @@ interface AttendanceContextType {
   getStudentsForRombel: (rombel: string) => Student[];
   getActiveScheduleNow: () => ScheduleItem | null;
   getSchedulesForDay: (day: DayOfWeek) => ScheduleItem[];
-  getAttendanceRateForStudent: (nim: string, courseCode?: string) => { totalSessions: number; hadir: number; izin: number; sakit: number; alpha: number; percentage: number };
+  getAttendanceRateForStudent: (nim: string, courseCode?: string) => EffectiveAttendanceStats;
+  syncStudentData: (nim?: string) => {
+    success: boolean;
+    message: string;
+    syncedAt: string;
+    stats: {
+      totalSessions: number;
+      hadir: number;
+      izin: number;
+      sakit: number;
+      alpha: number;
+      percentage: number;
+      enrolledCourses: number;
+    };
+  };
 
   // Password reset helpers across all users
   findUserByIdentifier: (identifier: string) => User | null;
@@ -204,7 +220,7 @@ export const GUEST_USER: User = {
   avatarUrl: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150',
 };
 
-const DB_SEED_VERSION = '2026-11-18T14:26:20.445Z-v2';
+const DB_SEED_VERSION = '2026-11-19T08:15:45.213Z';
 
 const STORAGE_KEYS = {
   SEED_VERSION: 'stmik_db_seed_version',
@@ -643,8 +659,12 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   // "Kemudian gunakan jadwal perkuliahan sebagai acuan utama untuk pembaruan status kehadiran secara otomatis."
   // When an active session exceeds its schedule end time, or when a session is closed, update absentees to Alpha.
   const updateAbsenteesToAlpha = useCallback((session: AttendanceSession) => {
-    // find all students in this rombel
-    const eligibleStudents = students.filter(s => isStudentInRombel(s.rombel, session.rombel));
+    // find all students enrolled in this session's rombel/schedule
+    const eligibleStudents = students.filter(s => {
+      if (session.scheduleId && s.excludedScheduleIds?.includes(session.scheduleId)) return false;
+      if (session.scheduleId && s.customScheduleIds?.includes(session.scheduleId)) return true;
+      return isStudentInRombel(s.rombel, session.rombel, s.rombels);
+    });
     
     setRecords(prevRecords => {
       const updated = [...prevRecords];
@@ -2945,43 +2965,420 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     return active || null;
   }, [activeDay, simulatedTime, schedules]);
 
-  // Calculate attendance rate for student
-  const getAttendanceRateForStudent = useCallback((nim: string, courseCode?: string) => {
+  // Calculate attendance rate for student (strictly matched per valid session + Izin < 3 & Sakit < 3 tolerance rule)
+  const getAttendanceRateForStudent = useCallback((nim: string, courseCode?: string): EffectiveAttendanceStats => {
+    const emptyStats: EffectiveAttendanceStats = {
+      totalSessions: 0,
+      hadir: 0,
+      rawHadir: 0,
+      izin: 0,
+      sakit: 0,
+      alpha: 0,
+      rawAlpha: 0,
+      izinAsHadir: 0,
+      sakitAsHadir: 0,
+      excessIzin: 0,
+      excessSakit: 0,
+      percentage: 0,
+    };
     const cleanNim = (nim || '').trim().toUpperCase();
-    const student = students.find(s => s.nim.trim().toUpperCase() === cleanNim);
-    if (!student) return { totalSessions: 0, hadir: 0, izin: 0, sakit: 0, alpha: 0, percentage: 0 };
+    if (!cleanNim) return emptyStats;
+
+    let student = students.find(s => s.nim.trim().toUpperCase() === cleanNim);
+    if (!student) {
+      const matchedUser = users.find(
+        u => u.role === 'mahasiswa' && u.username.trim().toUpperCase() === cleanNim
+      );
+      if (matchedUser) {
+        const rombelList = matchedUser.rombels && matchedUser.rombels.length > 0
+          ? matchedUser.rombels
+          : getStudentRombelList(matchedUser.rombel);
+        student = {
+          nim: matchedUser.username,
+          name: matchedUser.name,
+          prodi: matchedUser.prodi || 'Teknologi Informasi',
+          rombel: matchedUser.rombel || rombelList.join(', '),
+          rombels: rombelList,
+          email: matchedUser.email,
+          phone: matchedUser.phone,
+          excludedScheduleIds: matchedUser.excludedScheduleIds,
+          customScheduleIds: matchedUser.customScheduleIds,
+        };
+      }
+    }
+    if (!student) return emptyStats;
 
     const studentSessions = sessions.filter(session => {
-      if (session.scheduleId && student.excludedScheduleIds?.includes(session.scheduleId)) {
+      if (session.scheduleId && student!.excludedScheduleIds?.includes(session.scheduleId)) {
         return false;
       }
-      const isCustomIncluded = session.scheduleId && student.customScheduleIds?.includes(session.scheduleId);
-      const inRombel = isCustomIncluded || isStudentInRombel(student.rombel, session.rombel, student.rombels);
+      const isCustomIncluded = session.scheduleId && student!.customScheduleIds?.includes(session.scheduleId);
+      const inRombel = isCustomIncluded || isStudentInRombel(student!.rombel, session.rombel, student!.rombels);
       if (courseCode) {
         return inRombel && session.courseCode === courseCode;
       }
       return inRombel;
     });
 
-    const studentRecords = records.filter(r => {
-      const matchesStudent = r.studentNim.trim().toUpperCase() === cleanNim;
-      if (courseCode) {
-        return matchesStudent && r.courseCode === courseCode;
+    // Rule: Hitungan persentase kehadiran setiap mahasiswa dimulai ketika sesi setiap matakuliah > 0.
+    // Jika sesi mata kuliah == 0, maka jumlah kehadiran = "0%".
+    if (studentSessions.length === 0) {
+      return emptyStats;
+    }
+
+    let rawHadir = 0;
+    let izin = 0;
+    let sakit = 0;
+    let rawAlpha = 0;
+
+    // Match records strictly per session in studentSessions and deduplicate by sessionId (picking latest record)
+    studentSessions.forEach(session => {
+      const matchingRecs = records.filter(
+        r => r.sessionId === session.id && r.studentNim.trim().toUpperCase() === cleanNim
+      );
+      if (matchingRecs.length > 0) {
+        const chosen = matchingRecs.reduce((latest, curr) => {
+          const tLatest = new Date(latest.scannedAt || 0).getTime();
+          const tCurr = new Date(curr.scannedAt || 0).getTime();
+          if (tCurr !== tLatest) {
+            return tCurr > tLatest ? curr : latest;
+          }
+          // If timestamps are equal, prioritize manual lecturer or QR scan over auto-schedule alpha
+          if (latest.verificationMethod === 'AUTO_SCHEDULE' && curr.verificationMethod !== 'AUTO_SCHEDULE') {
+            return curr;
+          }
+          return latest;
+        }, matchingRecs[0]);
+
+        if (chosen.status === 'HADIR') rawHadir++;
+        else if (chosen.status === 'IZIN') izin++;
+        else if (chosen.status === 'SAKIT') sakit++;
+        else if (chosen.status === 'ALPHA') rawAlpha++;
       }
-      return matchesStudent;
     });
 
-    const hadir = studentRecords.filter(r => r.status === 'HADIR').length;
-    const izin = studentRecords.filter(r => r.status === 'IZIN').length;
-    const sakit = studentRecords.filter(r => r.status === 'SAKIT').length;
-    const alpha = studentRecords.filter(r => r.status === 'ALPHA').length;
-    
-    // Total sessions that have occurred
-    const totalSessions = studentSessions.length || (hadir + izin + sakit + alpha);
-    const percentage = totalSessions > 0 ? Math.round((hadir / totalSessions) * 100) : 0;
+    // Apply academic tolerance rule:
+    // Izin < 3 kali (maks 2) dianggap hadir, Sakit < 3 kali (maks 2) dianggap hadir.
+    // Lebih dari itu, selebihnya dianggap tidak hadir.
+    return calculateCourseEffectiveAttendance({
+      totalSessions: studentSessions.length,
+      rawHadir,
+      izin,
+      sakit,
+      rawAlpha,
+    });
+  }, [students, users, sessions, records]);
 
-    return { totalSessions, hadir, izin, sakit, alpha, percentage };
-  }, [students, sessions, records]);
+  // Synchronize relational data for a student account from latest storage & other users (Dosen / Admin BAAK)
+  const syncStudentData = useCallback((targetNim?: string) => {
+    const cleanNim = (targetNim || currentUser.username || '').trim().toUpperCase();
+    const syncedAt = new Date().toLocaleTimeString('id-ID', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    });
+
+    try {
+      // 1. Read latest persisted arrays from localStorage (in case Dosen / Admin updated in another session/tab)
+      const readStoredArray = <T,>(key: string, fallback: T[]): T[] => {
+        try {
+          const raw = localStorage.getItem(key);
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              return parsed;
+            }
+          }
+        } catch {}
+        return fallback;
+      };
+
+      const storedStudents = readStoredArray<Student>(STORAGE_KEYS.STUDENTS, students);
+      const storedUsers = readStoredArray<User>(STORAGE_KEYS.USERS, users);
+      const storedCourses = readStoredArray<Course>(STORAGE_KEYS.COURSES, courses);
+      const storedSchedules = readStoredArray<ScheduleItem>(STORAGE_KEYS.SCHEDULES, schedules);
+      const storedSessions = readStoredArray<AttendanceSession>(STORAGE_KEYS.SESSIONS, sessions);
+      const storedRecords = readStoredArray<AttendanceRecord>(STORAGE_KEYS.RECORDS, records);
+      const storedLeaves = readStoredArray<LeaveRequest>(STORAGE_KEYS.LEAVE, leaveRequests);
+      const storedRombels = readStoredArray<Rombel>(STORAGE_KEYS.ROMBELS, rombels);
+
+      // 2. Merge with INITIAL_* master backup so no official sessions/records are ever missing
+      const sessionMap = new Map<string, AttendanceSession>();
+      INITIAL_SESSIONS.forEach(s => sessionMap.set(s.id, s));
+      sessions.forEach(s => sessionMap.set(s.id, s));
+      storedSessions.forEach(s => sessionMap.set(s.id, s));
+      const mergedSessions = Array.from(sessionMap.values());
+
+      const scheduleMap = new Map<string, ScheduleItem>();
+      INITIAL_SCHEDULES.forEach(sch => scheduleMap.set(sch.id, sch));
+      schedules.forEach(sch => scheduleMap.set(sch.id, sch));
+      storedSchedules.forEach(sch => scheduleMap.set(sch.id, sch));
+      const mergedSchedules = Array.from(scheduleMap.values());
+
+      const studentMap = new Map<string, Student>();
+      INITIAL_STUDENTS.forEach(st => studentMap.set(st.nim.trim().toUpperCase(), st));
+      students.forEach(st => studentMap.set(st.nim.trim().toUpperCase(), st));
+      storedStudents.forEach(st => studentMap.set(st.nim.trim().toUpperCase(), st));
+      const mergedStudents = Array.from(studentMap.values());
+
+      const leaveMap = new Map<string, LeaveRequest>();
+      INITIAL_LEAVE_REQUESTS.forEach(l => leaveMap.set(l.id, l));
+      leaveRequests.forEach(l => leaveMap.set(l.id, l));
+      storedLeaves.forEach(l => leaveMap.set(l.id, l));
+      const mergedLeaves = Array.from(leaveMap.values());
+
+      // 3. Reconcile & deduplicate attendance records by (sessionId, studentNim)
+      // Only keep records belonging to valid sessions in mergedSessions
+      const allCandidateRecords = [...INITIAL_RECORDS, ...records, ...storedRecords];
+      const dedupRecordMap = new Map<string, AttendanceRecord>();
+
+      allCandidateRecords.forEach(rec => {
+        if (!rec || !rec.sessionId || !rec.studentNim) return;
+        const parentSession = sessionMap.get(rec.sessionId);
+        if (!parentSession) return; // Skip orphaned records whose session no longer exists
+
+        const normNim = rec.studentNim.trim().toUpperCase();
+        const key = `${rec.sessionId}::${normNim}`;
+        const existing = dedupRecordMap.get(key);
+
+        const normalizedRec: AttendanceRecord = {
+          ...rec,
+          studentNim: normNim,
+          courseCode: parentSession.courseCode || rec.courseCode,
+          courseName: parentSession.courseName || rec.courseName,
+        };
+
+        if (!existing) {
+          dedupRecordMap.set(key, normalizedRec);
+        } else {
+          const tExisting = new Date(existing.scannedAt || 0).getTime();
+          const tCurr = new Date(normalizedRec.scannedAt || 0).getTime();
+          if (tCurr > tExisting) {
+            dedupRecordMap.set(key, normalizedRec);
+          } else if (
+            tCurr === tExisting &&
+            existing.verificationMethod === 'AUTO_SCHEDULE' &&
+            normalizedRec.verificationMethod !== 'AUTO_SCHEDULE'
+          ) {
+            dedupRecordMap.set(key, normalizedRec);
+          }
+        }
+      });
+
+      // Apply any APPROVED leave requests that don't yet have an IZIN/SAKIT record on their matching session
+      mergedLeaves
+        .filter(l => l.status === 'APPROVED')
+        .forEach(leave => {
+          const normNim = leave.studentNim.trim().toUpperCase();
+          const stu = studentMap.get(normNim);
+          const matchingSess = mergedSessions.find(
+            s =>
+              s.courseCode === leave.courseCode &&
+              (s.date === leave.date || isStudentInRombel(leave.rombel, s.rombel))
+          );
+          if (matchingSess) {
+            const key = `${matchingSess.id}::${normNim}`;
+            const currentRec = dedupRecordMap.get(key);
+            if (!currentRec || currentRec.status === 'ALPHA') {
+              dedupRecordMap.set(key, {
+                id: currentRec?.id || `rec-auto-leave-${matchingSess.id}-${normNim}`,
+                sessionId: matchingSess.id,
+                courseCode: matchingSess.courseCode,
+                courseName: matchingSess.courseName,
+                studentNim: normNim,
+                studentName: stu?.name || leave.studentName,
+                rombel: stu?.rombel || leave.rombel,
+                status: leave.type,
+                scannedAt: new Date().toISOString(),
+                verificationMethod: 'IZIN_APPROVED',
+                notes: `Disetujui dari permohonan ${leave.type}: ${leave.reason}`,
+              });
+            }
+          }
+        });
+
+      const mergedRecords = Array.from(dedupRecordMap.values());
+
+      // 4. Sync student user profiles with mergedStudents
+      const userMap = new Map<string, User>();
+      INITIAL_USERS.forEach(u => userMap.set(u.id, u));
+      users.forEach(u => userMap.set(u.id, u));
+      storedUsers.forEach(u => userMap.set(u.id, u));
+
+      mergedStudents.forEach((s, idx) => {
+        const uid = `mhs-${s.nim}`;
+        const existingUser =
+          userMap.get(uid) ||
+          Array.from(userMap.values()).find(
+            u => u.role === 'mahasiswa' && u.username.trim().toUpperCase() === s.nim.trim().toUpperCase()
+          );
+        const rombelList = s.rombels && s.rombels.length > 0 ? s.rombels : getStudentRombelList(s.rombel);
+        const joinedRombel = rombelList.join(', ') || s.rombel;
+
+        userMap.set(existingUser?.id || uid, {
+          ...existingUser,
+          id: existingUser?.id || uid,
+          username: s.nim,
+          name: s.name,
+          email: s.email || existingUser?.email || `${s.nim.toLowerCase()}@student.stmik-arungbinang.ac.id`,
+          role: 'mahasiswa',
+          prodi: s.prodi,
+          rombel: joinedRombel,
+          rombels: rombelList,
+          phone: s.phone || existingUser?.phone,
+          password: existingUser?.password || s.password,
+          avatarUrl:
+            existingUser?.avatarUrl ||
+            `https://images.unsplash.com/photo-${STUDENT_AVATARS[idx % STUDENT_AVATARS.length]}?w=150`,
+          excludedScheduleIds: s.excludedScheduleIds || existingUser?.excludedScheduleIds,
+          customScheduleIds: s.customScheduleIds || existingUser?.customScheduleIds,
+        });
+      });
+
+      const mergedUsers = Array.from(userMap.values());
+
+      // 5. Commit synchronized state and persist safely
+      setStudents(mergedStudents);
+      setUsers(mergedUsers);
+      setCourses(storedCourses);
+      setSchedules(mergedSchedules);
+      setSessions(mergedSessions);
+      setRecords(mergedRecords);
+      setLeaveRequests(mergedLeaves);
+      setRombels(storedRombels);
+
+      safeSetLocalStorage(STORAGE_KEYS.STUDENTS, JSON.stringify(mergedStudents));
+      safeSetLocalStorage(STORAGE_KEYS.USERS, JSON.stringify(mergedUsers));
+      safeSetLocalStorage(STORAGE_KEYS.COURSES, JSON.stringify(storedCourses));
+      safeSetLocalStorage(STORAGE_KEYS.SCHEDULES, JSON.stringify(mergedSchedules));
+      safeSetLocalStorage(STORAGE_KEYS.SESSIONS, JSON.stringify(mergedSessions));
+      safeSetLocalStorage(STORAGE_KEYS.RECORDS, JSON.stringify(mergedRecords));
+      safeSetLocalStorage(STORAGE_KEYS.LEAVE, JSON.stringify(mergedLeaves));
+      safeSetLocalStorage(STORAGE_KEYS.ROMBELS, JSON.stringify(storedRombels));
+
+      // Update currentUser if logged in as a student
+      const targetStudent = studentMap.get(cleanNim);
+      if (targetStudent && currentUser.role === 'mahasiswa' && currentUser.username.trim().toUpperCase() === cleanNim) {
+        const rombelList =
+          targetStudent.rombels && targetStudent.rombels.length > 0
+            ? targetStudent.rombels
+            : getStudentRombelList(targetStudent.rombel);
+        const updatedCurrentUser: User = {
+          ...currentUser,
+          name: targetStudent.name,
+          prodi: targetStudent.prodi,
+          rombel: rombelList.join(', ') || targetStudent.rombel,
+          rombels: rombelList,
+          email: targetStudent.email || currentUser.email,
+          phone: targetStudent.phone || currentUser.phone,
+          excludedScheduleIds: targetStudent.excludedScheduleIds,
+          customScheduleIds: targetStudent.customScheduleIds,
+        };
+        setCurrentUser(updatedCurrentUser);
+        safeSetLocalStorage(SESSION_KEYS.ACTIVE_USER, JSON.stringify(updatedCurrentUser));
+      }
+
+      // 6. Compute refreshed stats for this student
+      if (!targetStudent) {
+        return {
+          success: true,
+          message: 'Sinkronisasi data sistem berhasil dijalankan.',
+          syncedAt,
+          stats: { totalSessions: 0, hadir: 0, izin: 0, sakit: 0, alpha: 0, percentage: 0, enrolledCourses: 0 },
+        };
+      }
+
+      const enrolledSchedules = getStudentEnrolledSchedules(targetStudent, mergedSchedules);
+      const studentSessions = mergedSessions.filter(session => {
+        if (session.scheduleId && targetStudent.excludedScheduleIds?.includes(session.scheduleId)) {
+          return false;
+        }
+        const isCustomIncluded = session.scheduleId && targetStudent.customScheduleIds?.includes(session.scheduleId);
+        return isCustomIncluded || isStudentInRombel(targetStudent.rombel, session.rombel, targetStudent.rombels);
+      });
+
+      let rawHadir = 0;
+      let izin = 0;
+      let sakit = 0;
+      let rawAlpha = 0;
+
+      studentSessions.forEach(session => {
+        const rec = dedupRecordMap.get(`${session.id}::${cleanNim}`);
+        if (rec) {
+          if (rec.status === 'HADIR') rawHadir++;
+          else if (rec.status === 'IZIN') izin++;
+          else if (rec.status === 'SAKIT') sakit++;
+          else if (rec.status === 'ALPHA') rawAlpha++;
+        }
+      });
+
+      const effectiveStats = calculateCourseEffectiveAttendance({
+        totalSessions: studentSessions.length,
+        rawHadir,
+        izin,
+        sakit,
+        rawAlpha,
+      });
+
+      const toleranceNote =
+        effectiveStats.izinAsHadir > 0 || effectiveStats.sakitAsHadir > 0
+          ? ` (${effectiveStats.rawHadir} Hadir Fisik + ${effectiveStats.izinAsHadir} Izin & ${effectiveStats.sakitAsHadir} Sakit dianggap hadir)`
+          : '';
+
+      return {
+        success: true,
+        message: `Data relasi akademik & presensi NIM ${cleanNim} (${targetStudent.name}) berhasil disinkronkan. Tercatat ${effectiveStats.hadir} Hadir Efektif${toleranceNote}, ${effectiveStats.alpha} Tidak Hadir dari ${effectiveStats.totalSessions} sesi perkuliahan (${effectiveStats.percentage}%).`,
+        syncedAt,
+        stats: {
+          totalSessions: effectiveStats.totalSessions,
+          hadir: effectiveStats.hadir,
+          izin: effectiveStats.izin,
+          sakit: effectiveStats.sakit,
+          alpha: effectiveStats.alpha,
+          percentage: effectiveStats.percentage,
+          enrolledCourses: enrolledSchedules.length,
+        },
+      };
+    } catch (err: any) {
+      return {
+        success: false,
+        message: `Gagal menyinkronkan data: ${err?.message || 'Kesalahan sistem.'}`,
+        syncedAt,
+        stats: { totalSessions: 0, hadir: 0, izin: 0, sakit: 0, alpha: 0, percentage: 0, enrolledCourses: 0 },
+      };
+    }
+  }, [currentUser, students, users, courses, schedules, sessions, records, leaveRequests, rombels]);
+
+  // Listen to cross-tab storage updates so student dashboards automatically stay in sync when Dosen/Admin updates data
+  useEffect(() => {
+    const handleStorageChange = (e: StorageEvent) => {
+      if (!e.key || !e.newValue) return;
+      try {
+        if (e.key === STORAGE_KEYS.SESSIONS) {
+          const parsed = JSON.parse(e.newValue);
+          if (Array.isArray(parsed)) setSessions(parsed);
+        } else if (e.key === STORAGE_KEYS.RECORDS) {
+          const parsed = JSON.parse(e.newValue);
+          if (Array.isArray(parsed)) setRecords(parsed);
+        } else if (e.key === STORAGE_KEYS.SCHEDULES) {
+          const parsed = JSON.parse(e.newValue);
+          if (Array.isArray(parsed)) setSchedules(parsed);
+        } else if (e.key === STORAGE_KEYS.STUDENTS) {
+          const parsed = JSON.parse(e.newValue);
+          if (Array.isArray(parsed)) setStudents(parsed);
+        } else if (e.key === STORAGE_KEYS.LEAVE) {
+          const parsed = JSON.parse(e.newValue);
+          if (Array.isArray(parsed)) setLeaveRequests(parsed);
+        } else if (e.key === STORAGE_KEYS.ROMBELS) {
+          const parsed = JSON.parse(e.newValue);
+          if (Array.isArray(parsed)) setRombels(parsed);
+        }
+      } catch {}
+    };
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, []);
 
   // Find user by username, email, NIM, NIDN across users list and students directory
   const findUserByIdentifier = useCallback((identifier: string): User | null => {
@@ -3164,6 +3561,7 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     getActiveScheduleNow,
     getSchedulesForDay,
     getAttendanceRateForStudent,
+    syncStudentData,
     findUserByIdentifier,
     resetUserPassword,
     getDatabaseBackupData,
@@ -3199,7 +3597,7 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     archiveRombel, restoreRombel, archiveCourse, restoreCourse, checkRombelRelations, checkCourseRelations,
     resetToDefaultData, logoutSession, setScheduleMeetingDate, setScheduleAllMeetingDates,
     getMeetingDateForSchedule, getStudentsForRombel, getActiveScheduleNow,
-    getSchedulesForDay, getAttendanceRateForStudent, findUserByIdentifier, resetUserPassword,
+    getSchedulesForDay, getAttendanceRateForStudent, syncStudentData, findUserByIdentifier, resetUserPassword,
     getDatabaseBackupData, restoreDatabase, restoreMasterDatabase, createSnapshot, restoreSnapshot, deleteSnapshot,
     snapshots, reloadSnapshots,
     deviceSessions, currentDeviceId, currentDeviceSession, getUserDeviceSessions,

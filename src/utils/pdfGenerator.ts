@@ -1,6 +1,6 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { CAMPUS_INFO } from '../data/initialData';
+import { CAMPUS_INFO, calculateCourseEffectiveAttendance } from '../data/initialData';
 import { AttendanceRecord, AttendanceSession, Student } from '../types/attendance';
 import { getStmikLogoDataUrl } from './logoStmik';
 
@@ -141,18 +141,24 @@ export function generateAttendancePDF(
     });
 
     const totalHeld = sortedSessions.length;
-    const percentage = totalHeld > 0 ? Math.round((hadirCount / totalHeld) * 100) : 0;
+    const effectiveStats = calculateCourseEffectiveAttendance({
+      totalSessions: totalHeld,
+      rawHadir: hadirCount,
+      izin: izinCount,
+      sakit: sakitCount,
+      rawAlpha: alphaCount,
+    });
 
     return [
       (index + 1).toString(),
       student.nim,
       student.name,
       ...sessionStatuses,
-      hadirCount.toString(),
+      effectiveStats.hadir.toString(),
       izinCount.toString(),
       sakitCount.toString(),
-      alphaCount.toString(),
-      `${percentage}%`,
+      effectiveStats.alpha.toString(),
+      `${effectiveStats.percentage}%`,
     ];
   });
 
@@ -1049,7 +1055,7 @@ export function generateKartuPresensiPDF(
     doc.setFontSize(6);
     doc.setTextColor(71, 85, 105);
     doc.text('1. Kartu ini wajib dicetak dan dibawa mahasiswa pada setiap pelaksanaan UTS & UAS untuk diverifikasi oleh Pengawas Ruang Ujian.', 17, noteY + 6.8);
-    doc.text('2. Hak mengikuti ujian diberikan bagi mahasiswa dengan persentase kehadiran minimal 75% pada masing-masing mata kuliah yang ditempuh.', 17, noteY + 9.5);
+    doc.text('2. Syarat ujian minimal 75% per mata kuliah. Toleransi akademik: Izin < 3x & Sakit < 3x dianggap Hadir; selebihnya dianggap Tidak Hadir.', 17, noteY + 9.5);
   }
 
   // 8. Page Numbering & Document Footers

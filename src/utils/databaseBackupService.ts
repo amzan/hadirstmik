@@ -96,7 +96,7 @@ export function getLatestMasterBackup(): DatabaseBackup {
 
   return {
     version: BACKUP_FORMAT_VERSION,
-    timestamp: '2026-11-18T14:26:20.445Z',
+    timestamp: '2026-11-19T08:15:45.213Z',
     appName: 'Sistem Presensi QR Kampus - STMIK PGRI Arungbinang Kebumen',
     campusName: CAMPUS_INFO.name,
     semester: CAMPUS_INFO.semester,
@@ -126,8 +126,8 @@ export function getDefaultMasterSnapshot(): DatabaseSnapshot {
   return {
     id: DEFAULT_MASTER_SNAPSHOT_ID,
     name: 'Master Backup Database Terkini (Resmi BAAK)',
-    note: 'Database paling mutakhir (18 Nov 2026 21:26 WIB): 78 Akun Pengguna, 66 Mahasiswa, 29 Mata Kuliah, 34 Jadwal, 26 Sesi Presensi, 533 Rekaman Kehadiran, 3 Pengajuan Izin.',
-    timestamp: '2026-11-18T14:26:20.445Z',
+    note: 'Database paling mutakhir (19 Nov 2026 15:15 WIB): 78 Akun Pengguna, 66 Mahasiswa, 29 Mata Kuliah, 34 Jadwal, 30 Sesi Presensi, 643 Rekaman Kehadiran, 3 Pengajuan Izin.',
+    timestamp: '2026-11-19T08:15:45.213Z',
     summary: backup.summary,
     data: backup.data,
   };

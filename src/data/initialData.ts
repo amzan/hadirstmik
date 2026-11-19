@@ -11,15 +11,29 @@ export const CAMPUS_INFO = {
 };
 
 // Helper to parse student's rombel(s) into an array of individual rombel strings
+// Expands shorthand composite rombels like "TI 1 & 5" -> ["TI 1", "TI 5"] so "5" inherits the prodi prefix ("TI")
 export function getStudentRombelList(studentRombel: string | string[] | undefined): string[] {
   if (!studentRombel) return [];
-  if (Array.isArray(studentRombel)) {
-    return studentRombel.map(r => r.trim()).filter(Boolean);
-  }
-  return String(studentRombel)
-    .split(/[,;&]+/)
-    .map(r => r.trim())
-    .filter(Boolean);
+  const rawParts = Array.isArray(studentRombel)
+    ? studentRombel.map(r => r.trim()).filter(Boolean)
+    : String(studentRombel)
+        .split(/[,;&\/]+/)
+        .map(r => r.trim())
+        .filter(Boolean);
+
+  let currentPrefix = '';
+  return rawParts.map(part => {
+    const upper = part.toUpperCase();
+    const prefixMatch = upper.match(/^(TI|MI)\s+/);
+    if (prefixMatch) {
+      currentPrefix = prefixMatch[1];
+      return upper;
+    }
+    if (/^\d+[A-Z]*$/.test(upper) && currentPrefix) {
+      return `${currentPrefix} ${upper}`;
+    }
+    return upper;
+  });
 }
 
 export function isStudentInRombel(
@@ -30,7 +44,7 @@ export function isStudentInRombel(
   if (!studentRombel && (!studentRombelsArray || studentRombelsArray.length === 0)) return false;
   if (!scheduleRombel) return false;
   const list = studentRombelsArray && studentRombelsArray.length > 0
-    ? studentRombelsArray
+    ? getStudentRombelList(studentRombelsArray)
     : getStudentRombelList(studentRombel);
   if (list.length === 0) return false;
 
@@ -45,12 +59,10 @@ export function isStudentInRombel(
     if (sR === schRombel) return true;
     if (schParts.includes(sR)) return true;
 
-    // Matching against composite schedule parts (e.g. "TI 1 & 5", "TI 1A, TI 1B")
+    // Matching against expanded composite schedule parts (e.g. "TI 1 & 5" -> ["TI 1", "TI 5"])
     for (const part of schParts) {
       if (sR === part) return true;
       if (sR.startsWith(part) || part.startsWith(sR)) return true;
-      if (part === '5' && sR.includes('5')) return true;
-      if (part === '1' && sR.includes('1')) return true;
     }
 
     // Specific rombel matching for standard campus aliases
@@ -103,6 +115,80 @@ export function getStudentTotalSks(
   return enrolled.reduce((acc, sch) => acc + (sch.sks || 0), 0);
 }
 
+/**
+ * Aturan Akademik Toleransi Izin & Sakit:
+ * - Jika mahasiswa izin kurang dari 3 kali (1 atau 2 kali, maks 2) maka dianggap hadir.
+ * - Jika mahasiswa sakit kurang dari 3 kali (1 atau 2 kali, maks 2) maka dianggap hadir.
+ * - Lebih dari itu (>= 3 kali), status izin dan sakit selebihnya dianggap tidak hadir.
+ */
+export const MAX_TOLERATED_IZIN_AS_HADIR = 2;
+export const MAX_TOLERATED_SAKIT_AS_HADIR = 2;
+
+export interface EffectiveAttendanceStats {
+  totalSessions: number;
+  hadir: number; // Jumlah kehadiran efektif (rawHadir + izinAsHadir + sakitAsHadir)
+  rawHadir: number; // Jumlah hadir fisik murni
+  izin: number; // Total rekaman status IZIN
+  sakit: number; // Total rekaman status SAKIT
+  alpha: number; // Total tidak hadir efektif (rawAlpha + excessIzin + excessSakit)
+  rawAlpha: number; // Total rekaman status ALPHA murni
+  izinAsHadir: number; // Jumlah izin yang dianggap hadir (< 3 kali, maks 2)
+  sakitAsHadir: number; // Jumlah sakit yang dianggap hadir (< 3 kali, maks 2)
+  excessIzin: number; // Jumlah izin selebihnya yang dianggap tidak hadir
+  excessSakit: number; // Jumlah sakit selebihnya yang dianggap tidak hadir
+  percentage: number;
+}
+
+export function calculateCourseEffectiveAttendance(counts: {
+  totalSessions: number;
+  rawHadir: number;
+  izin: number;
+  sakit: number;
+  rawAlpha: number;
+}): EffectiveAttendanceStats {
+  const { totalSessions, rawHadir, izin, sakit, rawAlpha } = counts;
+  if (totalSessions <= 0) {
+    return {
+      totalSessions: 0,
+      hadir: 0,
+      rawHadir: 0,
+      izin: 0,
+      sakit: 0,
+      alpha: 0,
+      rawAlpha: 0,
+      izinAsHadir: 0,
+      sakitAsHadir: 0,
+      excessIzin: 0,
+      excessSakit: 0,
+      percentage: 0,
+    };
+  }
+
+  const izinAsHadir = Math.min(izin, MAX_TOLERATED_IZIN_AS_HADIR);
+  const sakitAsHadir = Math.min(sakit, MAX_TOLERATED_SAKIT_AS_HADIR);
+  const excessIzin = Math.max(0, izin - MAX_TOLERATED_IZIN_AS_HADIR);
+  const excessSakit = Math.max(0, sakit - MAX_TOLERATED_SAKIT_AS_HADIR);
+
+  const hadir = Math.min(totalSessions, rawHadir + izinAsHadir + sakitAsHadir);
+  const alpha = rawAlpha + excessIzin + excessSakit;
+  const percentage = Math.min(100, Math.round((hadir / totalSessions) * 100));
+
+  return {
+    totalSessions,
+    hadir,
+    rawHadir,
+    izin,
+    sakit,
+    alpha,
+    rawAlpha,
+    izinAsHadir,
+    sakitAsHadir,
+    excessIzin,
+    excessSakit,
+    percentage,
+  };
+}
+
 export const STUDENT_AVATARS = [
   '1534528741775-53994a69daeb',
   '1535713875002-d1d0cf377fde',
@@ -113,1011 +199,7 @@ export const STUDENT_AVATARS = [
   '1500648767791-00dcc994a43e',
   '1517841905240-472988babdf9',
   '1539571696357-5a69c17a67c6',
-  '1492562080023-ab3db95bfbce',
-];
-
-export const INITIAL_STAFF_USERS: User[] = [
-  {
-    "id": "user-admin-1",
-    "username": "baak",
-    "name": "Administrator Akademik (BAAK)",
-    "email": "baak@stmikkebumen.ac.id",
-    "role": "admin",
-    "avatarUrl": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150",
-    "title": "Kepala BAAK",
-    "phone": "081234567890",
-    "rombel": "",
-    "prodi": "Teknologi Informasi"
-  },
-  {
-    "id": "dosen-1",
-    "username": "197805122005011001",
-    "nidn": "197805122005011001",
-    "name": "Mucharobin, S.Pd.I., M.Pd.",
-    "email": "mucharobin@stmikarungbinang.ac.id",
-    "role": "dosen",
-    "prodi": "Teknologi Informasi",
-    "academicRank": "Lektor",
-    "title": "Dosen Tetap",
-    "officeRoom": "Gedung A Lt. 2 R. Dosen 201",
-    "avatarUrl": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150",
-    "phone": "081234567801",
-    "rombel": ""
-  },
-  {
-    "id": "dosen-2",
-    "username": "198203152008012002",
-    "nidn": "198203152008012002",
-    "name": "Ahirul Hasanah, S.Pd.I., M.M.",
-    "email": "ahirul.hasanah@stmikarungbinang.ac.id",
-    "role": "dosen",
-    "prodi": "Teknologi Informasi",
-    "academicRank": "Lektor",
-    "title": "Dosen Tetap",
-    "officeRoom": "Gedung A Lt. 2 R. Dosen 202",
-    "avatarUrl": "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150",
-    "phone": "081234567802",
-    "rombel": ""
-  },
-  {
-    "id": "dosen-3",
-    "username": "197508202003011003",
-    "nidn": "197508202003011003",
-    "name": "Nur Wasito, S.Pd., M.Pd.",
-    "email": "nur.wasito@stmikarungbinang.ac.id",
-    "role": "dosen",
-    "prodi": "Teknologi Informasi",
-    "academicRank": "Lektor Kepala",
-    "title": "Wakil Ketua I Bidang Akademik",
-    "officeRoom": "Gedung Rektorat Lt. 1 R. Warek 1",
-    "avatarUrl": "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150",
-    "phone": "081234567803",
-    "rombel": ""
-  },
-  {
-    "id": "dosen-4",
-    "username": "198011242006041004",
-    "nidn": "198011242006041004",
-    "name": "Agus Jaka Sri Hartanta, S.Pd., M.Kom.",
-    "email": "agus.jaka@stmik-arungbinang.ac.id",
-    "role": "dosen",
-    "prodi": "Teknologi Informasi",
-    "academicRank": "Lektor",
-    "title": "Dosen Wali TI / Dosen Tetap",
-    "officeRoom": "Gedung Lab Komputer Lt. 2 R. Kaprodi TI",
-    "avatarUrl": "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150",
-    "phone": "081234567804"
-  },
-  {
-    "id": "dosen-5",
-    "username": "198509182010011005",
-    "nidn": "198509182010011005",
-    "name": "Ahmad Fauzi Mabrur, S.T., M.Eng.",
-    "email": "ahmad.fauzi@stmik-arungbinang.ac.id",
-    "role": "dosen",
-    "prodi": "Teknologi Informasi",
-    "academicRank": "Asisten Ahli",
-    "title": "Dosen Tetap",
-    "officeRoom": "Gedung A Lt. 2 R. Dosen 205",
-    "avatarUrl": "https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=150",
-    "phone": "081234567805"
-  },
-  {
-    "id": "dosen-6",
-    "username": "198604122012022006",
-    "nidn": "198604122012022006",
-    "name": "Fitriani Dwi Ratna Sari, S.T., M.M.",
-    "email": "fitriani.dwi@stmik-arungbinang.ac.id",
-    "role": "dosen",
-    "prodi": "Manajemen Informatika",
-    "academicRank": "Lektor",
-    "title": "Dosen Wali MI / Dosen Tetap",
-    "officeRoom": "Gedung Lab Komputer Lt. 2 R. Kaprodi MI",
-    "avatarUrl": "https://images.unsplash.com/photo-1580489944761-15a19d654956?w=150",
-    "phone": "081234567806"
-  },
-  {
-    "id": "dosen-7",
-    "username": "199002142015011007",
-    "nidn": "199002142015011007",
-    "name": "Habib Pijar Bawana Naryananda, S.T., MEM",
-    "email": "habib.pijar@stmik-arungbinang.ac.id",
-    "role": "dosen",
-    "prodi": "Teknologi Informasi",
-    "academicRank": "Asisten Ahli",
-    "title": "Dosen Tetap",
-    "officeRoom": "Gedung A Lt. 2 R. Dosen 207",
-    "avatarUrl": "https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?w=150",
-    "phone": "081234567807"
-  },
-  {
-    "id": "dosen-8",
-    "username": "197001011998031008",
-    "nidn": "197001011998031008",
-    "name": "Dr. Teguh Rokhmani, S.Pd., M.M.",
-    "email": "teguh.rokhmani@stmik-arungbinang.ac.id",
-    "role": "dosen",
-    "prodi": "Teknologi Informasi",
-    "academicRank": "Lektor Kepala",
-    "title": "Dosen Senior",
-    "officeRoom": "Gedung Pascasarjana Lt. 1",
-    "avatarUrl": "https://images.unsplash.com/photo-1537368910025-700350fe46c7?w=150",
-    "phone": "081234567808"
-  },
-  {
-    "id": "dosen-9",
-    "username": "198906232014021009",
-    "nidn": "198906232014021009",
-    "name": "Fandi Ahmad Kurniawan, S.Pd., M.M.",
-    "email": "fandi.ahmad@stmik-arungbinang.ac.id",
-    "role": "dosen",
-    "prodi": "Manajemen Informatika",
-    "academicRank": "Asisten Ahli",
-    "title": "Dosen Tetap",
-    "officeRoom": "Gedung A Lt. 2 R. Dosen 209",
-    "avatarUrl": "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=150",
-    "phone": "081234567809"
-  },
-  {
-    "id": "dosen-10",
-    "username": "0105049302",
-    "nidn": "0105049302",
-    "name": "Ammar Fauzan, S.Pd., M.Kom.",
-    "email": "fauzan.ammar@gmail.com",
-    "role": "dosen",
-    "prodi": "Teknologi Informasi",
-    "academicRank": "Asisten Ahli",
-    "title": "Dosen Tetap",
-    "officeRoom": "Gedung A Lt. 2 R. Dosen TI 210",
-    "avatarUrl": "data:image/jpeg;base64,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",
-    "phone": "081234567810",
-    "rombel": "",
-    "password": "1993Amzan.0504"
-  },
-  {
-    "id": "dosen-11",
-    "username": "197607142004011011",
-    "nidn": "197607142004011011",
-    "name": "Muhyat, S.E., M.E.",
-    "email": "muhyat@stmik-arungbinang.ac.id",
-    "role": "dosen",
-    "prodi": "Manajemen Informatika",
-    "academicRank": "Lektor",
-    "title": "Dosen Tetap",
-    "officeRoom": "Gedung A Lt. 2 R. Dosen MI 211",
-    "avatarUrl": "https://images.unsplash.com/photo-1492562080023-ab3db95bfbce?w=150",
-    "phone": "081234567811"
-  }
-];
-
-export const INITIAL_STUDENTS: Student[] = [
-  {
-    "nim": "26TI0001",
-    "name": "Anggi Nauli Utami",
-    "prodi": "Teknologi Informasi",
-    "rombel": "TI 1",
-    "email": "26ti0001@student.stmik-arungbinang.ac.id",
-    "phone": "085712340001",
-    "rombels": [
-      "TI 1"
-    ]
-  },
-  {
-    "nim": "26TI0002",
-    "name": "Arif Mustofa",
-    "prodi": "Teknologi Informasi",
-    "rombel": "TI 1",
-    "email": "26ti0002@student.stmik-arungbinang.ac.id",
-    "phone": "085712340002",
-    "rombels": [
-      "TI 1"
-    ]
-  },
-  {
-    "nim": "26TI0003",
-    "name": "Cahyo Sukmono",
-    "prodi": "Teknologi Informasi",
-    "rombel": "TI 1",
-    "email": "26ti0003@student.stmik-arungbinang.ac.id",
-    "phone": "085712340003",
-    "rombels": [
-      "TI 1"
-    ]
-  },
-  {
-    "nim": "26TI0004",
-    "name": "Irfan Arif Pamuji",
-    "prodi": "Teknologi Informasi",
-    "rombel": "TI 1A",
-    "email": "26ti0004@student.stmik-arungbinang.ac.id",
-    "phone": "085712340004"
-  },
-  {
-    "nim": "26TI0005",
-    "name": "Lukman Hakim",
-    "prodi": "Teknologi Informasi",
-    "rombel": "TI 1A",
-    "email": "26ti0005@student.stmik-arungbinang.ac.id",
-    "phone": "085712340005"
-  },
-  {
-    "nim": "26TI0006",
-    "name": "Naily Oktaviani Karim",
-    "prodi": "Teknologi Informasi",
-    "rombel": "TI 1",
-    "email": "26ti0006@student.stmik-arungbinang.ac.id",
-    "phone": "085712340006",
-    "rombels": [
-      "TI 1"
-    ]
-  },
-  {
-    "nim": "26TI0007",
-    "name": "Naufal Yuri Bahy",
-    "prodi": "Teknologi Informasi",
-    "rombel": "TI 1A",
-    "email": "26ti0007@student.stmik-arungbinang.ac.id",
-    "phone": "085712340007"
-  },
-  {
-    "nim": "26TI0008",
-    "name": "Putri Veronika",
-    "prodi": "Teknologi Informasi",
-    "rombel": "TI 1",
-    "email": "26ti0008@student.stmik-arungbinang.ac.id",
-    "phone": "085712340008",
-    "rombels": [
-      "TI 1"
-    ]
-  },
-  {
-    "nim": "26TI0009",
-    "name": "Nourmalia Hidayah Anjarkusuma",
-    "prodi": "Teknologi Informasi",
-    "rombel": "TI 1",
-    "email": "26ti0009@student.stmik-arungbinang.ac.id",
-    "phone": "085712340009",
-    "rombels": [
-      "TI 1"
-    ]
-  },
-  {
-    "nim": "23MI0130",
-    "name": "LUHUR BUDI UTAMI",
-    "prodi": "Manajemen Informatika",
-    "rombel": "MI 1U",
-    "email": "23mi0130@student.stmik-arungbinang.ac.id",
-    "phone": "085712340020",
-    "rombels": [
-      "MI 1U"
-    ]
-  },
-  {
-    "nim": "23MI0054",
-    "name": "RAHMAN NUR FATAHILLAH",
-    "prodi": "Manajemen Informatika",
-    "rombel": "MI 1U",
-    "email": "23mi0054@student.stmik-arungbinang.ac.id",
-    "phone": "085712340021",
-    "rombels": [
-      "MI 1U"
-    ]
-  },
-  {
-    "nim": "24MI0016",
-    "name": "KUNTUM DANIATI",
-    "prodi": "Manajemen Informatika",
-    "rombel": "MI 1U",
-    "email": "24mi0016@student.stmik-arungbinang.ac.id",
-    "phone": "085712340022",
-    "rombels": [
-      "MI 1U"
-    ]
-  },
-  {
-    "nim": "24MI0020",
-    "name": "MUHAMMAD RANDY SYAKIR",
-    "prodi": "Manajemen Informatika",
-    "rombel": "MI 1U",
-    "email": "24mi0020@student.stmik-arungbinang.ac.id",
-    "phone": "085712340023",
-    "rombels": [
-      "MI 1U"
-    ]
-  },
-  {
-    "nim": "23MI0042",
-    "name": "MELY ANDANI",
-    "prodi": "Manajemen Informatika",
-    "rombel": "MI 1U",
-    "email": "23mi0042@student.stmik-arungbinang.ac.id",
-    "phone": "085712340024",
-    "rombels": [
-      "MI 1U"
-    ]
-  },
-  {
-    "nim": "23MI0041",
-    "name": "LUTFI SUKMA FADILAH",
-    "prodi": "Manajemen Informatika",
-    "rombel": "MI 1U",
-    "email": "23mi0041@student.stmik-arungbinang.ac.id",
-    "phone": "085712340025",
-    "rombels": [
-      "MI 1U"
-    ]
-  },
-  {
-    "nim": "25TI0003",
-    "name": "Ahmad Saefudin",
-    "prodi": "Teknologi Informasi",
-    "rombel": "TI 3",
-    "email": "25ti0003@student.stmik-arungbinang.ac.id",
-    "phone": "085712340030"
-  },
-  {
-    "nim": "25TI0004",
-    "name": "Alaysa Farha Nur'aini",
-    "prodi": "Teknologi Informasi",
-    "rombel": "TI 3",
-    "email": "25ti0004@student.stmik-arungbinang.ac.id",
-    "phone": "085712340031"
-  },
-  {
-    "nim": "25TI0005",
-    "name": "Amanda Farendya Istitanansyah",
-    "prodi": "Teknologi Informasi",
-    "rombel": "TI 3",
-    "email": "25ti0005@student.stmik-arungbinang.ac.id",
-    "phone": "085712340032"
-  },
-  {
-    "nim": "25TI0006",
-    "name": "Arief Adam Musthofa",
-    "prodi": "Teknologi Informasi",
-    "rombel": "TI 3",
-    "email": "25ti0006@student.stmik-arungbinang.ac.id",
-    "phone": "085712340033"
-  },
-  {
-    "nim": "25TI0007",
-    "name": "Aulya Salsabila Khoirunnisa",
-    "prodi": "Teknologi Informasi",
-    "rombel": "TI 3",
-    "email": "25ti0007@student.stmik-arungbinang.ac.id",
-    "phone": "085712340034"
-  },
-  {
-    "nim": "25TI0012",
-    "name": "Habibi",
-    "prodi": "Teknologi Informasi",
-    "rombel": "TI 3",
-    "email": "25ti0012@student.stmik-arungbinang.ac.id",
-    "phone": "085712340035"
-  },
-  {
-    "nim": "25TI0020",
-    "name": "Hidayat Nuril Maulana",
-    "prodi": "Teknologi Informasi",
-    "rombel": "TI 3",
-    "email": "25ti0020@student.stmik-arungbinang.ac.id",
-    "phone": "085712340036"
-  },
-  {
-    "nim": "25TI0021",
-    "name": "Miftachul Jannah",
-    "prodi": "Teknologi Informasi",
-    "rombel": "TI 3",
-    "email": "25ti0021@student.stmik-arungbinang.ac.id",
-    "phone": "085712340037"
-  },
-  {
-    "nim": "25TI0022",
-    "name": "Mohammad Nayotama Oda Attalloh",
-    "prodi": "Teknologi Informasi",
-    "rombel": "TI 3",
-    "email": "25ti0022@student.stmik-arungbinang.ac.id",
-    "phone": "085712340038"
-  },
-  {
-    "nim": "25TI0025",
-    "name": "Madhina Arafati Choeron",
-    "prodi": "Teknologi Informasi",
-    "rombel": "TI 3",
-    "email": "25ti0025@student.stmik-arungbinang.ac.id",
-    "phone": "085712340039"
-  },
-  {
-    "nim": "25TI0028",
-    "name": "Pasha Wulan Ramadhani",
-    "prodi": "Teknologi Informasi",
-    "rombel": "TI 3",
-    "email": "25ti0028@student.stmik-arungbinang.ac.id",
-    "phone": "085712340040"
-  },
-  {
-    "nim": "25TI0032",
-    "name": "Nanindia Tri Rahayu",
-    "prodi": "Teknologi Informasi",
-    "rombel": "TI 3",
-    "email": "25ti0032@student.stmik-arungbinang.ac.id",
-    "phone": "085712340041"
-  },
-  {
-    "nim": "25TI0033",
-    "name": "Naylin Fikriya Sabrina",
-    "prodi": "Teknologi Informasi",
-    "rombel": "TI 3",
-    "email": "25ti0033@student.stmik-arungbinang.ac.id",
-    "phone": "085712340042"
-  },
-  {
-    "nim": "25TI0035",
-    "name": "Septiana Rahmawati",
-    "prodi": "Teknologi Informasi",
-    "rombel": "TI 3",
-    "email": "25ti0035@student.stmik-arungbinang.ac.id",
-    "phone": "085712340043"
-  },
-  {
-    "nim": "25TI0043",
-    "name": "Seva Windu Ali",
-    "prodi": "Teknologi Informasi",
-    "rombel": "TI 3",
-    "email": "25ti0043@student.stmik-arungbinang.ac.id",
-    "phone": "085712340044"
-  },
-  {
-    "nim": "25TI0045",
-    "name": "Susilo Kurniawan",
-    "prodi": "Teknologi Informasi",
-    "rombel": "TI 3",
-    "email": "25ti0045@student.stmik-arungbinang.ac.id",
-    "phone": "085712340045"
-  },
-  {
-    "nim": "25TI0050",
-    "name": "Dianna Candra Ningtyas",
-    "prodi": "Teknologi Informasi",
-    "rombel": "TI 3",
-    "email": "25ti0050@student.stmik-arungbinang.ac.id",
-    "phone": "085712340046"
-  },
-  {
-    "nim": "25TI0071",
-    "name": "Armada Teranda Putra",
-    "prodi": "Teknologi Informasi",
-    "rombel": "TI 3",
-    "email": "25ti0071@student.stmik-arungbinang.ac.id",
-    "phone": "085712340047"
-  },
-  {
-    "nim": "25TI0076",
-    "name": "Muhammad Burhanuddin Ikhsan",
-    "prodi": "Teknologi Informasi",
-    "rombel": "TI 3",
-    "email": "25ti0076@student.stmik-arungbinang.ac.id",
-    "phone": "085712340048"
-  },
-  {
-    "nim": "25TI0080",
-    "name": "Agis Khaidir Rizki",
-    "prodi": "Teknologi Informasi",
-    "rombel": "TI 3",
-    "email": "25ti0080@student.stmik-arungbinang.ac.id",
-    "phone": "085712340049"
-  },
-  {
-    "nim": "25TI0087",
-    "name": "Martin Aditya",
-    "prodi": "Teknologi Informasi",
-    "rombel": "TI 3",
-    "email": "25ti0087@student.stmik-arungbinang.ac.id",
-    "phone": "085712340050"
-  },
-  {
-    "nim": "25TI0073",
-    "name": "Dwi Mei Indah Aryani",
-    "prodi": "Teknologi Informasi",
-    "rombel": "TI 3",
-    "email": "25ti0073@student.stmik-arungbinang.ac.id",
-    "phone": "085712340051"
-  },
-  {
-    "nim": "24TI0001",
-    "name": "Achmad Charis Muhlasin",
-    "prodi": "Teknologi Informasi",
-    "rombel": "TI 5",
-    "email": "24ti0001@student.stmik-arungbinang.ac.id",
-    "phone": "085712340060"
-  },
-  {
-    "nim": "24TI0002",
-    "name": "Ade Prastiawan",
-    "prodi": "Teknologi Informasi",
-    "rombel": "TI 5",
-    "email": "24ti0002@student.stmik-arungbinang.ac.id",
-    "phone": "085712340061"
-  },
-  {
-    "nim": "24TI0004",
-    "name": "Anang Sulistyo Fadhli",
-    "prodi": "Teknologi Informasi",
-    "rombel": "TI 5",
-    "email": "24ti0004@student.stmik-arungbinang.ac.id",
-    "phone": "085712340062"
-  },
-  {
-    "nim": "24TI0009",
-    "name": "Febi Faliha",
-    "prodi": "Teknologi Informasi",
-    "rombel": "TI 5",
-    "email": "24ti0009@student.stmik-arungbinang.ac.id",
-    "phone": "085712340063"
-  },
-  {
-    "nim": "24TI0010",
-    "name": "Nisrina Yumna Qurrotu'Ain",
-    "prodi": "Teknologi Informasi",
-    "rombel": "TI 5",
-    "email": "24ti0010@student.stmik-arungbinang.ac.id",
-    "phone": "085712340064"
-  },
-  {
-    "nim": "24TI0017",
-    "name": "Vicky Ardiansyah",
-    "prodi": "Teknologi Informasi",
-    "rombel": "TI 5",
-    "email": "24ti0017@student.stmik-arungbinang.ac.id",
-    "phone": "085712340065"
-  },
-  {
-    "nim": "24TI0019",
-    "name": "Samsul Ma'arif",
-    "prodi": "Teknologi Informasi",
-    "rombel": "TI 5",
-    "email": "24ti0019@student.stmik-arungbinang.ac.id",
-    "phone": "085712340066"
-  },
-  {
-    "nim": "24TI0020",
-    "name": "Sunaryo",
-    "prodi": "Teknologi Informasi",
-    "rombel": "TI 5",
-    "email": "24ti0020@student.stmik-arungbinang.ac.id",
-    "phone": "085712340067"
-  },
-  {
-    "nim": "24TI0022",
-    "name": "Laeli Muflikhah",
-    "prodi": "Teknologi Informasi",
-    "rombel": "TI 3",
-    "email": "24ti0022@student.stmik-arungbinang.ac.id",
-    "phone": "085712340068",
-    "rombels": [
-      "TI 3"
-    ],
-    "excludedScheduleIds": [
-      "sch-ti-senin-1"
-    ]
-  },
-  {
-    "nim": "24MI0001",
-    "name": "Ahmad Abror",
-    "prodi": "Manajemen Informatika",
-    "rombel": "MI 5A",
-    "email": "24mi0001@student.stmik-arungbinang.ac.id",
-    "phone": "085712340070",
-    "rombels": [
-      "MI 5A"
-    ],
-    "excludedScheduleIds": [
-      "sch-ti-jumat-3",
-      "sch-ti-jumat-2",
-      "sch-ti-kamis-3",
-      "sch-ti-kamis-2",
-      "sch-ti-rabu-3",
-      "sch-ti-selasa-4",
-      "sch-ti-selasa-3",
-      "sch-ti-senin-4",
-      "sch-ti-senin-3"
-    ]
-  },
-  {
-    "nim": "24MI0002",
-    "name": "Alma Malika",
-    "prodi": "Manajemen Informatika",
-    "rombel": "MI 5A",
-    "email": "24mi0002@student.stmik-arungbinang.ac.id",
-    "phone": "085712340071",
-    "rombels": [
-      "MI 5A"
-    ],
-    "excludedScheduleIds": [
-      "sch-ti-senin-3",
-      "sch-ti-senin-4",
-      "sch-ti-selasa-3",
-      "sch-ti-selasa-4",
-      "sch-ti-rabu-3",
-      "sch-ti-kamis-2",
-      "sch-ti-kamis-3",
-      "sch-ti-jumat-2",
-      "sch-ti-jumat-3"
-    ]
-  },
-  {
-    "nim": "24MI0003",
-    "name": "Andre Oktavianto",
-    "prodi": "Manajemen Informatika",
-    "rombel": "MI 5A",
-    "email": "24mi0003@student.stmik-arungbinang.ac.id",
-    "phone": "085712340072",
-    "rombels": [
-      "MI 5A"
-    ],
-    "excludedScheduleIds": [
-      "sch-ti-senin-3",
-      "sch-ti-senin-4",
-      "sch-ti-selasa-3",
-      "sch-ti-selasa-4",
-      "sch-ti-rabu-3",
-      "sch-ti-kamis-2",
-      "sch-ti-kamis-3",
-      "sch-ti-jumat-2",
-      "sch-ti-jumat-3"
-    ]
-  },
-  {
-    "nim": "24MI0005",
-    "name": "Aryan Jaring Pandu Yudha",
-    "prodi": "Manajemen Informatika",
-    "rombel": "MI 5A",
-    "email": "24mi0005@student.stmik-arungbinang.ac.id",
-    "phone": "085712340073",
-    "rombels": [
-      "MI 5A"
-    ],
-    "excludedScheduleIds": [
-      "sch-ti-senin-3",
-      "sch-ti-senin-4",
-      "sch-ti-selasa-3",
-      "sch-ti-selasa-4",
-      "sch-ti-rabu-3",
-      "sch-ti-kamis-2",
-      "sch-ti-kamis-3",
-      "sch-ti-jumat-2",
-      "sch-ti-jumat-3"
-    ]
-  },
-  {
-    "nim": "24MI0006",
-    "name": "Daffa Zharif Aqillah",
-    "prodi": "Manajemen Informatika",
-    "rombel": "MI 5A",
-    "email": "24mi0006@student.stmik-arungbinang.ac.id",
-    "phone": "085712340074",
-    "rombels": [
-      "MI 5A"
-    ],
-    "excludedScheduleIds": [
-      "sch-ti-senin-3",
-      "sch-ti-senin-4",
-      "sch-ti-selasa-3",
-      "sch-ti-selasa-4",
-      "sch-ti-rabu-3",
-      "sch-ti-kamis-2",
-      "sch-ti-kamis-3",
-      "sch-ti-jumat-2",
-      "sch-ti-jumat-3"
-    ]
-  },
-  {
-    "nim": "24MI0007",
-    "name": "Danar Waskita",
-    "prodi": "Manajemen Informatika",
-    "rombel": "MI 5A",
-    "email": "24mi0007@student.stmik-arungbinang.ac.id",
-    "phone": "085712340075",
-    "rombels": [
-      "MI 5A"
-    ],
-    "excludedScheduleIds": [
-      "sch-ti-senin-3",
-      "sch-ti-senin-4",
-      "sch-ti-selasa-3",
-      "sch-ti-selasa-4",
-      "sch-ti-rabu-3",
-      "sch-ti-kamis-2",
-      "sch-ti-kamis-3",
-      "sch-ti-jumat-2",
-      "sch-ti-jumat-3"
-    ]
-  },
-  {
-    "nim": "24MI0009",
-    "name": "Dian Safitri",
-    "prodi": "Manajemen Informatika",
-    "rombel": "MI 5A",
-    "email": "24mi0009@student.stmik-arungbinang.ac.id",
-    "phone": "085712340076",
-    "rombels": [
-      "MI 5A"
-    ],
-    "excludedScheduleIds": [
-      "sch-ti-senin-3",
-      "sch-ti-senin-4",
-      "sch-ti-selasa-3",
-      "sch-ti-selasa-4",
-      "sch-ti-rabu-3",
-      "sch-ti-kamis-2",
-      "sch-ti-kamis-3",
-      "sch-ti-jumat-2",
-      "sch-ti-jumat-3"
-    ]
-  },
-  {
-    "nim": "24MI0011",
-    "name": "Dzaki Afrian",
-    "prodi": "Manajemen Informatika",
-    "rombel": "MI 5A",
-    "email": "24mi0011@student.stmik-arungbinang.ac.id",
-    "phone": "085712340077",
-    "rombels": [
-      "MI 5A"
-    ],
-    "excludedScheduleIds": [
-      "sch-ti-senin-3",
-      "sch-ti-senin-4",
-      "sch-ti-selasa-3",
-      "sch-ti-selasa-4",
-      "sch-ti-rabu-3",
-      "sch-ti-kamis-2",
-      "sch-ti-kamis-3",
-      "sch-ti-jumat-2",
-      "sch-ti-jumat-3"
-    ]
-  },
-  {
-    "nim": "24MI0015",
-    "name": "Khuzaimah",
-    "prodi": "Manajemen Informatika",
-    "rombel": "MI 5A",
-    "email": "24mi0015@student.stmik-arungbinang.ac.id",
-    "phone": "085712340078",
-    "rombels": [
-      "MI 5A"
-    ],
-    "excludedScheduleIds": [
-      "sch-ti-senin-3",
-      "sch-ti-senin-4",
-      "sch-ti-selasa-3",
-      "sch-ti-selasa-4",
-      "sch-ti-rabu-3",
-      "sch-ti-kamis-2",
-      "sch-ti-kamis-3",
-      "sch-ti-jumat-2",
-      "sch-ti-jumat-3"
-    ]
-  },
-  {
-    "nim": "24MI0018",
-    "name": "Muflikhatun Ni'Mah",
-    "prodi": "Manajemen Informatika",
-    "rombel": "MI 5A",
-    "email": "24mi0018@student.stmik-arungbinang.ac.id",
-    "phone": "085712340079",
-    "rombels": [
-      "MI 5A"
-    ],
-    "excludedScheduleIds": [
-      "sch-ti-senin-3",
-      "sch-ti-senin-4",
-      "sch-ti-selasa-3",
-      "sch-ti-selasa-4",
-      "sch-ti-rabu-3",
-      "sch-ti-kamis-2",
-      "sch-ti-kamis-3",
-      "sch-ti-jumat-2",
-      "sch-ti-jumat-3"
-    ]
-  },
-  {
-    "nim": "24MI0019",
-    "name": "Muhamad Abid Sarur",
-    "prodi": "Manajemen Informatika",
-    "rombel": "MI 5A",
-    "email": "abidsarur240306@gmail.com",
-    "phone": "085712340081",
-    "rombels": [
-      "MI 5A"
-    ],
-    "excludedScheduleIds": [
-      "sch-ti-senin-3",
-      "sch-ti-senin-4",
-      "sch-ti-selasa-3",
-      "sch-ti-selasa-4",
-      "sch-ti-rabu-3",
-      "sch-ti-kamis-2",
-      "sch-ti-kamis-3",
-      "sch-ti-jumat-2",
-      "sch-ti-jumat-3"
-    ]
-  },
-  {
-    "nim": "24MI0021",
-    "name": "Nanda Husaeni Hasbullah",
-    "prodi": "Manajemen Informatika",
-    "rombel": "MI 5A",
-    "email": "24mi0021@student.stmik-arungbinang.ac.id",
-    "phone": "085712340081",
-    "rombels": [
-      "MI 5A"
-    ],
-    "excludedScheduleIds": [
-      "sch-ti-senin-3",
-      "sch-ti-senin-4",
-      "sch-ti-selasa-3",
-      "sch-ti-selasa-4",
-      "sch-ti-rabu-3",
-      "sch-ti-kamis-2",
-      "sch-ti-kamis-3",
-      "sch-ti-jumat-3",
-      "sch-ti-jumat-2"
-    ]
-  },
-  {
-    "nim": "24MI0024",
-    "name": "Retno Ayu Subakti",
-    "prodi": "Manajemen Informatika",
-    "rombel": "MI 5A",
-    "email": "24mi0024@student.stmik-arungbinang.ac.id",
-    "phone": "085712340082",
-    "rombels": [
-      "MI 5A"
-    ],
-    "excludedScheduleIds": [
-      "sch-ti-senin-3",
-      "sch-ti-senin-4",
-      "sch-ti-selasa-3",
-      "sch-ti-selasa-4",
-      "sch-ti-rabu-3",
-      "sch-ti-kamis-2",
-      "sch-ti-kamis-3",
-      "sch-ti-jumat-3",
-      "sch-ti-jumat-2"
-    ]
-  },
-  {
-    "nim": "24MI0025",
-    "name": "Risma Mulyani",
-    "prodi": "Manajemen Informatika",
-    "rombel": "MI 5A",
-    "email": "24mi0025@student.stmik-arungbinang.ac.id",
-    "phone": "085712340083",
-    "rombels": [
-      "MI 5A"
-    ],
-    "excludedScheduleIds": [
-      "sch-ti-senin-3",
-      "sch-ti-senin-4",
-      "sch-ti-selasa-3",
-      "sch-ti-selasa-4",
-      "sch-ti-rabu-3",
-      "sch-ti-kamis-2",
-      "sch-ti-kamis-3",
-      "sch-ti-jumat-2",
-      "sch-ti-jumat-3"
-    ]
-  },
-  {
-    "nim": "24MI0026",
-    "name": "Rizki Yulianto",
-    "prodi": "Manajemen Informatika",
-    "rombel": "MI 5A",
-    "email": "24mi0026@student.stmik-arungbinang.ac.id",
-    "phone": "085712340084",
-    "rombels": [
-      "MI 5A"
-    ],
-    "excludedScheduleIds": [
-      "sch-ti-senin-3",
-      "sch-ti-senin-4",
-      "sch-ti-selasa-3",
-      "sch-ti-selasa-4",
-      "sch-ti-rabu-3",
-      "sch-ti-kamis-3",
-      "sch-ti-kamis-2",
-      "sch-ti-jumat-2",
-      "sch-ti-jumat-3"
-    ]
-  },
-  {
-    "nim": "24MI0028",
-    "name": "Tri Maulandani",
-    "prodi": "Manajemen Informatika",
-    "rombel": "MI 5A",
-    "email": "24mi0028@student.stmik-arungbinang.ac.id",
-    "phone": "085712340085",
-    "rombels": [
-      "MI 5A"
-    ],
-    "excludedScheduleIds": [
-      "sch-ti-senin-3",
-      "sch-ti-senin-4",
-      "sch-ti-selasa-3",
-      "sch-ti-selasa-4",
-      "sch-ti-rabu-3",
-      "sch-ti-kamis-2",
-      "sch-ti-kamis-3",
-      "sch-ti-jumat-2",
-      "sch-ti-jumat-3"
-    ]
-  },
-  {
-    "nim": "24MI0029",
-    "name": "Ya'Lu Azmi Yu'La Amrulloh",
-    "prodi": "Manajemen Informatika",
-    "rombel": "MI 5A",
-    "email": "24mi0029@student.stmik-arungbinang.ac.id",
-    "phone": "085712340086",
-    "rombels": [
-      "MI 5A"
-    ],
-    "excludedScheduleIds": [
-      "sch-ti-senin-3",
-      "sch-ti-senin-4",
-      "sch-ti-selasa-3",
-      "sch-ti-selasa-4",
-      "sch-ti-rabu-3",
-      "sch-ti-kamis-2",
-      "sch-ti-kamis-3",
-      "sch-ti-jumat-2",
-      "sch-ti-jumat-3"
-    ]
-  },
-  {
-    "nim": "24MI0030",
-    "name": "Zulfa Mirfati Syifa",
-    "prodi": "Manajemen Informatika",
-    "rombel": "MI 5A",
-    "email": "24mi0030@student.stmik-arungbinang.ac.id",
-    "phone": "085712340087",
-    "rombels": [
-      "MI 5A"
-    ],
-    "excludedScheduleIds": [
-      "sch-ti-senin-3",
-      "sch-ti-senin-4",
-      "sch-ti-selasa-3",
-      "sch-ti-selasa-4",
-      "sch-ti-rabu-3",
-      "sch-ti-kamis-2",
-      "sch-ti-kamis-3",
-      "sch-ti-jumat-2",
-      "sch-ti-jumat-3"
-    ]
-  },
-  {
-    "nim": "26TI0010",
-    "name": "Puji Santoso",
-    "prodi": "Teknologi Informasi",
-    "rombel": "TI 1",
-    "rombels": [
-      "TI 1"
-    ],
-    "email": "26ti0010@student.stmik-arungbinang.ac.id"
-  },
-  {
-    "nim": "26TI0011",
-    "name": "Tri Anjarsari",
-    "prodi": "Teknologi Informasi",
-    "rombel": "TI 1",
-    "rombels": [
-      "TI 1"
-    ],
-    "email": "26ti0011@student.stmik-arungbinang.ac.id",
-    "password": "pass123"
-  }
+  '1524504388940-b1c1722653e1',
 ];
 
 export const INITIAL_USERS: User[] = [
@@ -2418,6 +1500,836 @@ export const INITIAL_USERS: User[] = [
   }
 ];
 
+export const INITIAL_STUDENTS: Student[] = [
+  {
+    "nim": "26TI0001",
+    "name": "Anggi Nauli Utami",
+    "prodi": "Teknologi Informasi",
+    "rombel": "TI 1",
+    "email": "26ti0001@student.stmik-arungbinang.ac.id",
+    "phone": "085712340001",
+    "rombels": [
+      "TI 1"
+    ]
+  },
+  {
+    "nim": "26TI0002",
+    "name": "Arif Mustofa",
+    "prodi": "Teknologi Informasi",
+    "rombel": "TI 1",
+    "email": "26ti0002@student.stmik-arungbinang.ac.id",
+    "phone": "085712340002",
+    "rombels": [
+      "TI 1"
+    ]
+  },
+  {
+    "nim": "26TI0003",
+    "name": "Cahyo Sukmono",
+    "prodi": "Teknologi Informasi",
+    "rombel": "TI 1",
+    "email": "26ti0003@student.stmik-arungbinang.ac.id",
+    "phone": "085712340003",
+    "rombels": [
+      "TI 1"
+    ]
+  },
+  {
+    "nim": "26TI0004",
+    "name": "Irfan Arif Pamuji",
+    "prodi": "Teknologi Informasi",
+    "rombel": "TI 1A",
+    "email": "26ti0004@student.stmik-arungbinang.ac.id",
+    "phone": "085712340004"
+  },
+  {
+    "nim": "26TI0005",
+    "name": "Lukman Hakim",
+    "prodi": "Teknologi Informasi",
+    "rombel": "TI 1A",
+    "email": "26ti0005@student.stmik-arungbinang.ac.id",
+    "phone": "085712340005"
+  },
+  {
+    "nim": "26TI0006",
+    "name": "Naily Oktaviani Karim",
+    "prodi": "Teknologi Informasi",
+    "rombel": "TI 1",
+    "email": "26ti0006@student.stmik-arungbinang.ac.id",
+    "phone": "085712340006",
+    "rombels": [
+      "TI 1"
+    ]
+  },
+  {
+    "nim": "26TI0007",
+    "name": "Naufal Yuri Bahy",
+    "prodi": "Teknologi Informasi",
+    "rombel": "TI 1A",
+    "email": "26ti0007@student.stmik-arungbinang.ac.id",
+    "phone": "085712340007"
+  },
+  {
+    "nim": "26TI0008",
+    "name": "Putri Veronika",
+    "prodi": "Teknologi Informasi",
+    "rombel": "TI 1",
+    "email": "26ti0008@student.stmik-arungbinang.ac.id",
+    "phone": "085712340008",
+    "rombels": [
+      "TI 1"
+    ]
+  },
+  {
+    "nim": "26TI0009",
+    "name": "Nourmalia Hidayah Anjarkusuma",
+    "prodi": "Teknologi Informasi",
+    "rombel": "TI 1",
+    "email": "26ti0009@student.stmik-arungbinang.ac.id",
+    "phone": "085712340009",
+    "rombels": [
+      "TI 1"
+    ]
+  },
+  {
+    "nim": "23MI0130",
+    "name": "LUHUR BUDI UTAMI",
+    "prodi": "Manajemen Informatika",
+    "rombel": "MI 1U",
+    "email": "23mi0130@student.stmik-arungbinang.ac.id",
+    "phone": "085712340020",
+    "rombels": [
+      "MI 1U"
+    ]
+  },
+  {
+    "nim": "23MI0054",
+    "name": "RAHMAN NUR FATAHILLAH",
+    "prodi": "Manajemen Informatika",
+    "rombel": "MI 1U",
+    "email": "23mi0054@student.stmik-arungbinang.ac.id",
+    "phone": "085712340021",
+    "rombels": [
+      "MI 1U"
+    ]
+  },
+  {
+    "nim": "24MI0016",
+    "name": "KUNTUM DANIATI",
+    "prodi": "Manajemen Informatika",
+    "rombel": "MI 1U",
+    "email": "24mi0016@student.stmik-arungbinang.ac.id",
+    "phone": "085712340022",
+    "rombels": [
+      "MI 1U"
+    ]
+  },
+  {
+    "nim": "24MI0020",
+    "name": "MUHAMMAD RANDY SYAKIR",
+    "prodi": "Manajemen Informatika",
+    "rombel": "MI 1U",
+    "email": "24mi0020@student.stmik-arungbinang.ac.id",
+    "phone": "085712340023",
+    "rombels": [
+      "MI 1U"
+    ]
+  },
+  {
+    "nim": "23MI0042",
+    "name": "MELY ANDANI",
+    "prodi": "Manajemen Informatika",
+    "rombel": "MI 1U",
+    "email": "23mi0042@student.stmik-arungbinang.ac.id",
+    "phone": "085712340024",
+    "rombels": [
+      "MI 1U"
+    ]
+  },
+  {
+    "nim": "23MI0041",
+    "name": "LUTFI SUKMA FADILAH",
+    "prodi": "Manajemen Informatika",
+    "rombel": "MI 1U",
+    "email": "23mi0041@student.stmik-arungbinang.ac.id",
+    "phone": "085712340025",
+    "rombels": [
+      "MI 1U"
+    ]
+  },
+  {
+    "nim": "25TI0003",
+    "name": "Ahmad Saefudin",
+    "prodi": "Teknologi Informasi",
+    "rombel": "TI 3",
+    "email": "25ti0003@student.stmik-arungbinang.ac.id",
+    "phone": "085712340030"
+  },
+  {
+    "nim": "25TI0004",
+    "name": "Alaysa Farha Nur'aini",
+    "prodi": "Teknologi Informasi",
+    "rombel": "TI 3",
+    "email": "25ti0004@student.stmik-arungbinang.ac.id",
+    "phone": "085712340031"
+  },
+  {
+    "nim": "25TI0005",
+    "name": "Amanda Farendya Istitanansyah",
+    "prodi": "Teknologi Informasi",
+    "rombel": "TI 3",
+    "email": "25ti0005@student.stmik-arungbinang.ac.id",
+    "phone": "085712340032"
+  },
+  {
+    "nim": "25TI0006",
+    "name": "Arief Adam Musthofa",
+    "prodi": "Teknologi Informasi",
+    "rombel": "TI 3",
+    "email": "25ti0006@student.stmik-arungbinang.ac.id",
+    "phone": "085712340033"
+  },
+  {
+    "nim": "25TI0007",
+    "name": "Aulya Salsabila Khoirunnisa",
+    "prodi": "Teknologi Informasi",
+    "rombel": "TI 3",
+    "email": "25ti0007@student.stmik-arungbinang.ac.id",
+    "phone": "085712340034"
+  },
+  {
+    "nim": "25TI0012",
+    "name": "Habibi",
+    "prodi": "Teknologi Informasi",
+    "rombel": "TI 3",
+    "email": "25ti0012@student.stmik-arungbinang.ac.id",
+    "phone": "085712340035"
+  },
+  {
+    "nim": "25TI0020",
+    "name": "Hidayat Nuril Maulana",
+    "prodi": "Teknologi Informasi",
+    "rombel": "TI 3",
+    "email": "25ti0020@student.stmik-arungbinang.ac.id",
+    "phone": "085712340036"
+  },
+  {
+    "nim": "25TI0021",
+    "name": "Miftachul Jannah",
+    "prodi": "Teknologi Informasi",
+    "rombel": "TI 3",
+    "email": "25ti0021@student.stmik-arungbinang.ac.id",
+    "phone": "085712340037"
+  },
+  {
+    "nim": "25TI0022",
+    "name": "Mohammad Nayotama Oda Attalloh",
+    "prodi": "Teknologi Informasi",
+    "rombel": "TI 3",
+    "email": "25ti0022@student.stmik-arungbinang.ac.id",
+    "phone": "085712340038"
+  },
+  {
+    "nim": "25TI0025",
+    "name": "Madhina Arafati Choeron",
+    "prodi": "Teknologi Informasi",
+    "rombel": "TI 3",
+    "email": "25ti0025@student.stmik-arungbinang.ac.id",
+    "phone": "085712340039"
+  },
+  {
+    "nim": "25TI0028",
+    "name": "Pasha Wulan Ramadhani",
+    "prodi": "Teknologi Informasi",
+    "rombel": "TI 3",
+    "email": "25ti0028@student.stmik-arungbinang.ac.id",
+    "phone": "085712340040"
+  },
+  {
+    "nim": "25TI0032",
+    "name": "Nanindia Tri Rahayu",
+    "prodi": "Teknologi Informasi",
+    "rombel": "TI 3",
+    "email": "25ti0032@student.stmik-arungbinang.ac.id",
+    "phone": "085712340041"
+  },
+  {
+    "nim": "25TI0033",
+    "name": "Naylin Fikriya Sabrina",
+    "prodi": "Teknologi Informasi",
+    "rombel": "TI 3",
+    "email": "25ti0033@student.stmik-arungbinang.ac.id",
+    "phone": "085712340042"
+  },
+  {
+    "nim": "25TI0035",
+    "name": "Septiana Rahmawati",
+    "prodi": "Teknologi Informasi",
+    "rombel": "TI 3",
+    "email": "25ti0035@student.stmik-arungbinang.ac.id",
+    "phone": "085712340043"
+  },
+  {
+    "nim": "25TI0043",
+    "name": "Seva Windu Ali",
+    "prodi": "Teknologi Informasi",
+    "rombel": "TI 3",
+    "email": "25ti0043@student.stmik-arungbinang.ac.id",
+    "phone": "085712340044"
+  },
+  {
+    "nim": "25TI0045",
+    "name": "Susilo Kurniawan",
+    "prodi": "Teknologi Informasi",
+    "rombel": "TI 3",
+    "email": "25ti0045@student.stmik-arungbinang.ac.id",
+    "phone": "085712340045"
+  },
+  {
+    "nim": "25TI0050",
+    "name": "Dianna Candra Ningtyas",
+    "prodi": "Teknologi Informasi",
+    "rombel": "TI 3",
+    "email": "25ti0050@student.stmik-arungbinang.ac.id",
+    "phone": "085712340046"
+  },
+  {
+    "nim": "25TI0071",
+    "name": "Armada Teranda Putra",
+    "prodi": "Teknologi Informasi",
+    "rombel": "TI 3",
+    "email": "25ti0071@student.stmik-arungbinang.ac.id",
+    "phone": "085712340047"
+  },
+  {
+    "nim": "25TI0076",
+    "name": "Muhammad Burhanuddin Ikhsan",
+    "prodi": "Teknologi Informasi",
+    "rombel": "TI 3",
+    "email": "25ti0076@student.stmik-arungbinang.ac.id",
+    "phone": "085712340048"
+  },
+  {
+    "nim": "25TI0080",
+    "name": "Agis Khaidir Rizki",
+    "prodi": "Teknologi Informasi",
+    "rombel": "TI 3",
+    "email": "25ti0080@student.stmik-arungbinang.ac.id",
+    "phone": "085712340049"
+  },
+  {
+    "nim": "25TI0087",
+    "name": "Martin Aditya",
+    "prodi": "Teknologi Informasi",
+    "rombel": "TI 3",
+    "email": "25ti0087@student.stmik-arungbinang.ac.id",
+    "phone": "085712340050"
+  },
+  {
+    "nim": "25TI0073",
+    "name": "Dwi Mei Indah Aryani",
+    "prodi": "Teknologi Informasi",
+    "rombel": "TI 3",
+    "email": "25ti0073@student.stmik-arungbinang.ac.id",
+    "phone": "085712340051"
+  },
+  {
+    "nim": "24TI0001",
+    "name": "Achmad Charis Muhlasin",
+    "prodi": "Teknologi Informasi",
+    "rombel": "TI 5",
+    "email": "24ti0001@student.stmik-arungbinang.ac.id",
+    "phone": "085712340060"
+  },
+  {
+    "nim": "24TI0002",
+    "name": "Ade Prastiawan",
+    "prodi": "Teknologi Informasi",
+    "rombel": "TI 5",
+    "email": "24ti0002@student.stmik-arungbinang.ac.id",
+    "phone": "085712340061"
+  },
+  {
+    "nim": "24TI0004",
+    "name": "Anang Sulistyo Fadhli",
+    "prodi": "Teknologi Informasi",
+    "rombel": "TI 5",
+    "email": "24ti0004@student.stmik-arungbinang.ac.id",
+    "phone": "085712340062"
+  },
+  {
+    "nim": "24TI0009",
+    "name": "Febi Faliha",
+    "prodi": "Teknologi Informasi",
+    "rombel": "TI 5",
+    "email": "24ti0009@student.stmik-arungbinang.ac.id",
+    "phone": "085712340063"
+  },
+  {
+    "nim": "24TI0010",
+    "name": "Nisrina Yumna Qurrotu'Ain",
+    "prodi": "Teknologi Informasi",
+    "rombel": "TI 5",
+    "email": "24ti0010@student.stmik-arungbinang.ac.id",
+    "phone": "085712340064"
+  },
+  {
+    "nim": "24TI0017",
+    "name": "Vicky Ardiansyah",
+    "prodi": "Teknologi Informasi",
+    "rombel": "TI 5",
+    "email": "24ti0017@student.stmik-arungbinang.ac.id",
+    "phone": "085712340065"
+  },
+  {
+    "nim": "24TI0019",
+    "name": "Samsul Ma'arif",
+    "prodi": "Teknologi Informasi",
+    "rombel": "TI 5",
+    "email": "24ti0019@student.stmik-arungbinang.ac.id",
+    "phone": "085712340066"
+  },
+  {
+    "nim": "24TI0020",
+    "name": "Sunaryo",
+    "prodi": "Teknologi Informasi",
+    "rombel": "TI 5",
+    "email": "24ti0020@student.stmik-arungbinang.ac.id",
+    "phone": "085712340067"
+  },
+  {
+    "nim": "24TI0022",
+    "name": "Laeli Muflikhah",
+    "prodi": "Teknologi Informasi",
+    "rombel": "TI 3",
+    "email": "24ti0022@student.stmik-arungbinang.ac.id",
+    "phone": "085712340068",
+    "rombels": [
+      "TI 3"
+    ],
+    "excludedScheduleIds": [
+      "sch-ti-senin-1"
+    ]
+  },
+  {
+    "nim": "24MI0001",
+    "name": "Ahmad Abror",
+    "prodi": "Manajemen Informatika",
+    "rombel": "MI 5A",
+    "email": "24mi0001@student.stmik-arungbinang.ac.id",
+    "phone": "085712340070",
+    "rombels": [
+      "MI 5A"
+    ],
+    "excludedScheduleIds": [
+      "sch-ti-jumat-3",
+      "sch-ti-jumat-2",
+      "sch-ti-kamis-3",
+      "sch-ti-kamis-2",
+      "sch-ti-rabu-3",
+      "sch-ti-selasa-4",
+      "sch-ti-selasa-3",
+      "sch-ti-senin-4",
+      "sch-ti-senin-3"
+    ]
+  },
+  {
+    "nim": "24MI0002",
+    "name": "Alma Malika",
+    "prodi": "Manajemen Informatika",
+    "rombel": "MI 5A",
+    "email": "24mi0002@student.stmik-arungbinang.ac.id",
+    "phone": "085712340071",
+    "rombels": [
+      "MI 5A"
+    ],
+    "excludedScheduleIds": [
+      "sch-ti-senin-3",
+      "sch-ti-senin-4",
+      "sch-ti-selasa-3",
+      "sch-ti-selasa-4",
+      "sch-ti-rabu-3",
+      "sch-ti-kamis-2",
+      "sch-ti-kamis-3",
+      "sch-ti-jumat-2",
+      "sch-ti-jumat-3"
+    ]
+  },
+  {
+    "nim": "24MI0003",
+    "name": "Andre Oktavianto",
+    "prodi": "Manajemen Informatika",
+    "rombel": "MI 5A",
+    "email": "24mi0003@student.stmik-arungbinang.ac.id",
+    "phone": "085712340072",
+    "rombels": [
+      "MI 5A"
+    ],
+    "excludedScheduleIds": [
+      "sch-ti-senin-3",
+      "sch-ti-senin-4",
+      "sch-ti-selasa-3",
+      "sch-ti-selasa-4",
+      "sch-ti-rabu-3",
+      "sch-ti-kamis-2",
+      "sch-ti-kamis-3",
+      "sch-ti-jumat-2",
+      "sch-ti-jumat-3"
+    ]
+  },
+  {
+    "nim": "24MI0005",
+    "name": "Aryan Jaring Pandu Yudha",
+    "prodi": "Manajemen Informatika",
+    "rombel": "MI 5A",
+    "email": "24mi0005@student.stmik-arungbinang.ac.id",
+    "phone": "085712340073",
+    "rombels": [
+      "MI 5A"
+    ],
+    "excludedScheduleIds": [
+      "sch-ti-senin-3",
+      "sch-ti-senin-4",
+      "sch-ti-selasa-3",
+      "sch-ti-selasa-4",
+      "sch-ti-rabu-3",
+      "sch-ti-kamis-2",
+      "sch-ti-kamis-3",
+      "sch-ti-jumat-2",
+      "sch-ti-jumat-3"
+    ]
+  },
+  {
+    "nim": "24MI0006",
+    "name": "Daffa Zharif Aqillah",
+    "prodi": "Manajemen Informatika",
+    "rombel": "MI 5A",
+    "email": "24mi0006@student.stmik-arungbinang.ac.id",
+    "phone": "085712340074",
+    "rombels": [
+      "MI 5A"
+    ],
+    "excludedScheduleIds": [
+      "sch-ti-senin-3",
+      "sch-ti-senin-4",
+      "sch-ti-selasa-3",
+      "sch-ti-selasa-4",
+      "sch-ti-rabu-3",
+      "sch-ti-kamis-2",
+      "sch-ti-kamis-3",
+      "sch-ti-jumat-2",
+      "sch-ti-jumat-3"
+    ]
+  },
+  {
+    "nim": "24MI0007",
+    "name": "Danar Waskita",
+    "prodi": "Manajemen Informatika",
+    "rombel": "MI 5A",
+    "email": "24mi0007@student.stmik-arungbinang.ac.id",
+    "phone": "085712340075",
+    "rombels": [
+      "MI 5A"
+    ],
+    "excludedScheduleIds": [
+      "sch-ti-senin-3",
+      "sch-ti-senin-4",
+      "sch-ti-selasa-3",
+      "sch-ti-selasa-4",
+      "sch-ti-rabu-3",
+      "sch-ti-kamis-2",
+      "sch-ti-kamis-3",
+      "sch-ti-jumat-2",
+      "sch-ti-jumat-3"
+    ]
+  },
+  {
+    "nim": "24MI0009",
+    "name": "Dian Safitri",
+    "prodi": "Manajemen Informatika",
+    "rombel": "MI 5A",
+    "email": "24mi0009@student.stmik-arungbinang.ac.id",
+    "phone": "085712340076",
+    "rombels": [
+      "MI 5A"
+    ],
+    "excludedScheduleIds": [
+      "sch-ti-senin-3",
+      "sch-ti-senin-4",
+      "sch-ti-selasa-3",
+      "sch-ti-selasa-4",
+      "sch-ti-rabu-3",
+      "sch-ti-kamis-2",
+      "sch-ti-kamis-3",
+      "sch-ti-jumat-2",
+      "sch-ti-jumat-3"
+    ]
+  },
+  {
+    "nim": "24MI0011",
+    "name": "Dzaki Afrian",
+    "prodi": "Manajemen Informatika",
+    "rombel": "MI 5A",
+    "email": "24mi0011@student.stmik-arungbinang.ac.id",
+    "phone": "085712340077",
+    "rombels": [
+      "MI 5A"
+    ],
+    "excludedScheduleIds": [
+      "sch-ti-senin-3",
+      "sch-ti-senin-4",
+      "sch-ti-selasa-3",
+      "sch-ti-selasa-4",
+      "sch-ti-rabu-3",
+      "sch-ti-kamis-2",
+      "sch-ti-kamis-3",
+      "sch-ti-jumat-2",
+      "sch-ti-jumat-3"
+    ]
+  },
+  {
+    "nim": "24MI0015",
+    "name": "Khuzaimah",
+    "prodi": "Manajemen Informatika",
+    "rombel": "MI 5A",
+    "email": "24mi0015@student.stmik-arungbinang.ac.id",
+    "phone": "085712340078",
+    "rombels": [
+      "MI 5A"
+    ],
+    "excludedScheduleIds": [
+      "sch-ti-senin-3",
+      "sch-ti-senin-4",
+      "sch-ti-selasa-3",
+      "sch-ti-selasa-4",
+      "sch-ti-rabu-3",
+      "sch-ti-kamis-2",
+      "sch-ti-kamis-3",
+      "sch-ti-jumat-2",
+      "sch-ti-jumat-3"
+    ]
+  },
+  {
+    "nim": "24MI0018",
+    "name": "Muflikhatun Ni'Mah",
+    "prodi": "Manajemen Informatika",
+    "rombel": "MI 5A",
+    "email": "24mi0018@student.stmik-arungbinang.ac.id",
+    "phone": "085712340079",
+    "rombels": [
+      "MI 5A"
+    ],
+    "excludedScheduleIds": [
+      "sch-ti-senin-3",
+      "sch-ti-senin-4",
+      "sch-ti-selasa-3",
+      "sch-ti-selasa-4",
+      "sch-ti-rabu-3",
+      "sch-ti-kamis-2",
+      "sch-ti-kamis-3",
+      "sch-ti-jumat-2",
+      "sch-ti-jumat-3"
+    ]
+  },
+  {
+    "nim": "24MI0019",
+    "name": "Muhamad Abid Sarur",
+    "prodi": "Manajemen Informatika",
+    "rombel": "MI 5A",
+    "email": "abidsarur240306@gmail.com",
+    "phone": "085712340081",
+    "rombels": [
+      "MI 5A"
+    ],
+    "excludedScheduleIds": [
+      "sch-ti-senin-3",
+      "sch-ti-senin-4",
+      "sch-ti-selasa-3",
+      "sch-ti-selasa-4",
+      "sch-ti-rabu-3",
+      "sch-ti-kamis-2",
+      "sch-ti-kamis-3",
+      "sch-ti-jumat-2",
+      "sch-ti-jumat-3"
+    ]
+  },
+  {
+    "nim": "24MI0021",
+    "name": "Nanda Husaeni Hasbullah",
+    "prodi": "Manajemen Informatika",
+    "rombel": "MI 5A",
+    "email": "24mi0021@student.stmik-arungbinang.ac.id",
+    "phone": "085712340081",
+    "rombels": [
+      "MI 5A"
+    ],
+    "excludedScheduleIds": [
+      "sch-ti-senin-3",
+      "sch-ti-senin-4",
+      "sch-ti-selasa-3",
+      "sch-ti-selasa-4",
+      "sch-ti-rabu-3",
+      "sch-ti-kamis-2",
+      "sch-ti-kamis-3",
+      "sch-ti-jumat-3",
+      "sch-ti-jumat-2"
+    ]
+  },
+  {
+    "nim": "24MI0024",
+    "name": "Retno Ayu Subakti",
+    "prodi": "Manajemen Informatika",
+    "rombel": "MI 5A",
+    "email": "24mi0024@student.stmik-arungbinang.ac.id",
+    "phone": "085712340082",
+    "rombels": [
+      "MI 5A"
+    ],
+    "excludedScheduleIds": [
+      "sch-ti-senin-3",
+      "sch-ti-senin-4",
+      "sch-ti-selasa-3",
+      "sch-ti-selasa-4",
+      "sch-ti-rabu-3",
+      "sch-ti-kamis-2",
+      "sch-ti-kamis-3",
+      "sch-ti-jumat-3",
+      "sch-ti-jumat-2"
+    ]
+  },
+  {
+    "nim": "24MI0025",
+    "name": "Risma Mulyani",
+    "prodi": "Manajemen Informatika",
+    "rombel": "MI 5A",
+    "email": "24mi0025@student.stmik-arungbinang.ac.id",
+    "phone": "085712340083",
+    "rombels": [
+      "MI 5A"
+    ],
+    "excludedScheduleIds": [
+      "sch-ti-senin-3",
+      "sch-ti-senin-4",
+      "sch-ti-selasa-3",
+      "sch-ti-selasa-4",
+      "sch-ti-rabu-3",
+      "sch-ti-kamis-2",
+      "sch-ti-kamis-3",
+      "sch-ti-jumat-2",
+      "sch-ti-jumat-3"
+    ]
+  },
+  {
+    "nim": "24MI0026",
+    "name": "Rizki Yulianto",
+    "prodi": "Manajemen Informatika",
+    "rombel": "MI 5A",
+    "email": "24mi0026@student.stmik-arungbinang.ac.id",
+    "phone": "085712340084",
+    "rombels": [
+      "MI 5A"
+    ],
+    "excludedScheduleIds": [
+      "sch-ti-senin-3",
+      "sch-ti-senin-4",
+      "sch-ti-selasa-3",
+      "sch-ti-selasa-4",
+      "sch-ti-rabu-3",
+      "sch-ti-kamis-3",
+      "sch-ti-kamis-2",
+      "sch-ti-jumat-2",
+      "sch-ti-jumat-3"
+    ]
+  },
+  {
+    "nim": "24MI0028",
+    "name": "Tri Maulandani",
+    "prodi": "Manajemen Informatika",
+    "rombel": "MI 5A",
+    "email": "24mi0028@student.stmik-arungbinang.ac.id",
+    "phone": "085712340085",
+    "rombels": [
+      "MI 5A"
+    ],
+    "excludedScheduleIds": [
+      "sch-ti-senin-3",
+      "sch-ti-senin-4",
+      "sch-ti-selasa-3",
+      "sch-ti-selasa-4",
+      "sch-ti-rabu-3",
+      "sch-ti-kamis-2",
+      "sch-ti-kamis-3",
+      "sch-ti-jumat-2",
+      "sch-ti-jumat-3"
+    ]
+  },
+  {
+    "nim": "24MI0029",
+    "name": "Ya'Lu Azmi Yu'La Amrulloh",
+    "prodi": "Manajemen Informatika",
+    "rombel": "MI 5A",
+    "email": "24mi0029@student.stmik-arungbinang.ac.id",
+    "phone": "085712340086",
+    "rombels": [
+      "MI 5A"
+    ],
+    "excludedScheduleIds": [
+      "sch-ti-senin-3",
+      "sch-ti-senin-4",
+      "sch-ti-selasa-3",
+      "sch-ti-selasa-4",
+      "sch-ti-rabu-3",
+      "sch-ti-kamis-2",
+      "sch-ti-kamis-3",
+      "sch-ti-jumat-2",
+      "sch-ti-jumat-3"
+    ]
+  },
+  {
+    "nim": "24MI0030",
+    "name": "Zulfa Mirfati Syifa",
+    "prodi": "Manajemen Informatika",
+    "rombel": "MI 5A",
+    "email": "24mi0030@student.stmik-arungbinang.ac.id",
+    "phone": "085712340087",
+    "rombels": [
+      "MI 5A"
+    ],
+    "excludedScheduleIds": [
+      "sch-ti-senin-3",
+      "sch-ti-senin-4",
+      "sch-ti-selasa-3",
+      "sch-ti-selasa-4",
+      "sch-ti-rabu-3",
+      "sch-ti-kamis-2",
+      "sch-ti-kamis-3",
+      "sch-ti-jumat-2",
+      "sch-ti-jumat-3"
+    ]
+  },
+  {
+    "nim": "26TI0010",
+    "name": "Puji Santoso",
+    "prodi": "Teknologi Informasi",
+    "rombel": "TI 1",
+    "rombels": [
+      "TI 1"
+    ],
+    "email": "26ti0010@student.stmik-arungbinang.ac.id"
+  },
+  {
+    "nim": "26TI0011",
+    "name": "Tri Anjarsari",
+    "prodi": "Teknologi Informasi",
+    "rombel": "TI 1",
+    "rombels": [
+      "TI 1"
+    ],
+    "email": "26ti0011@student.stmik-arungbinang.ac.id",
+    "password": "pass123"
+  }
+];
+
 export const INITIAL_COURSES: Course[] = [
   {
     "id": "c-mkti0109",
@@ -2866,6 +2778,7 @@ export const INITIAL_SCHEDULES: ScheduleItem[] = [
       "1": "2026-10-07",
       "2": "2026-10-14",
       "3": "2026-10-21",
+      "4": "2026-11-11",
       "5": "2026-11-11"
     }
   },
@@ -3160,7 +3073,18 @@ export const INITIAL_SCHEDULES: ScheduleItem[] = [
       "2": "2026-10-15",
       "3": "2026-10-22",
       "4": "2026-10-29",
-      "5": "2026-11-12"
+      "5": "2026-11-12",
+      "6": "2026-11-19",
+      "7": "2026-10-22",
+      "8": "2026-10-29",
+      "9": "2026-11-05",
+      "10": "2026-11-12",
+      "11": "2026-11-19",
+      "12": "2026-11-26",
+      "13": "2026-12-03",
+      "14": "2026-12-10",
+      "15": "2026-12-17",
+      "16": "2026-12-24"
     }
   },
   {
@@ -3180,7 +3104,9 @@ export const INITIAL_SCHEDULES: ScheduleItem[] = [
       "1": "2026-10-08",
       "2": "2026-10-15",
       "3": "2026-10-22",
-      "5": "2026-11-12"
+      "4": "2026-10-29",
+      "5": "2026-11-12",
+      "6": "2026-11-19"
     }
   },
   {
@@ -3243,6 +3169,90 @@ export const INITIAL_SCHEDULES: ScheduleItem[] = [
 
 export const INITIAL_SESSIONS: AttendanceSession[] = [
   {
+    "id": "session-1795074786418",
+    "scheduleId": "sch-ti-rabu-2",
+    "courseCode": "MKTI0111",
+    "courseName": "Pengantar Forensik Digital",
+    "lecturerId": "dosen-10",
+    "lecturerName": "Ammar Fauzan, S.Pd., M.Kom.",
+    "rombel": "TI 3",
+    "room": "RK 2",
+    "date": "2026-11-11",
+    "startTime": "11:30",
+    "endTime": "13:10",
+    "meetingNumber": 4,
+    "topic": "etika forensik",
+    "evaluationMethod": "Tanya Jawab & Keaktifan di Kelas",
+    "qrToken": "STMIK-MKTI0111-P4-5T56L4",
+    "isDynamicQr": false,
+    "qrExpiresAt": "2026-11-19T09:23:06.418Z",
+    "isOpen": false,
+    "createdAt": "2026-11-19T07:53:06.418Z"
+  },
+  {
+    "id": "session-1795064447513",
+    "scheduleId": "sch-mi-kamis-2",
+    "courseCode": "MKMI0210P",
+    "courseName": "Praktikum Pemrograman Berorientasi Objek",
+    "lecturerId": "dosen-10",
+    "lecturerName": "Ammar Fauzan, S.Pd., M.Kom.",
+    "rombel": "MI 5, MI 5A",
+    "room": "LAB 1",
+    "date": "2026-11-19",
+    "startTime": "09:50",
+    "endTime": "12:20",
+    "meetingNumber": 6,
+    "topic": "Review Materi pra-UTS",
+    "evaluationMethod": "Praktikum / Studi Kasus Laboratorium",
+    "qrToken": "STMIK-MKMI0210P-P6-QYLYP1",
+    "isDynamicQr": false,
+    "qrExpiresAt": "2026-11-19T06:30:47.513Z",
+    "isOpen": false,
+    "createdAt": "2026-11-19T05:00:47.513Z"
+  },
+  {
+    "id": "session-1795064414464",
+    "scheduleId": "sch-mi-kamis-1",
+    "courseCode": "MKMI0210",
+    "courseName": "Pemrograman Berorientasi Objek",
+    "lecturerId": "dosen-10",
+    "lecturerName": "Ammar Fauzan, S.Pd., M.Kom.",
+    "rombel": "MI 5, MI 5A",
+    "room": "LAB 1",
+    "date": "2026-11-19",
+    "startTime": "09:00",
+    "endTime": "09:50",
+    "meetingNumber": 6,
+    "topic": "Review Materi pra-UTS",
+    "evaluationMethod": "Praktikum / Studi Kasus Laboratorium",
+    "qrToken": "STMIK-MKMI0210-P6-SQDV8T",
+    "isDynamicQr": false,
+    "qrExpiresAt": "2026-11-19T06:30:14.464Z",
+    "isOpen": false,
+    "createdAt": "2026-11-19T05:00:14.464Z"
+  },
+  {
+    "id": "session-1795059766768",
+    "scheduleId": "sch-mi-kamis-2",
+    "courseCode": "MKMI0210P",
+    "courseName": "Praktikum Pemrograman Berorientasi Objek",
+    "lecturerId": "dosen-10",
+    "lecturerName": "Ammar Fauzan, S.Pd., M.Kom.",
+    "rombel": "MI 5, MI 5A",
+    "room": "LAB 1",
+    "date": "2026-10-29",
+    "startTime": "09:50",
+    "endTime": "12:20",
+    "meetingNumber": 4,
+    "topic": "Modul",
+    "evaluationMethod": "Praktikum / Studi Kasus Laboratorium",
+    "qrToken": "STMIK-MKMI0210P-P4-0SLPJU",
+    "isDynamicQr": false,
+    "qrExpiresAt": "2026-11-19T05:12:46.768Z",
+    "isOpen": false,
+    "createdAt": "2026-11-19T03:42:46.768Z"
+  },
+  {
     "id": "session-1794999734746",
     "scheduleId": "sch-mi-senin-3",
     "courseCode": "MKMI0105",
@@ -3260,7 +3270,7 @@ export const INITIAL_SESSIONS: AttendanceSession[] = [
     "qrToken": "STMIK-MKMI0105-P6-UK5MOQ",
     "isDynamicQr": false,
     "qrExpiresAt": "2026-11-18T12:32:14.746Z",
-    "isOpen": true,
+    "isOpen": false,
     "createdAt": "2026-11-18T11:02:14.746Z"
   },
   {
@@ -3383,9 +3393,9 @@ export const INITIAL_SESSIONS: AttendanceSession[] = [
     "meetingNumber": 4,
     "topic": "Praktikum",
     "evaluationMethod": "Tanya Jawab & Keaktifan di Kelas",
-    "qrToken": "STMIK-MKTI0207-P4-9SYXVZ",
+    "qrToken": "STMIK-MKTI0207-P4-ZA2MWN",
     "isDynamicQr": false,
-    "qrExpiresAt": "2026-11-11T03:43:56.473Z",
+    "qrExpiresAt": "2026-11-19T08:00:46.592Z",
     "isOpen": false,
     "createdAt": "2026-11-11T02:13:56.473Z"
   },
@@ -3425,9 +3435,9 @@ export const INITIAL_SESSIONS: AttendanceSession[] = [
     "meetingNumber": 3,
     "topic": "Praktik memahami class dan objek",
     "evaluationMethod": "Praktikum / Studi Kasus Laboratorium",
-    "qrToken": "STMIK-MKMI0210P-P3-RVEV81",
+    "qrToken": "STMIK-MKMI0210P-P3-1DR98A",
     "isDynamicQr": false,
-    "qrExpiresAt": "2026-10-22T04:53:28.565Z",
+    "qrExpiresAt": "2026-11-19T06:59:33.394Z",
     "isOpen": false,
     "createdAt": "2026-10-22T03:23:28.565Z"
   },
@@ -3797,7 +3807,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "RAHMAN NUR FATAHILLAH",
     "rombel": "MI 1U",
     "status": "HADIR",
-    "scannedAt": "2026-11-18T11:54:23.433Z",
+    "scannedAt": "2026-11-19T07:49:24.936Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -3810,7 +3820,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Tri Anjarsari",
     "rombel": "TI 1",
     "status": "HADIR",
-    "scannedAt": "2026-11-18T11:54:23.434Z",
+    "scannedAt": "2026-11-19T07:49:24.936Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -3823,7 +3833,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Sunaryo",
     "rombel": "TI 5",
     "status": "HADIR",
-    "scannedAt": "2026-11-18T11:54:23.434Z",
+    "scannedAt": "2026-11-19T07:49:24.936Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -3836,7 +3846,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Samsul Ma'arif",
     "rombel": "TI 5",
     "status": "HADIR",
-    "scannedAt": "2026-11-18T11:54:23.434Z",
+    "scannedAt": "2026-11-19T07:49:24.936Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -3849,7 +3859,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Nisrina Yumna Qurrotu'Ain",
     "rombel": "TI 5",
     "status": "HADIR",
-    "scannedAt": "2026-11-18T11:54:23.434Z",
+    "scannedAt": "2026-11-19T07:49:24.936Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -3862,7 +3872,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Vicky Ardiansyah",
     "rombel": "TI 5",
     "status": "HADIR",
-    "scannedAt": "2026-11-18T11:54:23.434Z",
+    "scannedAt": "2026-11-19T07:49:24.936Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -3875,7 +3885,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Nourmalia Hidayah Anjarkusuma",
     "rombel": "TI 1",
     "status": "HADIR",
-    "scannedAt": "2026-11-18T11:54:23.433Z",
+    "scannedAt": "2026-11-19T07:49:24.936Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -3888,7 +3898,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "LUHUR BUDI UTAMI",
     "rombel": "MI 1U",
     "status": "HADIR",
-    "scannedAt": "2026-11-18T11:54:23.433Z",
+    "scannedAt": "2026-11-19T07:49:24.936Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -3901,7 +3911,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Naufal Yuri Bahy",
     "rombel": "TI 1A",
     "status": "HADIR",
-    "scannedAt": "2026-11-18T11:54:23.433Z",
+    "scannedAt": "2026-11-19T07:49:24.936Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -3914,7 +3924,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Cahyo Sukmono",
     "rombel": "TI 1",
     "status": "HADIR",
-    "scannedAt": "2026-11-18T11:54:23.432Z",
+    "scannedAt": "2026-11-19T07:49:24.936Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -3927,7 +3937,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Anggi Nauli Utami",
     "rombel": "TI 1",
     "status": "HADIR",
-    "scannedAt": "2026-11-18T11:54:23.432Z",
+    "scannedAt": "2026-11-19T07:49:24.936Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -3992,7 +4002,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Laeli Muflikhah",
     "rombel": "TI 3",
     "status": "HADIR",
-    "scannedAt": "2026-11-18T03:43:14.637Z",
+    "scannedAt": "2026-11-19T08:00:39.101Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -4005,7 +4015,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Laeli Muflikhah",
     "rombel": "TI 3",
     "status": "HADIR",
-    "scannedAt": "2026-11-18T03:42:56.935Z",
+    "scannedAt": "2026-11-19T08:12:05.768Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -4018,7 +4028,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Laeli Muflikhah",
     "rombel": "TI 3",
     "status": "HADIR",
-    "scannedAt": "2026-11-18T03:42:32.596Z",
+    "scannedAt": "2026-11-19T08:11:57.755Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -4031,7 +4041,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Naylin Fikriya Sabrina",
     "rombel": "TI 3",
     "status": "IZIN",
-    "scannedAt": "2026-11-18T03:42:32.596Z",
+    "scannedAt": "2026-11-19T08:11:57.755Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -4044,7 +4054,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Nanindia Tri Rahayu",
     "rombel": "TI 3",
     "status": "HADIR",
-    "scannedAt": "2026-11-18T03:42:32.596Z",
+    "scannedAt": "2026-11-19T08:11:57.755Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -4057,7 +4067,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Pasha Wulan Ramadhani",
     "rombel": "TI 3",
     "status": "HADIR",
-    "scannedAt": "2026-11-18T03:42:32.596Z",
+    "scannedAt": "2026-11-19T08:11:57.755Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -4070,7 +4080,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Madhina Arafati Choeron",
     "rombel": "TI 3",
     "status": "HADIR",
-    "scannedAt": "2026-11-18T03:42:32.596Z",
+    "scannedAt": "2026-11-19T08:11:57.755Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -4083,7 +4093,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Mohammad Nayotama Oda Attalloh",
     "rombel": "TI 3",
     "status": "HADIR",
-    "scannedAt": "2026-11-18T03:42:32.596Z",
+    "scannedAt": "2026-11-19T08:11:57.755Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -4096,7 +4106,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Miftachul Jannah",
     "rombel": "TI 3",
     "status": "HADIR",
-    "scannedAt": "2026-11-18T03:42:32.596Z",
+    "scannedAt": "2026-11-19T08:11:57.755Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -4109,7 +4119,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Hidayat Nuril Maulana",
     "rombel": "TI 3",
     "status": "HADIR",
-    "scannedAt": "2026-11-18T03:42:32.596Z",
+    "scannedAt": "2026-11-19T08:11:57.755Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -4122,7 +4132,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Habibi",
     "rombel": "TI 3",
     "status": "HADIR",
-    "scannedAt": "2026-11-18T03:42:32.596Z",
+    "scannedAt": "2026-11-19T08:11:57.755Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -4135,7 +4145,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Aulya Salsabila Khoirunnisa",
     "rombel": "TI 3",
     "status": "HADIR",
-    "scannedAt": "2026-11-18T03:42:32.596Z",
+    "scannedAt": "2026-11-19T08:11:57.755Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -4148,7 +4158,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Amanda Farendya Istitanansyah",
     "rombel": "TI 3",
     "status": "HADIR",
-    "scannedAt": "2026-11-18T03:42:32.596Z",
+    "scannedAt": "2026-11-19T08:11:57.754Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -4161,7 +4171,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Alaysa Farha Nur'aini",
     "rombel": "TI 3",
     "status": "HADIR",
-    "scannedAt": "2026-11-18T03:42:32.596Z",
+    "scannedAt": "2026-11-19T08:11:57.754Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -4174,7 +4184,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Ahmad Saefudin",
     "rombel": "TI 3",
     "status": "SAKIT",
-    "scannedAt": "2026-11-18T03:42:32.596Z",
+    "scannedAt": "2026-11-19T08:11:57.754Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Diubah manual oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -4187,7 +4197,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Arief Adam Musthofa",
     "rombel": "TI 3",
     "status": "HADIR",
-    "scannedAt": "2026-11-18T03:42:32.596Z",
+    "scannedAt": "2026-11-19T08:11:57.755Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -4200,7 +4210,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Martin Aditya",
     "rombel": "TI 3",
     "status": "HADIR",
-    "scannedAt": "2026-11-18T03:42:32.596Z",
+    "scannedAt": "2026-11-19T08:11:57.755Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -4213,7 +4223,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Agis Khaidir Rizki",
     "rombel": "TI 3",
     "status": "HADIR",
-    "scannedAt": "2026-11-18T03:42:32.596Z",
+    "scannedAt": "2026-11-19T08:11:57.755Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -4226,7 +4236,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Armada Teranda Putra",
     "rombel": "TI 3",
     "status": "HADIR",
-    "scannedAt": "2026-11-18T03:42:32.596Z",
+    "scannedAt": "2026-11-19T08:11:57.755Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -4239,7 +4249,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Dianna Candra Ningtyas",
     "rombel": "TI 3",
     "status": "HADIR",
-    "scannedAt": "2026-11-18T03:42:32.596Z",
+    "scannedAt": "2026-11-19T08:11:57.755Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -4252,7 +4262,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Susilo Kurniawan",
     "rombel": "TI 3",
     "status": "HADIR",
-    "scannedAt": "2026-11-18T03:42:32.596Z",
+    "scannedAt": "2026-11-19T08:11:57.755Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -4265,7 +4275,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Seva Windu Ali",
     "rombel": "TI 3",
     "status": "HADIR",
-    "scannedAt": "2026-11-18T03:42:32.596Z",
+    "scannedAt": "2026-11-19T08:11:57.755Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -4278,7 +4288,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Septiana Rahmawati",
     "rombel": "TI 3",
     "status": "HADIR",
-    "scannedAt": "2026-11-18T03:42:32.596Z",
+    "scannedAt": "2026-11-19T08:11:57.755Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -4291,7 +4301,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Zulfa Mirfati Syifa",
     "rombel": "MI 5A",
     "status": "HADIR",
-    "scannedAt": "2026-11-12T04:06:43.485Z",
+    "scannedAt": "2026-11-19T05:43:25.131Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -4304,7 +4314,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Ya'Lu Azmi Yu'La Amrulloh",
     "rombel": "MI 5A",
     "status": "HADIR",
-    "scannedAt": "2026-11-12T04:06:43.485Z",
+    "scannedAt": "2026-11-19T05:43:25.131Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -4317,7 +4327,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Tri Maulandani",
     "rombel": "MI 5A",
     "status": "HADIR",
-    "scannedAt": "2026-11-12T04:06:43.485Z",
+    "scannedAt": "2026-11-19T05:43:25.131Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -4330,7 +4340,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Rizki Yulianto",
     "rombel": "MI 5A",
     "status": "ALPHA",
-    "scannedAt": "2026-11-12T04:06:43.485Z",
+    "scannedAt": "2026-11-19T05:43:25.131Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Diubah manual oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -4343,7 +4353,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Risma Mulyani",
     "rombel": "MI 5A",
     "status": "HADIR",
-    "scannedAt": "2026-11-12T04:06:43.485Z",
+    "scannedAt": "2026-11-19T05:43:25.131Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -4356,7 +4366,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Retno Ayu Subakti",
     "rombel": "MI 5A",
     "status": "HADIR",
-    "scannedAt": "2026-11-12T04:06:43.485Z",
+    "scannedAt": "2026-11-19T05:43:25.131Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -4369,7 +4379,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Muhamad Abid Sarur",
     "rombel": "MI 5A",
     "status": "HADIR",
-    "scannedAt": "2026-11-12T04:06:43.485Z",
+    "scannedAt": "2026-11-19T05:43:25.131Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -4382,7 +4392,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Muflikhatun Ni'Mah",
     "rombel": "MI 5A",
     "status": "HADIR",
-    "scannedAt": "2026-11-12T04:06:43.485Z",
+    "scannedAt": "2026-11-19T05:43:25.131Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -4395,7 +4405,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Khuzaimah",
     "rombel": "MI 5A",
     "status": "HADIR",
-    "scannedAt": "2026-11-12T04:06:43.485Z",
+    "scannedAt": "2026-11-19T05:43:25.131Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -4408,7 +4418,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Dzaki Afrian",
     "rombel": "MI 5A",
     "status": "HADIR",
-    "scannedAt": "2026-11-12T04:06:43.485Z",
+    "scannedAt": "2026-11-19T05:43:25.131Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -4421,7 +4431,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Dian Safitri",
     "rombel": "MI 5A",
     "status": "HADIR",
-    "scannedAt": "2026-11-12T04:06:43.485Z",
+    "scannedAt": "2026-11-19T05:43:25.131Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -4434,7 +4444,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Danar Waskita",
     "rombel": "MI 5A",
     "status": "HADIR",
-    "scannedAt": "2026-11-12T04:06:43.485Z",
+    "scannedAt": "2026-11-19T05:43:25.131Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -4447,7 +4457,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Daffa Zharif Aqillah",
     "rombel": "MI 5A",
     "status": "HADIR",
-    "scannedAt": "2026-11-12T04:06:43.485Z",
+    "scannedAt": "2026-11-19T05:43:25.131Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -4460,7 +4470,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Aryan Jaring Pandu Yudha",
     "rombel": "MI 5A",
     "status": "HADIR",
-    "scannedAt": "2026-11-12T04:06:43.485Z",
+    "scannedAt": "2026-11-19T05:43:25.131Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -4473,7 +4483,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Andre Oktavianto",
     "rombel": "MI 5A",
     "status": "HADIR",
-    "scannedAt": "2026-11-12T04:06:43.485Z",
+    "scannedAt": "2026-11-19T05:43:25.131Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -4486,7 +4496,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Alma Malika",
     "rombel": "MI 5A",
     "status": "HADIR",
-    "scannedAt": "2026-11-12T04:06:43.485Z",
+    "scannedAt": "2026-11-19T05:43:25.131Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -4499,7 +4509,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Ahmad Abror",
     "rombel": "MI 5A",
     "status": "HADIR",
-    "scannedAt": "2026-11-12T04:06:43.485Z",
+    "scannedAt": "2026-11-19T05:43:25.131Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -4512,7 +4522,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Zulfa Mirfati Syifa",
     "rombel": "MI 5A",
     "status": "HADIR",
-    "scannedAt": "2026-11-12T02:44:20.750Z",
+    "scannedAt": "2026-11-19T05:42:03.501Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -4525,7 +4535,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Tri Maulandani",
     "rombel": "MI 5A",
     "status": "HADIR",
-    "scannedAt": "2026-11-12T02:44:20.750Z",
+    "scannedAt": "2026-11-19T05:42:03.500Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -4538,7 +4548,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Risma Mulyani",
     "rombel": "MI 5A",
     "status": "HADIR",
-    "scannedAt": "2026-11-12T02:44:20.750Z",
+    "scannedAt": "2026-11-19T05:42:03.500Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -4551,7 +4561,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Retno Ayu Subakti",
     "rombel": "MI 5A",
     "status": "HADIR",
-    "scannedAt": "2026-11-12T02:44:20.750Z",
+    "scannedAt": "2026-11-19T05:42:03.500Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -4564,7 +4574,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Nanda Husaeni Hasbullah",
     "rombel": "MI 5A",
     "status": "ALPHA",
-    "scannedAt": "2026-11-12T02:44:20.750Z",
+    "scannedAt": "2026-11-19T05:42:03.500Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Diubah manual oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -4576,8 +4586,8 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentNim": "24MI0019",
     "studentName": "Muhamad Abid Sarur",
     "rombel": "MI 5A",
-    "status": "ALPHA",
-    "scannedAt": "2026-11-12T02:44:20.750Z",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T05:42:03.500Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Diubah manual oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -4590,7 +4600,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Muflikhatun Ni'Mah",
     "rombel": "MI 5A",
     "status": "HADIR",
-    "scannedAt": "2026-11-12T02:44:20.750Z",
+    "scannedAt": "2026-11-19T05:42:03.500Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -4602,8 +4612,8 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentNim": "24MI0015",
     "studentName": "Khuzaimah",
     "rombel": "MI 5A",
-    "status": "ALPHA",
-    "scannedAt": "2026-11-12T02:44:20.750Z",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T05:42:03.500Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Diubah manual oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -4616,7 +4626,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Dzaki Afrian",
     "rombel": "MI 5A",
     "status": "HADIR",
-    "scannedAt": "2026-11-12T02:44:20.750Z",
+    "scannedAt": "2026-11-19T05:42:03.500Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -4629,7 +4639,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Dian Safitri",
     "rombel": "MI 5A",
     "status": "HADIR",
-    "scannedAt": "2026-11-12T02:44:20.750Z",
+    "scannedAt": "2026-11-19T05:42:03.500Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -4642,7 +4652,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Danar Waskita",
     "rombel": "MI 5A",
     "status": "HADIR",
-    "scannedAt": "2026-11-12T02:44:20.750Z",
+    "scannedAt": "2026-11-19T05:42:03.500Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -4655,7 +4665,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Daffa Zharif Aqillah",
     "rombel": "MI 5A",
     "status": "HADIR",
-    "scannedAt": "2026-11-12T02:44:20.750Z",
+    "scannedAt": "2026-11-19T05:42:03.500Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -4668,7 +4678,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Aryan Jaring Pandu Yudha",
     "rombel": "MI 5A",
     "status": "HADIR",
-    "scannedAt": "2026-11-12T02:44:20.750Z",
+    "scannedAt": "2026-11-19T05:42:03.500Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -4681,7 +4691,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Alma Malika",
     "rombel": "MI 5A",
     "status": "HADIR",
-    "scannedAt": "2026-11-12T02:44:20.750Z",
+    "scannedAt": "2026-11-19T05:42:03.500Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -4694,7 +4704,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Andre Oktavianto",
     "rombel": "MI 5A",
     "status": "HADIR",
-    "scannedAt": "2026-11-12T02:44:20.750Z",
+    "scannedAt": "2026-11-19T05:42:03.500Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -4707,7 +4717,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Ahmad Abror",
     "rombel": "MI 5A",
     "status": "HADIR",
-    "scannedAt": "2026-11-12T02:44:20.750Z",
+    "scannedAt": "2026-11-19T05:42:03.500Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -4720,7 +4730,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Putri Veronika",
     "rombel": "TI 1A",
     "status": "HADIR",
-    "scannedAt": "2026-11-11T12:34:09.115Z",
+    "scannedAt": "2026-11-19T08:07:27.256Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -4733,7 +4743,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Naufal Yuri Bahy",
     "rombel": "TI 1A",
     "status": "HADIR",
-    "scannedAt": "2026-11-11T12:34:09.115Z",
+    "scannedAt": "2026-11-19T08:07:27.256Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -4746,7 +4756,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Arif Mustofa",
     "rombel": "MI 1A",
     "status": "HADIR",
-    "scannedAt": "2026-11-11T12:34:09.115Z",
+    "scannedAt": "2026-11-19T08:07:27.256Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -4759,7 +4769,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Samsul Ma'arif",
     "rombel": "TI 5",
     "status": "HADIR",
-    "scannedAt": "2026-11-11T12:34:09.116Z",
+    "scannedAt": "2026-11-19T08:07:27.256Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -4772,7 +4782,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Vicky Ardiansyah",
     "rombel": "TI 5",
     "status": "HADIR",
-    "scannedAt": "2026-11-11T12:34:09.116Z",
+    "scannedAt": "2026-11-19T08:07:27.256Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -4785,7 +4795,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Achmad Charis Muhlasin",
     "rombel": "TI 5",
     "status": "HADIR",
-    "scannedAt": "2026-11-11T12:34:09.116Z",
+    "scannedAt": "2026-11-19T08:07:27.256Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -4798,7 +4808,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "MELY ANDANI",
     "rombel": "MI 1A",
     "status": "HADIR",
-    "scannedAt": "2026-11-11T12:34:09.116Z",
+    "scannedAt": "2026-11-19T08:07:27.256Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -4811,7 +4821,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "KUNTUM DANIATI",
     "rombel": "MI 1A",
     "status": "HADIR",
-    "scannedAt": "2026-11-11T12:34:09.116Z",
+    "scannedAt": "2026-11-19T08:07:27.256Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -4824,7 +4834,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "RAHMAN NUR FATAHILLAH",
     "rombel": "MI 1A",
     "status": "HADIR",
-    "scannedAt": "2026-11-11T12:34:09.116Z",
+    "scannedAt": "2026-11-19T08:07:27.256Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -4837,7 +4847,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "LUHUR BUDI UTAMI",
     "rombel": "MI 1A",
     "status": "HADIR",
-    "scannedAt": "2026-11-11T12:34:09.116Z",
+    "scannedAt": "2026-11-19T08:07:27.256Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -4850,7 +4860,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Cahyo Sukmono",
     "rombel": "MI 1A",
     "status": "HADIR",
-    "scannedAt": "2026-11-11T12:34:09.115Z",
+    "scannedAt": "2026-11-19T08:07:27.256Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -4863,7 +4873,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Agis Khaidir Rizki",
     "rombel": "TI 3",
     "status": "HADIR",
-    "scannedAt": "2026-11-18T03:43:14.637Z",
+    "scannedAt": "2026-11-19T08:00:39.101Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -4876,7 +4886,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Muhammad Burhanuddin Ikhsan",
     "rombel": "TI 3",
     "status": "HADIR",
-    "scannedAt": "2026-11-18T03:43:14.637Z",
+    "scannedAt": "2026-11-19T08:00:39.101Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -4889,7 +4899,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Dianna Candra Ningtyas",
     "rombel": "TI 3",
     "status": "HADIR",
-    "scannedAt": "2026-11-18T03:43:14.637Z",
+    "scannedAt": "2026-11-19T08:00:39.101Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -4902,7 +4912,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Susilo Kurniawan",
     "rombel": "TI 3",
     "status": "HADIR",
-    "scannedAt": "2026-11-18T03:43:14.637Z",
+    "scannedAt": "2026-11-19T08:00:39.101Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -4915,7 +4925,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Seva Windu Ali",
     "rombel": "TI 3",
     "status": "HADIR",
-    "scannedAt": "2026-11-18T03:43:14.637Z",
+    "scannedAt": "2026-11-19T08:00:39.101Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -4928,7 +4938,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Septiana Rahmawati",
     "rombel": "TI 3",
     "status": "HADIR",
-    "scannedAt": "2026-11-18T03:43:14.637Z",
+    "scannedAt": "2026-11-19T08:00:39.101Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -4941,7 +4951,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Pasha Wulan Ramadhani",
     "rombel": "TI 3",
     "status": "HADIR",
-    "scannedAt": "2026-11-18T03:43:14.637Z",
+    "scannedAt": "2026-11-19T08:00:39.101Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -4954,7 +4964,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Mohammad Nayotama Oda Attalloh",
     "rombel": "TI 3",
     "status": "HADIR",
-    "scannedAt": "2026-11-18T03:43:14.637Z",
+    "scannedAt": "2026-11-19T08:00:39.101Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -4967,7 +4977,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Aulya Salsabila Khoirunnisa",
     "rombel": "TI 3",
     "status": "HADIR",
-    "scannedAt": "2026-11-18T03:43:14.637Z",
+    "scannedAt": "2026-11-19T08:00:39.101Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -4980,7 +4990,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Amanda Farendya Istitanansyah",
     "rombel": "TI 3",
     "status": "HADIR",
-    "scannedAt": "2026-11-18T03:43:14.637Z",
+    "scannedAt": "2026-11-19T08:00:39.101Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -4993,7 +5003,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Alaysa Farha Nur'aini",
     "rombel": "TI 3",
     "status": "HADIR",
-    "scannedAt": "2026-11-18T03:43:14.637Z",
+    "scannedAt": "2026-11-19T08:00:39.101Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -5188,7 +5198,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Sunaryo",
     "rombel": "TI 5",
     "status": "HADIR",
-    "scannedAt": "2026-10-21T11:17:17.535Z",
+    "scannedAt": "2026-11-19T07:50:27.733Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -5201,7 +5211,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Achmad Charis Muhlasin",
     "rombel": "TI 5",
     "status": "HADIR",
-    "scannedAt": "2026-10-21T11:17:17.533Z",
+    "scannedAt": "2026-11-19T07:50:27.733Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -5214,7 +5224,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "MUHAMMAD RANDY SYAKIR",
     "rombel": "MI 1A",
     "status": "HADIR",
-    "scannedAt": "2026-10-21T11:17:17.533Z",
+    "scannedAt": "2026-11-19T07:50:27.733Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -5227,7 +5237,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "KUNTUM DANIATI",
     "rombel": "MI 1A",
     "status": "HADIR",
-    "scannedAt": "2026-10-21T11:17:17.533Z",
+    "scannedAt": "2026-11-19T07:50:27.733Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -5240,7 +5250,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "LUHUR BUDI UTAMI",
     "rombel": "MI 1A",
     "status": "HADIR",
-    "scannedAt": "2026-10-21T11:17:17.533Z",
+    "scannedAt": "2026-11-19T07:50:27.733Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -5253,7 +5263,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Zulfa Mirfati Syifa",
     "rombel": "MI 5A",
     "status": "HADIR",
-    "scannedAt": "2026-10-15T02:30:02.629Z",
+    "scannedAt": "2026-11-19T08:12:36.046Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -5266,7 +5276,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Ya'Lu Azmi Yu'La Amrulloh",
     "rombel": "MI 5A",
     "status": "HADIR",
-    "scannedAt": "2026-10-15T02:30:02.629Z",
+    "scannedAt": "2026-11-19T08:12:36.046Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -5279,7 +5289,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Tri Maulandani",
     "rombel": "MI 5A",
     "status": "HADIR",
-    "scannedAt": "2026-10-15T02:30:02.629Z",
+    "scannedAt": "2026-11-19T08:12:36.046Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -5292,7 +5302,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Rizki Yulianto",
     "rombel": "MI 5A",
     "status": "HADIR",
-    "scannedAt": "2026-10-15T02:30:02.629Z",
+    "scannedAt": "2026-11-19T08:12:36.046Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -5305,7 +5315,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Risma Mulyani",
     "rombel": "MI 5A",
     "status": "HADIR",
-    "scannedAt": "2026-10-15T02:30:02.629Z",
+    "scannedAt": "2026-11-19T08:12:36.046Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -5318,7 +5328,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Retno Ayu Subakti",
     "rombel": "MI 5A",
     "status": "HADIR",
-    "scannedAt": "2026-10-15T02:30:02.629Z",
+    "scannedAt": "2026-11-19T08:12:36.046Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -5331,7 +5341,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Nanda Husaeni Hasbullah",
     "rombel": "MI 5A",
     "status": "HADIR",
-    "scannedAt": "2026-10-15T02:30:02.629Z",
+    "scannedAt": "2026-11-19T08:12:36.046Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -5344,7 +5354,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Muhamad Abid Sarur",
     "rombel": "MI 5A",
     "status": "HADIR",
-    "scannedAt": "2026-10-15T02:30:02.629Z",
+    "scannedAt": "2026-11-19T08:12:36.046Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -5357,7 +5367,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Muflikhatun Ni'Mah",
     "rombel": "MI 5A",
     "status": "IZIN",
-    "scannedAt": "2026-10-15T02:30:02.629Z",
+    "scannedAt": "2026-11-19T08:12:36.046Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -5370,7 +5380,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Khuzaimah",
     "rombel": "MI 5A",
     "status": "HADIR",
-    "scannedAt": "2026-10-15T02:30:02.629Z",
+    "scannedAt": "2026-11-19T08:12:36.046Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -5383,7 +5393,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Dzaki Afrian",
     "rombel": "MI 5A",
     "status": "HADIR",
-    "scannedAt": "2026-10-15T02:30:02.629Z",
+    "scannedAt": "2026-11-19T08:12:36.046Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -5396,7 +5406,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Dian Safitri",
     "rombel": "MI 5A",
     "status": "HADIR",
-    "scannedAt": "2026-10-15T02:30:02.629Z",
+    "scannedAt": "2026-11-19T08:12:36.046Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -5409,7 +5419,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Daffa Zharif Aqillah",
     "rombel": "MI 5A",
     "status": "HADIR",
-    "scannedAt": "2026-10-15T02:30:02.629Z",
+    "scannedAt": "2026-11-19T08:12:36.046Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -5422,7 +5432,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Aryan Jaring Pandu Yudha",
     "rombel": "MI 5A",
     "status": "HADIR",
-    "scannedAt": "2026-10-15T02:30:02.629Z",
+    "scannedAt": "2026-11-19T08:12:36.046Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -5435,7 +5445,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Andre Oktavianto",
     "rombel": "MI 5A",
     "status": "HADIR",
-    "scannedAt": "2026-10-15T02:30:02.629Z",
+    "scannedAt": "2026-11-19T08:12:36.045Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -5448,7 +5458,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Alma Malika",
     "rombel": "MI 5A",
     "status": "HADIR",
-    "scannedAt": "2026-10-15T02:30:02.629Z",
+    "scannedAt": "2026-11-19T08:12:36.045Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -5461,7 +5471,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Ahmad Abror",
     "rombel": "MI 5A",
     "status": "HADIR",
-    "scannedAt": "2026-10-15T02:30:02.629Z",
+    "scannedAt": "2026-11-19T08:12:36.045Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -5474,7 +5484,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "KUNTUM DANIATI",
     "rombel": "MI 1A",
     "status": "HADIR",
-    "scannedAt": "2026-10-14T12:29:18.721Z",
+    "scannedAt": "2026-11-19T07:47:49.356Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -5487,7 +5497,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "LUHUR BUDI UTAMI",
     "rombel": "MI 1A",
     "status": "HADIR",
-    "scannedAt": "2026-10-14T12:29:18.721Z",
+    "scannedAt": "2026-11-19T07:47:49.356Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual diinput oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -7164,7 +7174,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "RAHMAN NUR FATAHILLAH",
     "rombel": "MI 1A",
     "status": "HADIR",
-    "scannedAt": "2026-10-14T12:29:18.721Z",
+    "scannedAt": "2026-11-19T07:47:49.356Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -7176,8 +7186,8 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentNim": "24MI0020",
     "studentName": "MUHAMMAD RANDY SYAKIR",
     "rombel": "MI 1A",
-    "status": "HADIR",
-    "scannedAt": "2026-10-14T12:29:18.721Z",
+    "status": "ALPHA",
+    "scannedAt": "2026-11-19T07:47:49.356Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -7190,7 +7200,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "MELY ANDANI",
     "rombel": "MI 1A",
     "status": "HADIR",
-    "scannedAt": "2026-10-14T12:29:18.721Z",
+    "scannedAt": "2026-11-19T07:47:49.356Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -7203,7 +7213,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "LUTFI SUKMA FADILAH",
     "rombel": "MI 1A",
     "status": "HADIR",
-    "scannedAt": "2026-10-14T12:29:18.721Z",
+    "scannedAt": "2026-11-19T07:47:49.356Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -7216,7 +7226,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Achmad Charis Muhlasin",
     "rombel": "TI 5",
     "status": "HADIR",
-    "scannedAt": "2026-10-14T12:29:18.721Z",
+    "scannedAt": "2026-11-19T07:47:49.356Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -7228,10 +7238,10 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentNim": "24TI0002",
     "studentName": "Ade Prastiawan",
     "rombel": "TI 5",
-    "status": "HADIR",
-    "scannedAt": "2026-10-14T12:29:18.721Z",
+    "status": "ALPHA",
+    "scannedAt": "2026-11-19T07:47:49.356Z",
     "verificationMethod": "MANUAL_DOSEN",
-    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+    "notes": "Diubah manual oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
   {
     "id": "rec-manual-1791980945236-24TI0004-29w",
@@ -7241,8 +7251,8 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentNim": "24TI0004",
     "studentName": "Anang Sulistyo Fadhli",
     "rombel": "TI 5",
-    "status": "HADIR",
-    "scannedAt": "2026-10-14T12:29:18.721Z",
+    "status": "ALPHA",
+    "scannedAt": "2026-11-19T07:47:49.356Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -7254,8 +7264,8 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentNim": "24TI0009",
     "studentName": "Febi Faliha",
     "rombel": "TI 5",
-    "status": "HADIR",
-    "scannedAt": "2026-10-14T12:29:18.721Z",
+    "status": "ALPHA",
+    "scannedAt": "2026-11-19T07:47:49.356Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -7267,8 +7277,8 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentNim": "24TI0010",
     "studentName": "Nisrina Yumna Qurrotu'Ain",
     "rombel": "TI 5",
-    "status": "HADIR",
-    "scannedAt": "2026-10-14T12:29:18.721Z",
+    "status": "ALPHA",
+    "scannedAt": "2026-11-19T07:47:49.356Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -7280,8 +7290,8 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentNim": "24TI0017",
     "studentName": "Vicky Ardiansyah",
     "rombel": "TI 5",
-    "status": "HADIR",
-    "scannedAt": "2026-10-14T12:29:18.721Z",
+    "status": "ALPHA",
+    "scannedAt": "2026-11-19T07:47:49.356Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -7293,8 +7303,8 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentNim": "24TI0019",
     "studentName": "Samsul Ma'arif",
     "rombel": "TI 5",
-    "status": "HADIR",
-    "scannedAt": "2026-10-14T12:29:18.721Z",
+    "status": "ALPHA",
+    "scannedAt": "2026-11-19T07:47:49.356Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -7306,8 +7316,8 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentNim": "24TI0020",
     "studentName": "Sunaryo",
     "rombel": "TI 5",
-    "status": "HADIR",
-    "scannedAt": "2026-10-14T12:29:18.721Z",
+    "status": "ALPHA",
+    "scannedAt": "2026-11-19T07:47:49.356Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -7333,7 +7343,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Danar Waskita",
     "rombel": "MI 5A",
     "status": "ALPHA",
-    "scannedAt": "2026-10-15T02:30:02.629Z",
+    "scannedAt": "2026-11-19T08:12:36.046Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -7814,7 +7824,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Ahmad Abror",
     "rombel": "MI 5A",
     "status": "HADIR",
-    "scannedAt": "2026-10-15T03:48:36.903Z",
+    "scannedAt": "2026-11-19T05:26:39.239Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -7827,7 +7837,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Alma Malika",
     "rombel": "MI 5A",
     "status": "HADIR",
-    "scannedAt": "2026-10-15T03:48:36.903Z",
+    "scannedAt": "2026-11-19T05:26:39.240Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -7840,7 +7850,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Andre Oktavianto",
     "rombel": "MI 5A",
     "status": "HADIR",
-    "scannedAt": "2026-10-15T03:48:36.903Z",
+    "scannedAt": "2026-11-19T05:26:39.240Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -7853,7 +7863,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Aryan Jaring Pandu Yudha",
     "rombel": "MI 5A",
     "status": "HADIR",
-    "scannedAt": "2026-10-15T03:48:36.903Z",
+    "scannedAt": "2026-11-19T05:26:39.240Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -7866,7 +7876,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Daffa Zharif Aqillah",
     "rombel": "MI 5A",
     "status": "HADIR",
-    "scannedAt": "2026-10-15T03:48:36.903Z",
+    "scannedAt": "2026-11-19T05:26:39.240Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -7879,7 +7889,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Danar Waskita",
     "rombel": "MI 5A",
     "status": "HADIR",
-    "scannedAt": "2026-10-15T03:48:36.903Z",
+    "scannedAt": "2026-11-19T05:26:39.240Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -7892,7 +7902,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Dian Safitri",
     "rombel": "MI 5A",
     "status": "HADIR",
-    "scannedAt": "2026-10-15T03:48:36.903Z",
+    "scannedAt": "2026-11-19T05:26:39.240Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -7905,7 +7915,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Dzaki Afrian",
     "rombel": "MI 5A",
     "status": "HADIR",
-    "scannedAt": "2026-10-15T03:48:36.903Z",
+    "scannedAt": "2026-11-19T05:26:39.240Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -7918,7 +7928,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Khuzaimah",
     "rombel": "MI 5A",
     "status": "HADIR",
-    "scannedAt": "2026-10-15T03:48:36.903Z",
+    "scannedAt": "2026-11-19T05:26:39.240Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -7931,7 +7941,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Muflikhatun Ni'Mah",
     "rombel": "MI 5A",
     "status": "HADIR",
-    "scannedAt": "2026-10-15T03:48:36.903Z",
+    "scannedAt": "2026-11-19T05:26:39.240Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -7944,7 +7954,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Muhamad Abid Sarur",
     "rombel": "MI 5A",
     "status": "HADIR",
-    "scannedAt": "2026-10-15T03:48:36.903Z",
+    "scannedAt": "2026-11-19T05:26:39.240Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -7957,7 +7967,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Nanda Husaeni Hasbullah",
     "rombel": "MI 5A",
     "status": "HADIR",
-    "scannedAt": "2026-10-15T03:48:36.903Z",
+    "scannedAt": "2026-11-19T05:26:39.240Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -7970,7 +7980,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Retno Ayu Subakti",
     "rombel": "MI 5A",
     "status": "HADIR",
-    "scannedAt": "2026-10-15T03:48:36.903Z",
+    "scannedAt": "2026-11-19T05:26:39.240Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -7983,7 +7993,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Risma Mulyani",
     "rombel": "MI 5A",
     "status": "HADIR",
-    "scannedAt": "2026-10-15T03:48:36.903Z",
+    "scannedAt": "2026-11-19T05:26:39.241Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -7996,7 +8006,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Rizki Yulianto",
     "rombel": "MI 5A",
     "status": "HADIR",
-    "scannedAt": "2026-10-15T03:48:36.903Z",
+    "scannedAt": "2026-11-19T05:26:39.241Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -8009,7 +8019,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Tri Maulandani",
     "rombel": "MI 5A",
     "status": "HADIR",
-    "scannedAt": "2026-10-15T03:48:36.903Z",
+    "scannedAt": "2026-11-19T05:26:39.241Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -8022,7 +8032,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Ya'Lu Azmi Yu'La Amrulloh",
     "rombel": "MI 5A",
     "status": "HADIR",
-    "scannedAt": "2026-10-15T03:48:36.903Z",
+    "scannedAt": "2026-11-19T05:26:39.241Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -8035,7 +8045,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Zulfa Mirfati Syifa",
     "rombel": "MI 5A",
     "status": "HADIR",
-    "scannedAt": "2026-10-15T03:48:36.903Z",
+    "scannedAt": "2026-11-19T05:26:39.241Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -8047,9 +8057,9 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentNim": "25TI0003",
     "studentName": "Ahmad Saefudin",
     "rombel": "TI 3",
-    "status": "ALPHA",
-    "scannedAt": "2026-10-15T03:49:51.698Z",
-    "verificationMethod": "AUTO_SCHEDULE",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T07:51:01.569Z",
+    "verificationMethod": "MANUAL_DOSEN",
     "notes": "Otomatis: Tidak melakukan presensi hingga batas waktu perkuliahan"
   },
   {
@@ -8060,9 +8070,9 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentNim": "25TI0004",
     "studentName": "Alaysa Farha Nur'aini",
     "rombel": "TI 3",
-    "status": "ALPHA",
-    "scannedAt": "2026-10-15T03:49:51.698Z",
-    "verificationMethod": "AUTO_SCHEDULE",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T07:51:01.569Z",
+    "verificationMethod": "MANUAL_DOSEN",
     "notes": "Otomatis: Tidak melakukan presensi hingga batas waktu perkuliahan"
   },
   {
@@ -8073,9 +8083,9 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentNim": "25TI0005",
     "studentName": "Amanda Farendya Istitanansyah",
     "rombel": "TI 3",
-    "status": "ALPHA",
-    "scannedAt": "2026-10-15T03:49:51.698Z",
-    "verificationMethod": "AUTO_SCHEDULE",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T07:51:01.569Z",
+    "verificationMethod": "MANUAL_DOSEN",
     "notes": "Otomatis: Tidak melakukan presensi hingga batas waktu perkuliahan"
   },
   {
@@ -8086,9 +8096,9 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentNim": "25TI0006",
     "studentName": "Arief Adam Musthofa",
     "rombel": "TI 3",
-    "status": "ALPHA",
-    "scannedAt": "2026-10-15T03:49:51.698Z",
-    "verificationMethod": "AUTO_SCHEDULE",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T07:51:01.569Z",
+    "verificationMethod": "MANUAL_DOSEN",
     "notes": "Otomatis: Tidak melakukan presensi hingga batas waktu perkuliahan"
   },
   {
@@ -8099,9 +8109,9 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentNim": "25TI0007",
     "studentName": "Aulya Salsabila Khoirunnisa",
     "rombel": "TI 3",
-    "status": "ALPHA",
-    "scannedAt": "2026-10-15T03:49:51.698Z",
-    "verificationMethod": "AUTO_SCHEDULE",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T07:51:01.569Z",
+    "verificationMethod": "MANUAL_DOSEN",
     "notes": "Otomatis: Tidak melakukan presensi hingga batas waktu perkuliahan"
   },
   {
@@ -8112,9 +8122,9 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentNim": "25TI0012",
     "studentName": "Habibi",
     "rombel": "TI 3",
-    "status": "ALPHA",
-    "scannedAt": "2026-10-15T03:49:51.698Z",
-    "verificationMethod": "AUTO_SCHEDULE",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T07:51:01.569Z",
+    "verificationMethod": "MANUAL_DOSEN",
     "notes": "Otomatis: Tidak melakukan presensi hingga batas waktu perkuliahan"
   },
   {
@@ -8125,9 +8135,9 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentNim": "25TI0020",
     "studentName": "Hidayat Nuril Maulana",
     "rombel": "TI 3",
-    "status": "ALPHA",
-    "scannedAt": "2026-10-15T03:49:51.698Z",
-    "verificationMethod": "AUTO_SCHEDULE",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T07:51:01.569Z",
+    "verificationMethod": "MANUAL_DOSEN",
     "notes": "Otomatis: Tidak melakukan presensi hingga batas waktu perkuliahan"
   },
   {
@@ -8138,9 +8148,9 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentNim": "25TI0021",
     "studentName": "Miftachul Jannah",
     "rombel": "TI 3",
-    "status": "ALPHA",
-    "scannedAt": "2026-10-15T03:49:51.698Z",
-    "verificationMethod": "AUTO_SCHEDULE",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T07:51:01.569Z",
+    "verificationMethod": "MANUAL_DOSEN",
     "notes": "Otomatis: Tidak melakukan presensi hingga batas waktu perkuliahan"
   },
   {
@@ -8151,9 +8161,9 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentNim": "25TI0022",
     "studentName": "Mohammad Nayotama Oda Attalloh",
     "rombel": "TI 3",
-    "status": "ALPHA",
-    "scannedAt": "2026-10-15T03:49:51.698Z",
-    "verificationMethod": "AUTO_SCHEDULE",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T07:51:01.569Z",
+    "verificationMethod": "MANUAL_DOSEN",
     "notes": "Otomatis: Tidak melakukan presensi hingga batas waktu perkuliahan"
   },
   {
@@ -8164,9 +8174,9 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentNim": "25TI0025",
     "studentName": "Madhina Arafati Choeron",
     "rombel": "TI 3",
-    "status": "ALPHA",
-    "scannedAt": "2026-10-15T03:49:51.698Z",
-    "verificationMethod": "AUTO_SCHEDULE",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T07:51:01.569Z",
+    "verificationMethod": "MANUAL_DOSEN",
     "notes": "Otomatis: Tidak melakukan presensi hingga batas waktu perkuliahan"
   },
   {
@@ -8177,9 +8187,9 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentNim": "25TI0028",
     "studentName": "Pasha Wulan Ramadhani",
     "rombel": "TI 3",
-    "status": "ALPHA",
-    "scannedAt": "2026-10-15T03:49:51.698Z",
-    "verificationMethod": "AUTO_SCHEDULE",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T07:51:01.569Z",
+    "verificationMethod": "MANUAL_DOSEN",
     "notes": "Otomatis: Tidak melakukan presensi hingga batas waktu perkuliahan"
   },
   {
@@ -8190,9 +8200,9 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentNim": "25TI0032",
     "studentName": "Nanindia Tri Rahayu",
     "rombel": "TI 3",
-    "status": "ALPHA",
-    "scannedAt": "2026-10-15T03:49:51.698Z",
-    "verificationMethod": "AUTO_SCHEDULE",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T07:51:01.569Z",
+    "verificationMethod": "MANUAL_DOSEN",
     "notes": "Otomatis: Tidak melakukan presensi hingga batas waktu perkuliahan"
   },
   {
@@ -8203,9 +8213,9 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentNim": "25TI0033",
     "studentName": "Naylin Fikriya Sabrina",
     "rombel": "TI 3",
-    "status": "ALPHA",
-    "scannedAt": "2026-10-15T03:49:51.698Z",
-    "verificationMethod": "AUTO_SCHEDULE",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T07:51:01.569Z",
+    "verificationMethod": "MANUAL_DOSEN",
     "notes": "Otomatis: Tidak melakukan presensi hingga batas waktu perkuliahan"
   },
   {
@@ -8216,9 +8226,9 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentNim": "25TI0035",
     "studentName": "Septiana Rahmawati",
     "rombel": "TI 3",
-    "status": "ALPHA",
-    "scannedAt": "2026-10-15T03:49:51.698Z",
-    "verificationMethod": "AUTO_SCHEDULE",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T07:51:01.569Z",
+    "verificationMethod": "MANUAL_DOSEN",
     "notes": "Otomatis: Tidak melakukan presensi hingga batas waktu perkuliahan"
   },
   {
@@ -8229,9 +8239,9 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentNim": "25TI0043",
     "studentName": "Seva Windu Ali",
     "rombel": "TI 3",
-    "status": "ALPHA",
-    "scannedAt": "2026-10-15T03:49:51.698Z",
-    "verificationMethod": "AUTO_SCHEDULE",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T07:51:01.569Z",
+    "verificationMethod": "MANUAL_DOSEN",
     "notes": "Otomatis: Tidak melakukan presensi hingga batas waktu perkuliahan"
   },
   {
@@ -8242,9 +8252,9 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentNim": "25TI0045",
     "studentName": "Susilo Kurniawan",
     "rombel": "TI 3",
-    "status": "ALPHA",
-    "scannedAt": "2026-10-15T03:49:51.698Z",
-    "verificationMethod": "AUTO_SCHEDULE",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T07:51:01.569Z",
+    "verificationMethod": "MANUAL_DOSEN",
     "notes": "Otomatis: Tidak melakukan presensi hingga batas waktu perkuliahan"
   },
   {
@@ -8255,9 +8265,9 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentNim": "25TI0050",
     "studentName": "Dianna Candra Ningtyas",
     "rombel": "TI 3",
-    "status": "ALPHA",
-    "scannedAt": "2026-10-15T03:49:51.698Z",
-    "verificationMethod": "AUTO_SCHEDULE",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T07:51:01.569Z",
+    "verificationMethod": "MANUAL_DOSEN",
     "notes": "Otomatis: Tidak melakukan presensi hingga batas waktu perkuliahan"
   },
   {
@@ -8268,9 +8278,9 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentNim": "25TI0071",
     "studentName": "Armada Teranda Putra",
     "rombel": "TI 3",
-    "status": "ALPHA",
-    "scannedAt": "2026-10-15T03:49:51.698Z",
-    "verificationMethod": "AUTO_SCHEDULE",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T07:51:01.569Z",
+    "verificationMethod": "MANUAL_DOSEN",
     "notes": "Otomatis: Tidak melakukan presensi hingga batas waktu perkuliahan"
   },
   {
@@ -8281,9 +8291,9 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentNim": "25TI0076",
     "studentName": "Muhammad Burhanuddin Ikhsan",
     "rombel": "TI 3",
-    "status": "ALPHA",
-    "scannedAt": "2026-10-15T03:49:51.698Z",
-    "verificationMethod": "AUTO_SCHEDULE",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T07:51:01.569Z",
+    "verificationMethod": "MANUAL_DOSEN",
     "notes": "Otomatis: Tidak melakukan presensi hingga batas waktu perkuliahan"
   },
   {
@@ -8294,9 +8304,9 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentNim": "25TI0080",
     "studentName": "Agis Khaidir Rizki",
     "rombel": "TI 3",
-    "status": "ALPHA",
-    "scannedAt": "2026-10-15T03:49:51.698Z",
-    "verificationMethod": "AUTO_SCHEDULE",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T07:51:01.569Z",
+    "verificationMethod": "MANUAL_DOSEN",
     "notes": "Otomatis: Tidak melakukan presensi hingga batas waktu perkuliahan"
   },
   {
@@ -8307,9 +8317,9 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentNim": "25TI0087",
     "studentName": "Martin Aditya",
     "rombel": "TI 3",
-    "status": "ALPHA",
-    "scannedAt": "2026-10-15T03:49:51.699Z",
-    "verificationMethod": "AUTO_SCHEDULE",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T07:51:01.569Z",
+    "verificationMethod": "MANUAL_DOSEN",
     "notes": "Otomatis: Tidak melakukan presensi hingga batas waktu perkuliahan"
   },
   {
@@ -8320,9 +8330,9 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentNim": "25TI0073",
     "studentName": "Dwi Mei Indah Aryani",
     "rombel": "TI 3",
-    "status": "ALPHA",
-    "scannedAt": "2026-10-15T03:49:51.699Z",
-    "verificationMethod": "AUTO_SCHEDULE",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T07:51:01.569Z",
+    "verificationMethod": "MANUAL_DOSEN",
     "notes": "Otomatis: Tidak melakukan presensi hingga batas waktu perkuliahan"
   },
   {
@@ -8905,8 +8915,8 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentNim": "23MI0054",
     "studentName": "RAHMAN NUR FATAHILLAH",
     "rombel": "MI 1A",
-    "status": "ALPHA",
-    "scannedAt": "2026-10-21T11:17:17.533Z",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T07:50:27.733Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -8918,8 +8928,8 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentNim": "23MI0042",
     "studentName": "MELY ANDANI",
     "rombel": "MI 1A",
-    "status": "ALPHA",
-    "scannedAt": "2026-10-21T11:17:17.533Z",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T07:50:27.733Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -8931,8 +8941,8 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentNim": "23MI0041",
     "studentName": "LUTFI SUKMA FADILAH",
     "rombel": "MI 1A",
-    "status": "ALPHA",
-    "scannedAt": "2026-10-21T11:17:17.533Z",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T07:50:27.733Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -8945,7 +8955,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Ade Prastiawan",
     "rombel": "TI 5",
     "status": "ALPHA",
-    "scannedAt": "2026-10-21T11:17:17.533Z",
+    "scannedAt": "2026-11-19T07:50:27.733Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -8958,7 +8968,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Anang Sulistyo Fadhli",
     "rombel": "TI 5",
     "status": "ALPHA",
-    "scannedAt": "2026-10-21T11:17:17.534Z",
+    "scannedAt": "2026-11-19T07:50:27.733Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -8971,7 +8981,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Febi Faliha",
     "rombel": "TI 5",
     "status": "ALPHA",
-    "scannedAt": "2026-10-21T11:17:17.534Z",
+    "scannedAt": "2026-11-19T07:50:27.733Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -8983,8 +8993,8 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentNim": "24TI0010",
     "studentName": "Nisrina Yumna Qurrotu'Ain",
     "rombel": "TI 5",
-    "status": "ALPHA",
-    "scannedAt": "2026-10-21T11:17:17.534Z",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T07:50:27.733Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -8996,8 +9006,8 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentNim": "24TI0017",
     "studentName": "Vicky Ardiansyah",
     "rombel": "TI 5",
-    "status": "ALPHA",
-    "scannedAt": "2026-10-21T11:17:17.534Z",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T07:50:27.733Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -9009,8 +9019,8 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentNim": "24TI0019",
     "studentName": "Samsul Ma'arif",
     "rombel": "TI 5",
-    "status": "ALPHA",
-    "scannedAt": "2026-10-21T11:17:17.534Z",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T07:50:27.733Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -9022,9 +9032,9 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentNim": "26TI0002",
     "studentName": "Arif Mustofa",
     "rombel": "MI 1A",
-    "status": "ALPHA",
-    "scannedAt": "2026-10-22T01:36:04.418Z",
-    "verificationMethod": "AUTO_SCHEDULE",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T07:50:27.733Z",
+    "verificationMethod": "MANUAL_DOSEN",
     "notes": "Otomatis: Tidak melakukan presensi hingga batas waktu perkuliahan"
   },
   {
@@ -9035,9 +9045,9 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentNim": "26TI0003",
     "studentName": "Cahyo Sukmono",
     "rombel": "MI 1A",
-    "status": "ALPHA",
-    "scannedAt": "2026-10-22T01:36:04.418Z",
-    "verificationMethod": "AUTO_SCHEDULE",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T07:50:27.733Z",
+    "verificationMethod": "MANUAL_DOSEN",
     "notes": "Otomatis: Tidak melakukan presensi hingga batas waktu perkuliahan"
   },
   {
@@ -9048,9 +9058,9 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentNim": "26TI0002",
     "studentName": "Arif Mustofa",
     "rombel": "MI 1A",
-    "status": "ALPHA",
-    "scannedAt": "2026-10-22T03:20:41.819Z",
-    "verificationMethod": "AUTO_SCHEDULE",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T07:49:43.892Z",
+    "verificationMethod": "MANUAL_DOSEN",
     "notes": "Otomatis: Tidak melakukan presensi hingga batas waktu perkuliahan"
   },
   {
@@ -9061,9 +9071,9 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentNim": "26TI0003",
     "studentName": "Cahyo Sukmono",
     "rombel": "MI 1A",
-    "status": "ALPHA",
-    "scannedAt": "2026-10-22T03:20:41.819Z",
-    "verificationMethod": "AUTO_SCHEDULE",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T07:49:43.892Z",
+    "verificationMethod": "MANUAL_DOSEN",
     "notes": "Otomatis: Tidak melakukan presensi hingga batas waktu perkuliahan"
   },
   {
@@ -9074,9 +9084,9 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentNim": "23MI0130",
     "studentName": "LUHUR BUDI UTAMI",
     "rombel": "MI 1A",
-    "status": "ALPHA",
-    "scannedAt": "2026-10-22T03:20:41.819Z",
-    "verificationMethod": "AUTO_SCHEDULE",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T07:49:43.892Z",
+    "verificationMethod": "MANUAL_DOSEN",
     "notes": "Otomatis: Tidak melakukan presensi hingga batas waktu perkuliahan"
   },
   {
@@ -9087,9 +9097,9 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentNim": "23MI0054",
     "studentName": "RAHMAN NUR FATAHILLAH",
     "rombel": "MI 1A",
-    "status": "ALPHA",
-    "scannedAt": "2026-10-22T03:20:41.819Z",
-    "verificationMethod": "AUTO_SCHEDULE",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T07:49:43.892Z",
+    "verificationMethod": "MANUAL_DOSEN",
     "notes": "Otomatis: Tidak melakukan presensi hingga batas waktu perkuliahan"
   },
   {
@@ -9100,9 +9110,9 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentNim": "24MI0016",
     "studentName": "KUNTUM DANIATI",
     "rombel": "MI 1A",
-    "status": "ALPHA",
-    "scannedAt": "2026-10-22T03:20:41.819Z",
-    "verificationMethod": "AUTO_SCHEDULE",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T07:49:43.892Z",
+    "verificationMethod": "MANUAL_DOSEN",
     "notes": "Otomatis: Tidak melakukan presensi hingga batas waktu perkuliahan"
   },
   {
@@ -9114,8 +9124,8 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "MUHAMMAD RANDY SYAKIR",
     "rombel": "MI 1A",
     "status": "ALPHA",
-    "scannedAt": "2026-10-22T03:20:41.819Z",
-    "verificationMethod": "AUTO_SCHEDULE",
+    "scannedAt": "2026-11-19T07:49:43.892Z",
+    "verificationMethod": "MANUAL_DOSEN",
     "notes": "Otomatis: Tidak melakukan presensi hingga batas waktu perkuliahan"
   },
   {
@@ -9127,8 +9137,8 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "MELY ANDANI",
     "rombel": "MI 1A",
     "status": "ALPHA",
-    "scannedAt": "2026-10-22T03:20:41.820Z",
-    "verificationMethod": "AUTO_SCHEDULE",
+    "scannedAt": "2026-11-19T07:49:43.892Z",
+    "verificationMethod": "MANUAL_DOSEN",
     "notes": "Otomatis: Tidak melakukan presensi hingga batas waktu perkuliahan"
   },
   {
@@ -9139,9 +9149,9 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentNim": "23MI0041",
     "studentName": "LUTFI SUKMA FADILAH",
     "rombel": "MI 1A",
-    "status": "ALPHA",
-    "scannedAt": "2026-10-22T03:20:41.820Z",
-    "verificationMethod": "AUTO_SCHEDULE",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T07:49:43.892Z",
+    "verificationMethod": "MANUAL_DOSEN",
     "notes": "Otomatis: Tidak melakukan presensi hingga batas waktu perkuliahan"
   },
   {
@@ -9152,9 +9162,9 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentNim": "24TI0001",
     "studentName": "Achmad Charis Muhlasin",
     "rombel": "TI 5",
-    "status": "ALPHA",
-    "scannedAt": "2026-10-22T03:20:41.820Z",
-    "verificationMethod": "AUTO_SCHEDULE",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T07:49:43.892Z",
+    "verificationMethod": "MANUAL_DOSEN",
     "notes": "Otomatis: Tidak melakukan presensi hingga batas waktu perkuliahan"
   },
   {
@@ -9166,8 +9176,8 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Ade Prastiawan",
     "rombel": "TI 5",
     "status": "ALPHA",
-    "scannedAt": "2026-10-22T03:20:41.821Z",
-    "verificationMethod": "AUTO_SCHEDULE",
+    "scannedAt": "2026-11-19T07:49:43.893Z",
+    "verificationMethod": "MANUAL_DOSEN",
     "notes": "Otomatis: Tidak melakukan presensi hingga batas waktu perkuliahan"
   },
   {
@@ -9179,8 +9189,8 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Anang Sulistyo Fadhli",
     "rombel": "TI 5",
     "status": "ALPHA",
-    "scannedAt": "2026-10-22T03:20:41.821Z",
-    "verificationMethod": "AUTO_SCHEDULE",
+    "scannedAt": "2026-11-19T07:49:43.893Z",
+    "verificationMethod": "MANUAL_DOSEN",
     "notes": "Otomatis: Tidak melakukan presensi hingga batas waktu perkuliahan"
   },
   {
@@ -9192,8 +9202,8 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Febi Faliha",
     "rombel": "TI 5",
     "status": "ALPHA",
-    "scannedAt": "2026-10-22T03:20:41.821Z",
-    "verificationMethod": "AUTO_SCHEDULE",
+    "scannedAt": "2026-11-19T07:49:43.893Z",
+    "verificationMethod": "MANUAL_DOSEN",
     "notes": "Otomatis: Tidak melakukan presensi hingga batas waktu perkuliahan"
   },
   {
@@ -9204,9 +9214,9 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentNim": "24TI0010",
     "studentName": "Nisrina Yumna Qurrotu'Ain",
     "rombel": "TI 5",
-    "status": "ALPHA",
-    "scannedAt": "2026-10-22T03:20:41.821Z",
-    "verificationMethod": "AUTO_SCHEDULE",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T07:49:43.893Z",
+    "verificationMethod": "MANUAL_DOSEN",
     "notes": "Otomatis: Tidak melakukan presensi hingga batas waktu perkuliahan"
   },
   {
@@ -9217,9 +9227,9 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentNim": "24TI0017",
     "studentName": "Vicky Ardiansyah",
     "rombel": "TI 5",
-    "status": "ALPHA",
-    "scannedAt": "2026-10-22T03:20:41.821Z",
-    "verificationMethod": "AUTO_SCHEDULE",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T07:49:43.893Z",
+    "verificationMethod": "MANUAL_DOSEN",
     "notes": "Otomatis: Tidak melakukan presensi hingga batas waktu perkuliahan"
   },
   {
@@ -9230,9 +9240,9 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentNim": "24TI0019",
     "studentName": "Samsul Ma'arif",
     "rombel": "TI 5",
-    "status": "ALPHA",
-    "scannedAt": "2026-10-22T03:20:41.821Z",
-    "verificationMethod": "AUTO_SCHEDULE",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T07:49:43.893Z",
+    "verificationMethod": "MANUAL_DOSEN",
     "notes": "Otomatis: Tidak melakukan presensi hingga batas waktu perkuliahan"
   },
   {
@@ -9243,9 +9253,9 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentNim": "24TI0020",
     "studentName": "Sunaryo",
     "rombel": "TI 5",
-    "status": "ALPHA",
-    "scannedAt": "2026-10-22T03:20:41.821Z",
-    "verificationMethod": "AUTO_SCHEDULE",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T07:49:43.893Z",
+    "verificationMethod": "MANUAL_DOSEN",
     "notes": "Otomatis: Tidak melakukan presensi hingga batas waktu perkuliahan"
   },
   {
@@ -9816,7 +9826,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Ahmad Saefudin",
     "rombel": "TI 3",
     "status": "ALPHA",
-    "scannedAt": "2026-11-18T03:43:14.637Z",
+    "scannedAt": "2026-11-19T08:00:39.101Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -9829,7 +9839,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Arief Adam Musthofa",
     "rombel": "TI 3",
     "status": "ALPHA",
-    "scannedAt": "2026-11-18T03:43:14.637Z",
+    "scannedAt": "2026-11-19T08:00:39.101Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -9842,7 +9852,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Habibi",
     "rombel": "TI 3",
     "status": "ALPHA",
-    "scannedAt": "2026-11-18T03:43:14.637Z",
+    "scannedAt": "2026-11-19T08:00:39.101Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -9855,7 +9865,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Hidayat Nuril Maulana",
     "rombel": "TI 3",
     "status": "HADIR",
-    "scannedAt": "2026-11-18T03:43:14.637Z",
+    "scannedAt": "2026-11-19T08:00:39.101Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -9868,7 +9878,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Miftachul Jannah",
     "rombel": "TI 3",
     "status": "HADIR",
-    "scannedAt": "2026-11-18T03:43:14.637Z",
+    "scannedAt": "2026-11-19T08:00:39.101Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -9881,7 +9891,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Madhina Arafati Choeron",
     "rombel": "TI 3",
     "status": "ALPHA",
-    "scannedAt": "2026-11-18T03:43:14.637Z",
+    "scannedAt": "2026-11-19T08:00:39.101Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -9894,7 +9904,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Nanindia Tri Rahayu",
     "rombel": "TI 3",
     "status": "HADIR",
-    "scannedAt": "2026-11-18T03:43:14.637Z",
+    "scannedAt": "2026-11-19T08:00:39.101Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -9907,7 +9917,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Naylin Fikriya Sabrina",
     "rombel": "TI 3",
     "status": "HADIR",
-    "scannedAt": "2026-11-18T03:43:14.637Z",
+    "scannedAt": "2026-11-19T08:00:39.101Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -9919,8 +9929,8 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentNim": "25TI0071",
     "studentName": "Armada Teranda Putra",
     "rombel": "TI 3",
-    "status": "ALPHA",
-    "scannedAt": "2026-11-18T03:43:14.637Z",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T08:00:39.101Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -9933,7 +9943,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Martin Aditya",
     "rombel": "TI 3",
     "status": "HADIR",
-    "scannedAt": "2026-11-18T03:43:14.637Z",
+    "scannedAt": "2026-11-19T08:00:39.101Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -9946,7 +9956,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Dwi Mei Indah Aryani",
     "rombel": "TI 3",
     "status": "ALPHA",
-    "scannedAt": "2026-11-18T03:43:14.637Z",
+    "scannedAt": "2026-11-19T08:00:39.101Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -9971,8 +9981,8 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentNim": "25TI0003",
     "studentName": "Ahmad Saefudin",
     "rombel": "TI 3",
-    "status": "IZIN",
-    "scannedAt": "2026-11-18T03:42:56.935Z",
+    "status": "SAKIT",
+    "scannedAt": "2026-11-19T08:12:05.767Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -9985,7 +9995,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Alaysa Farha Nur'aini",
     "rombel": "TI 3",
     "status": "HADIR",
-    "scannedAt": "2026-11-18T03:42:56.935Z",
+    "scannedAt": "2026-11-19T08:12:05.767Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -9998,7 +10008,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Amanda Farendya Istitanansyah",
     "rombel": "TI 3",
     "status": "HADIR",
-    "scannedAt": "2026-11-18T03:42:56.935Z",
+    "scannedAt": "2026-11-19T08:12:05.767Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -10010,8 +10020,8 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentNim": "25TI0006",
     "studentName": "Arief Adam Musthofa",
     "rombel": "TI 3",
-    "status": "ALPHA",
-    "scannedAt": "2026-11-18T03:42:56.935Z",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T08:12:05.767Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -10024,7 +10034,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Aulya Salsabila Khoirunnisa",
     "rombel": "TI 3",
     "status": "HADIR",
-    "scannedAt": "2026-11-18T03:42:56.935Z",
+    "scannedAt": "2026-11-19T08:12:05.767Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -10036,8 +10046,8 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentNim": "25TI0012",
     "studentName": "Habibi",
     "rombel": "TI 3",
-    "status": "ALPHA",
-    "scannedAt": "2026-11-18T03:42:56.935Z",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T08:12:05.767Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -10050,7 +10060,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Hidayat Nuril Maulana",
     "rombel": "TI 3",
     "status": "HADIR",
-    "scannedAt": "2026-11-18T03:42:56.935Z",
+    "scannedAt": "2026-11-19T08:12:05.767Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -10062,8 +10072,8 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentNim": "25TI0021",
     "studentName": "Miftachul Jannah",
     "rombel": "TI 3",
-    "status": "ALPHA",
-    "scannedAt": "2026-11-18T03:42:56.935Z",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T08:12:05.767Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -10076,7 +10086,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Mohammad Nayotama Oda Attalloh",
     "rombel": "TI 3",
     "status": "HADIR",
-    "scannedAt": "2026-11-18T03:42:56.935Z",
+    "scannedAt": "2026-11-19T08:12:05.767Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -10089,7 +10099,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Madhina Arafati Choeron",
     "rombel": "TI 3",
     "status": "HADIR",
-    "scannedAt": "2026-11-18T03:42:56.935Z",
+    "scannedAt": "2026-11-19T08:12:05.767Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -10102,7 +10112,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Pasha Wulan Ramadhani",
     "rombel": "TI 3",
     "status": "HADIR",
-    "scannedAt": "2026-11-18T03:42:56.935Z",
+    "scannedAt": "2026-11-19T08:12:05.767Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -10114,8 +10124,8 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentNim": "25TI0032",
     "studentName": "Nanindia Tri Rahayu",
     "rombel": "TI 3",
-    "status": "ALPHA",
-    "scannedAt": "2026-11-18T03:42:56.935Z",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T08:12:05.767Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -10127,8 +10137,8 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentNim": "25TI0033",
     "studentName": "Naylin Fikriya Sabrina",
     "rombel": "TI 3",
-    "status": "HADIR",
-    "scannedAt": "2026-11-18T03:42:56.935Z",
+    "status": "IZIN",
+    "scannedAt": "2026-11-19T08:12:05.767Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -10141,7 +10151,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Septiana Rahmawati",
     "rombel": "TI 3",
     "status": "HADIR",
-    "scannedAt": "2026-11-18T03:42:56.935Z",
+    "scannedAt": "2026-11-19T08:12:05.767Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -10154,7 +10164,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Seva Windu Ali",
     "rombel": "TI 3",
     "status": "HADIR",
-    "scannedAt": "2026-11-18T03:42:56.935Z",
+    "scannedAt": "2026-11-19T08:12:05.767Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -10166,8 +10176,8 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentNim": "25TI0045",
     "studentName": "Susilo Kurniawan",
     "rombel": "TI 3",
-    "status": "ALPHA",
-    "scannedAt": "2026-11-18T03:42:56.935Z",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T08:12:05.767Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -10180,7 +10190,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Dianna Candra Ningtyas",
     "rombel": "TI 3",
     "status": "HADIR",
-    "scannedAt": "2026-11-18T03:42:56.935Z",
+    "scannedAt": "2026-11-19T08:12:05.768Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -10192,8 +10202,8 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentNim": "25TI0071",
     "studentName": "Armada Teranda Putra",
     "rombel": "TI 3",
-    "status": "ALPHA",
-    "scannedAt": "2026-11-18T03:42:56.935Z",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T08:12:05.768Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -10205,8 +10215,8 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentNim": "25TI0076",
     "studentName": "Muhammad Burhanuddin Ikhsan",
     "rombel": "TI 3",
-    "status": "HADIR",
-    "scannedAt": "2026-11-18T03:42:56.935Z",
+    "status": "ALPHA",
+    "scannedAt": "2026-11-19T08:12:05.768Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -10219,7 +10229,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Agis Khaidir Rizki",
     "rombel": "TI 3",
     "status": "HADIR",
-    "scannedAt": "2026-11-18T03:42:56.935Z",
+    "scannedAt": "2026-11-19T08:12:05.768Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -10232,7 +10242,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Martin Aditya",
     "rombel": "TI 3",
     "status": "HADIR",
-    "scannedAt": "2026-11-18T03:42:56.935Z",
+    "scannedAt": "2026-11-19T08:12:05.768Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -10245,7 +10255,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Dwi Mei Indah Aryani",
     "rombel": "TI 3",
     "status": "ALPHA",
-    "scannedAt": "2026-11-18T03:42:56.935Z",
+    "scannedAt": "2026-11-19T08:12:05.768Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -10258,7 +10268,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "MUHAMMAD RANDY SYAKIR",
     "rombel": "MI 1A",
     "status": "HADIR",
-    "scannedAt": "2026-11-11T12:34:09.116Z",
+    "scannedAt": "2026-11-19T08:07:27.256Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -10271,7 +10281,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "LUTFI SUKMA FADILAH",
     "rombel": "MI 1A",
     "status": "ALPHA",
-    "scannedAt": "2026-11-11T12:34:09.116Z",
+    "scannedAt": "2026-11-19T08:07:27.256Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -10284,7 +10294,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Ade Prastiawan",
     "rombel": "TI 5",
     "status": "ALPHA",
-    "scannedAt": "2026-11-11T12:34:09.116Z",
+    "scannedAt": "2026-11-19T08:07:27.256Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -10297,7 +10307,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Anang Sulistyo Fadhli",
     "rombel": "TI 5",
     "status": "ALPHA",
-    "scannedAt": "2026-11-11T12:34:09.116Z",
+    "scannedAt": "2026-11-19T08:07:27.256Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -10310,7 +10320,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Febi Faliha",
     "rombel": "TI 5",
     "status": "ALPHA",
-    "scannedAt": "2026-11-11T12:34:09.116Z",
+    "scannedAt": "2026-11-19T08:07:27.256Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -10322,8 +10332,8 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentNim": "24TI0010",
     "studentName": "Nisrina Yumna Qurrotu'Ain",
     "rombel": "TI 5",
-    "status": "ALPHA",
-    "scannedAt": "2026-11-11T12:34:09.116Z",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T08:07:27.256Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -10335,8 +10345,8 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentNim": "24TI0020",
     "studentName": "Sunaryo",
     "rombel": "TI 5",
-    "status": "ALPHA",
-    "scannedAt": "2026-11-11T12:34:09.117Z",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T08:07:27.256Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -10362,7 +10372,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Anggi Nauli Utami",
     "rombel": "TI 1A",
     "status": "HADIR",
-    "scannedAt": "2026-11-11T12:34:09.115Z",
+    "scannedAt": "2026-11-19T08:07:27.256Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -10375,7 +10385,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Irfan Arif Pamuji",
     "rombel": "TI 1A",
     "status": "ALPHA",
-    "scannedAt": "2026-11-11T12:34:09.115Z",
+    "scannedAt": "2026-11-19T08:07:27.256Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -10388,7 +10398,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Lukman Hakim",
     "rombel": "TI 1A",
     "status": "ALPHA",
-    "scannedAt": "2026-11-11T12:34:09.115Z",
+    "scannedAt": "2026-11-19T08:07:27.256Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -10400,8 +10410,8 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentNim": "26TI0009",
     "studentName": "Heny Firman Safaat",
     "rombel": "TI 1A",
-    "status": "ALPHA",
-    "scannedAt": "2026-11-11T12:34:09.116Z",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T08:07:27.256Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -10414,7 +10424,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Rizki Yulianto",
     "rombel": "MI 5A",
     "status": "ALPHA",
-    "scannedAt": "2026-11-12T02:44:20.750Z",
+    "scannedAt": "2026-11-19T05:42:03.500Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -10426,8 +10436,8 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentNim": "24MI0029",
     "studentName": "Ya'Lu Azmi Yu'La Amrulloh",
     "rombel": "MI 5A",
-    "status": "ALPHA",
-    "scannedAt": "2026-11-12T02:44:20.750Z",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T05:42:03.500Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -10440,7 +10450,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Nanda Husaeni Hasbullah",
     "rombel": "MI 5A",
     "status": "ALPHA",
-    "scannedAt": "2026-11-12T04:06:43.485Z",
+    "scannedAt": "2026-11-19T05:43:25.131Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -10466,7 +10476,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Muhammad Burhanuddin Ikhsan",
     "rombel": "TI 3",
     "status": "ALPHA",
-    "scannedAt": "2026-11-18T03:42:32.596Z",
+    "scannedAt": "2026-11-19T08:11:57.755Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -10479,7 +10489,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Dwi Mei Indah Aryani",
     "rombel": "TI 3",
     "status": "ALPHA",
-    "scannedAt": "2026-11-18T03:42:32.596Z",
+    "scannedAt": "2026-11-19T08:11:57.755Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -10544,7 +10554,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Arif Mustofa",
     "rombel": "TI 1",
     "status": "HADIR",
-    "scannedAt": "2026-11-18T11:54:23.432Z",
+    "scannedAt": "2026-11-19T07:49:24.936Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -10557,7 +10567,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Irfan Arif Pamuji",
     "rombel": "TI 1A",
     "status": "ALPHA",
-    "scannedAt": "2026-11-18T11:54:23.433Z",
+    "scannedAt": "2026-11-19T07:49:24.936Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -10570,7 +10580,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Lukman Hakim",
     "rombel": "TI 1A",
     "status": "ALPHA",
-    "scannedAt": "2026-11-18T11:54:23.433Z",
+    "scannedAt": "2026-11-19T07:49:24.936Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -10583,7 +10593,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Naily Oktaviani Karim",
     "rombel": "TI 1",
     "status": "HADIR",
-    "scannedAt": "2026-11-18T11:54:23.433Z",
+    "scannedAt": "2026-11-19T07:49:24.936Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -10596,7 +10606,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Putri Veronika",
     "rombel": "TI 1",
     "status": "ALPHA",
-    "scannedAt": "2026-11-18T11:54:23.433Z",
+    "scannedAt": "2026-11-19T07:49:24.936Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -10609,7 +10619,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "KUNTUM DANIATI",
     "rombel": "MI 1U",
     "status": "ALPHA",
-    "scannedAt": "2026-11-18T11:54:23.433Z",
+    "scannedAt": "2026-11-19T07:49:24.936Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -10622,7 +10632,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "MUHAMMAD RANDY SYAKIR",
     "rombel": "MI 1U",
     "status": "ALPHA",
-    "scannedAt": "2026-11-18T11:54:23.433Z",
+    "scannedAt": "2026-11-19T07:49:24.936Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -10635,7 +10645,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "MELY ANDANI",
     "rombel": "MI 1U",
     "status": "ALPHA",
-    "scannedAt": "2026-11-18T11:54:23.433Z",
+    "scannedAt": "2026-11-19T07:49:24.936Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -10648,7 +10658,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "LUTFI SUKMA FADILAH",
     "rombel": "MI 1U",
     "status": "ALPHA",
-    "scannedAt": "2026-11-18T11:54:23.433Z",
+    "scannedAt": "2026-11-19T07:49:24.936Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -10661,7 +10671,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Achmad Charis Muhlasin",
     "rombel": "TI 5",
     "status": "HADIR",
-    "scannedAt": "2026-11-18T11:54:23.434Z",
+    "scannedAt": "2026-11-19T07:49:24.936Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -10674,7 +10684,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Ade Prastiawan",
     "rombel": "TI 5",
     "status": "ALPHA",
-    "scannedAt": "2026-11-18T11:54:23.434Z",
+    "scannedAt": "2026-11-19T07:49:24.936Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -10687,7 +10697,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Anang Sulistyo Fadhli",
     "rombel": "TI 5",
     "status": "ALPHA",
-    "scannedAt": "2026-11-18T11:54:23.434Z",
+    "scannedAt": "2026-11-19T07:49:24.936Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -10700,7 +10710,7 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentName": "Febi Faliha",
     "rombel": "TI 5",
     "status": "ALPHA",
-    "scannedAt": "2026-11-18T11:54:23.434Z",
+    "scannedAt": "2026-11-19T07:49:24.936Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   },
@@ -10712,8 +10722,1438 @@ export const INITIAL_RECORDS: AttendanceRecord[] = [
     "studentNim": "26TI0010",
     "studentName": "Puji Santoso",
     "rombel": "TI 1",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T07:49:24.936Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795059771809-24MI0001-2h4",
+    "sessionId": "session-1795059766768",
+    "courseCode": "MKMI0210P",
+    "courseName": "Praktikum Pemrograman Berorientasi Objek",
+    "studentNim": "24MI0001",
+    "studentName": "Ahmad Abror",
+    "rombel": "MI 5A",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T05:32:37.306Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795059771809-24MI0002-97q",
+    "sessionId": "session-1795059766768",
+    "courseCode": "MKMI0210P",
+    "courseName": "Praktikum Pemrograman Berorientasi Objek",
+    "studentNim": "24MI0002",
+    "studentName": "Alma Malika",
+    "rombel": "MI 5A",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T05:32:37.306Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795059771809-24MI0003-56r",
+    "sessionId": "session-1795059766768",
+    "courseCode": "MKMI0210P",
+    "courseName": "Praktikum Pemrograman Berorientasi Objek",
+    "studentNim": "24MI0003",
+    "studentName": "Andre Oktavianto",
+    "rombel": "MI 5A",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T05:32:37.306Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795059771809-24MI0005-5t2",
+    "sessionId": "session-1795059766768",
+    "courseCode": "MKMI0210P",
+    "courseName": "Praktikum Pemrograman Berorientasi Objek",
+    "studentNim": "24MI0005",
+    "studentName": "Aryan Jaring Pandu Yudha",
+    "rombel": "MI 5A",
     "status": "ALPHA",
-    "scannedAt": "2026-11-18T11:54:23.434Z",
+    "scannedAt": "2026-11-19T05:32:37.306Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795059771809-24MI0006-og0",
+    "sessionId": "session-1795059766768",
+    "courseCode": "MKMI0210P",
+    "courseName": "Praktikum Pemrograman Berorientasi Objek",
+    "studentNim": "24MI0006",
+    "studentName": "Daffa Zharif Aqillah",
+    "rombel": "MI 5A",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T05:32:37.306Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795059771809-24MI0007-094",
+    "sessionId": "session-1795059766768",
+    "courseCode": "MKMI0210P",
+    "courseName": "Praktikum Pemrograman Berorientasi Objek",
+    "studentNim": "24MI0007",
+    "studentName": "Danar Waskita",
+    "rombel": "MI 5A",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T05:32:37.306Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795059771809-24MI0009-70h",
+    "sessionId": "session-1795059766768",
+    "courseCode": "MKMI0210P",
+    "courseName": "Praktikum Pemrograman Berorientasi Objek",
+    "studentNim": "24MI0009",
+    "studentName": "Dian Safitri",
+    "rombel": "MI 5A",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T05:32:37.306Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795059771809-24MI0011-gjo",
+    "sessionId": "session-1795059766768",
+    "courseCode": "MKMI0210P",
+    "courseName": "Praktikum Pemrograman Berorientasi Objek",
+    "studentNim": "24MI0011",
+    "studentName": "Dzaki Afrian",
+    "rombel": "MI 5A",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T05:32:37.306Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795059771809-24MI0015-63h",
+    "sessionId": "session-1795059766768",
+    "courseCode": "MKMI0210P",
+    "courseName": "Praktikum Pemrograman Berorientasi Objek",
+    "studentNim": "24MI0015",
+    "studentName": "Khuzaimah",
+    "rombel": "MI 5A",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T05:32:37.307Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795059771810-24MI0018-g47",
+    "sessionId": "session-1795059766768",
+    "courseCode": "MKMI0210P",
+    "courseName": "Praktikum Pemrograman Berorientasi Objek",
+    "studentNim": "24MI0018",
+    "studentName": "Muflikhatun Ni'Mah",
+    "rombel": "MI 5A",
+    "status": "SAKIT",
+    "scannedAt": "2026-11-19T05:32:37.307Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795059771810-24MI0019-hd2",
+    "sessionId": "session-1795059766768",
+    "courseCode": "MKMI0210P",
+    "courseName": "Praktikum Pemrograman Berorientasi Objek",
+    "studentNim": "24MI0019",
+    "studentName": "Muhamad Abid Sarur",
+    "rombel": "MI 5A",
+    "status": "ALPHA",
+    "scannedAt": "2026-11-19T05:32:37.307Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795059771810-24MI0021-m7k",
+    "sessionId": "session-1795059766768",
+    "courseCode": "MKMI0210P",
+    "courseName": "Praktikum Pemrograman Berorientasi Objek",
+    "studentNim": "24MI0021",
+    "studentName": "Nanda Husaeni Hasbullah",
+    "rombel": "MI 5A",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T05:32:37.307Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795059771810-24MI0024-41j",
+    "sessionId": "session-1795059766768",
+    "courseCode": "MKMI0210P",
+    "courseName": "Praktikum Pemrograman Berorientasi Objek",
+    "studentNim": "24MI0024",
+    "studentName": "Retno Ayu Subakti",
+    "rombel": "MI 5A",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T05:32:37.307Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795059771810-24MI0025-elc",
+    "sessionId": "session-1795059766768",
+    "courseCode": "MKMI0210P",
+    "courseName": "Praktikum Pemrograman Berorientasi Objek",
+    "studentNim": "24MI0025",
+    "studentName": "Risma Mulyani",
+    "rombel": "MI 5A",
+    "status": "SAKIT",
+    "scannedAt": "2026-11-19T05:32:37.307Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795059771810-24MI0026-m0z",
+    "sessionId": "session-1795059766768",
+    "courseCode": "MKMI0210P",
+    "courseName": "Praktikum Pemrograman Berorientasi Objek",
+    "studentNim": "24MI0026",
+    "studentName": "Rizki Yulianto",
+    "rombel": "MI 5A",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T05:32:37.307Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795059771810-24MI0028-u77",
+    "sessionId": "session-1795059766768",
+    "courseCode": "MKMI0210P",
+    "courseName": "Praktikum Pemrograman Berorientasi Objek",
+    "studentNim": "24MI0028",
+    "studentName": "Tri Maulandani",
+    "rombel": "MI 5A",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T05:32:37.307Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795059771811-24MI0029-w06",
+    "sessionId": "session-1795059766768",
+    "courseCode": "MKMI0210P",
+    "courseName": "Praktikum Pemrograman Berorientasi Objek",
+    "studentNim": "24MI0029",
+    "studentName": "Ya'Lu Azmi Yu'La Amrulloh",
+    "rombel": "MI 5A",
+    "status": "ALPHA",
+    "scannedAt": "2026-11-19T05:32:37.307Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795059771811-24MI0030-kfa",
+    "sessionId": "session-1795059766768",
+    "courseCode": "MKMI0210P",
+    "courseName": "Praktikum Pemrograman Berorientasi Objek",
+    "studentNim": "24MI0030",
+    "studentName": "Zulfa Mirfati Syifa",
+    "rombel": "MI 5A",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T05:32:37.307Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795064418489-24MI0001-dzm",
+    "sessionId": "session-1795064414464",
+    "courseCode": "MKMI0210",
+    "courseName": "Pemrograman Berorientasi Objek",
+    "studentNim": "24MI0001",
+    "studentName": "Ahmad Abror",
+    "rombel": "MI 5A",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T05:42:08.551Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795064418489-24MI0002-ter",
+    "sessionId": "session-1795064414464",
+    "courseCode": "MKMI0210",
+    "courseName": "Pemrograman Berorientasi Objek",
+    "studentNim": "24MI0002",
+    "studentName": "Alma Malika",
+    "rombel": "MI 5A",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T05:42:08.551Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795064418489-24MI0003-m8q",
+    "sessionId": "session-1795064414464",
+    "courseCode": "MKMI0210",
+    "courseName": "Pemrograman Berorientasi Objek",
+    "studentNim": "24MI0003",
+    "studentName": "Andre Oktavianto",
+    "rombel": "MI 5A",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T05:42:08.551Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795064418489-24MI0005-nbe",
+    "sessionId": "session-1795064414464",
+    "courseCode": "MKMI0210",
+    "courseName": "Pemrograman Berorientasi Objek",
+    "studentNim": "24MI0005",
+    "studentName": "Aryan Jaring Pandu Yudha",
+    "rombel": "MI 5A",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T05:42:08.551Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795064418489-24MI0006-3sl",
+    "sessionId": "session-1795064414464",
+    "courseCode": "MKMI0210",
+    "courseName": "Pemrograman Berorientasi Objek",
+    "studentNim": "24MI0006",
+    "studentName": "Daffa Zharif Aqillah",
+    "rombel": "MI 5A",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T05:42:08.552Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795064418489-24MI0007-f7b",
+    "sessionId": "session-1795064414464",
+    "courseCode": "MKMI0210",
+    "courseName": "Pemrograman Berorientasi Objek",
+    "studentNim": "24MI0007",
+    "studentName": "Danar Waskita",
+    "rombel": "MI 5A",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T05:42:08.552Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795064418489-24MI0009-46c",
+    "sessionId": "session-1795064414464",
+    "courseCode": "MKMI0210",
+    "courseName": "Pemrograman Berorientasi Objek",
+    "studentNim": "24MI0009",
+    "studentName": "Dian Safitri",
+    "rombel": "MI 5A",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T05:42:08.552Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795064418489-24MI0011-pjd",
+    "sessionId": "session-1795064414464",
+    "courseCode": "MKMI0210",
+    "courseName": "Pemrograman Berorientasi Objek",
+    "studentNim": "24MI0011",
+    "studentName": "Dzaki Afrian",
+    "rombel": "MI 5A",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T05:42:08.552Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795064418490-24MI0015-v03",
+    "sessionId": "session-1795064414464",
+    "courseCode": "MKMI0210",
+    "courseName": "Pemrograman Berorientasi Objek",
+    "studentNim": "24MI0015",
+    "studentName": "Khuzaimah",
+    "rombel": "MI 5A",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T05:42:08.552Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795064418490-24MI0018-hqn",
+    "sessionId": "session-1795064414464",
+    "courseCode": "MKMI0210",
+    "courseName": "Pemrograman Berorientasi Objek",
+    "studentNim": "24MI0018",
+    "studentName": "Muflikhatun Ni'Mah",
+    "rombel": "MI 5A",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T05:42:08.552Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795064418490-24MI0019-kho",
+    "sessionId": "session-1795064414464",
+    "courseCode": "MKMI0210",
+    "courseName": "Pemrograman Berorientasi Objek",
+    "studentNim": "24MI0019",
+    "studentName": "Muhamad Abid Sarur",
+    "rombel": "MI 5A",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T05:42:08.552Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795064418490-24MI0021-1bz",
+    "sessionId": "session-1795064414464",
+    "courseCode": "MKMI0210",
+    "courseName": "Pemrograman Berorientasi Objek",
+    "studentNim": "24MI0021",
+    "studentName": "Nanda Husaeni Hasbullah",
+    "rombel": "MI 5A",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T05:42:08.552Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795064418490-24MI0024-gsm",
+    "sessionId": "session-1795064414464",
+    "courseCode": "MKMI0210",
+    "courseName": "Pemrograman Berorientasi Objek",
+    "studentNim": "24MI0024",
+    "studentName": "Retno Ayu Subakti",
+    "rombel": "MI 5A",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T05:42:08.552Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795064418490-24MI0025-9eh",
+    "sessionId": "session-1795064414464",
+    "courseCode": "MKMI0210",
+    "courseName": "Pemrograman Berorientasi Objek",
+    "studentNim": "24MI0025",
+    "studentName": "Risma Mulyani",
+    "rombel": "MI 5A",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T05:42:08.552Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795064418490-24MI0026-sp3",
+    "sessionId": "session-1795064414464",
+    "courseCode": "MKMI0210",
+    "courseName": "Pemrograman Berorientasi Objek",
+    "studentNim": "24MI0026",
+    "studentName": "Rizki Yulianto",
+    "rombel": "MI 5A",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T05:42:08.552Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795064418490-24MI0028-86u",
+    "sessionId": "session-1795064414464",
+    "courseCode": "MKMI0210",
+    "courseName": "Pemrograman Berorientasi Objek",
+    "studentNim": "24MI0028",
+    "studentName": "Tri Maulandani",
+    "rombel": "MI 5A",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T05:42:08.552Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795064418490-24MI0029-vfb",
+    "sessionId": "session-1795064414464",
+    "courseCode": "MKMI0210",
+    "courseName": "Pemrograman Berorientasi Objek",
+    "studentNim": "24MI0029",
+    "studentName": "Ya'Lu Azmi Yu'La Amrulloh",
+    "rombel": "MI 5A",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T05:42:08.552Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795064418490-24MI0030-iv9",
+    "sessionId": "session-1795064414464",
+    "courseCode": "MKMI0210",
+    "courseName": "Pemrograman Berorientasi Objek",
+    "studentNim": "24MI0030",
+    "studentName": "Zulfa Mirfati Syifa",
+    "rombel": "MI 5A",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T05:42:08.553Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795064449960-24MI0001-0zq",
+    "sessionId": "session-1795064447513",
+    "courseCode": "MKMI0210P",
+    "courseName": "Praktikum Pemrograman Berorientasi Objek",
+    "studentNim": "24MI0001",
+    "studentName": "Ahmad Abror",
+    "rombel": "MI 5A",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T05:43:18.744Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795064449960-24MI0002-p2f",
+    "sessionId": "session-1795064447513",
+    "courseCode": "MKMI0210P",
+    "courseName": "Praktikum Pemrograman Berorientasi Objek",
+    "studentNim": "24MI0002",
+    "studentName": "Alma Malika",
+    "rombel": "MI 5A",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T05:43:18.744Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795064449960-24MI0003-7hf",
+    "sessionId": "session-1795064447513",
+    "courseCode": "MKMI0210P",
+    "courseName": "Praktikum Pemrograman Berorientasi Objek",
+    "studentNim": "24MI0003",
+    "studentName": "Andre Oktavianto",
+    "rombel": "MI 5A",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T05:43:18.745Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795064449960-24MI0005-kz1",
+    "sessionId": "session-1795064447513",
+    "courseCode": "MKMI0210P",
+    "courseName": "Praktikum Pemrograman Berorientasi Objek",
+    "studentNim": "24MI0005",
+    "studentName": "Aryan Jaring Pandu Yudha",
+    "rombel": "MI 5A",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T05:43:18.745Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795064449961-24MI0006-md9",
+    "sessionId": "session-1795064447513",
+    "courseCode": "MKMI0210P",
+    "courseName": "Praktikum Pemrograman Berorientasi Objek",
+    "studentNim": "24MI0006",
+    "studentName": "Daffa Zharif Aqillah",
+    "rombel": "MI 5A",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T05:43:18.745Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795064449961-24MI0007-x6g",
+    "sessionId": "session-1795064447513",
+    "courseCode": "MKMI0210P",
+    "courseName": "Praktikum Pemrograman Berorientasi Objek",
+    "studentNim": "24MI0007",
+    "studentName": "Danar Waskita",
+    "rombel": "MI 5A",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T05:43:18.745Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Diubah manual oleh dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795064449961-24MI0009-8at",
+    "sessionId": "session-1795064447513",
+    "courseCode": "MKMI0210P",
+    "courseName": "Praktikum Pemrograman Berorientasi Objek",
+    "studentNim": "24MI0009",
+    "studentName": "Dian Safitri",
+    "rombel": "MI 5A",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T05:43:18.745Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795064449961-24MI0011-xgp",
+    "sessionId": "session-1795064447513",
+    "courseCode": "MKMI0210P",
+    "courseName": "Praktikum Pemrograman Berorientasi Objek",
+    "studentNim": "24MI0011",
+    "studentName": "Dzaki Afrian",
+    "rombel": "MI 5A",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T05:43:18.745Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795064449961-24MI0015-qww",
+    "sessionId": "session-1795064447513",
+    "courseCode": "MKMI0210P",
+    "courseName": "Praktikum Pemrograman Berorientasi Objek",
+    "studentNim": "24MI0015",
+    "studentName": "Khuzaimah",
+    "rombel": "MI 5A",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T05:43:18.745Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795064449961-24MI0018-znm",
+    "sessionId": "session-1795064447513",
+    "courseCode": "MKMI0210P",
+    "courseName": "Praktikum Pemrograman Berorientasi Objek",
+    "studentNim": "24MI0018",
+    "studentName": "Muflikhatun Ni'Mah",
+    "rombel": "MI 5A",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T05:43:18.745Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795064449961-24MI0019-ciw",
+    "sessionId": "session-1795064447513",
+    "courseCode": "MKMI0210P",
+    "courseName": "Praktikum Pemrograman Berorientasi Objek",
+    "studentNim": "24MI0019",
+    "studentName": "Muhamad Abid Sarur",
+    "rombel": "MI 5A",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T05:43:18.745Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795064449961-24MI0021-5sm",
+    "sessionId": "session-1795064447513",
+    "courseCode": "MKMI0210P",
+    "courseName": "Praktikum Pemrograman Berorientasi Objek",
+    "studentNim": "24MI0021",
+    "studentName": "Nanda Husaeni Hasbullah",
+    "rombel": "MI 5A",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T05:43:18.745Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795064449961-24MI0024-bnm",
+    "sessionId": "session-1795064447513",
+    "courseCode": "MKMI0210P",
+    "courseName": "Praktikum Pemrograman Berorientasi Objek",
+    "studentNim": "24MI0024",
+    "studentName": "Retno Ayu Subakti",
+    "rombel": "MI 5A",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T05:43:18.745Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795064449961-24MI0025-x1x",
+    "sessionId": "session-1795064447513",
+    "courseCode": "MKMI0210P",
+    "courseName": "Praktikum Pemrograman Berorientasi Objek",
+    "studentNim": "24MI0025",
+    "studentName": "Risma Mulyani",
+    "rombel": "MI 5A",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T05:43:18.745Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795064449961-24MI0026-3af",
+    "sessionId": "session-1795064447513",
+    "courseCode": "MKMI0210P",
+    "courseName": "Praktikum Pemrograman Berorientasi Objek",
+    "studentNim": "24MI0026",
+    "studentName": "Rizki Yulianto",
+    "rombel": "MI 5A",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T05:43:18.745Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795064449961-24MI0028-mz3",
+    "sessionId": "session-1795064447513",
+    "courseCode": "MKMI0210P",
+    "courseName": "Praktikum Pemrograman Berorientasi Objek",
+    "studentNim": "24MI0028",
+    "studentName": "Tri Maulandani",
+    "rombel": "MI 5A",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T05:43:18.745Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795064449961-24MI0029-zsf",
+    "sessionId": "session-1795064447513",
+    "courseCode": "MKMI0210P",
+    "courseName": "Praktikum Pemrograman Berorientasi Objek",
+    "studentNim": "24MI0029",
+    "studentName": "Ya'Lu Azmi Yu'La Amrulloh",
+    "rombel": "MI 5A",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T05:43:18.745Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795064449961-24MI0030-vva",
+    "sessionId": "session-1795064447513",
+    "courseCode": "MKMI0210P",
+    "courseName": "Praktikum Pemrograman Berorientasi Objek",
+    "studentNim": "24MI0030",
+    "studentName": "Zulfa Mirfati Syifa",
+    "rombel": "MI 5A",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T05:43:18.745Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795074247030-26TI0001-yjh",
+    "sessionId": "session-1791980926444",
+    "courseCode": "MKMI0105",
+    "courseName": "Algoritma dan Pemrograman",
+    "studentNim": "26TI0001",
+    "studentName": "Anggi Nauli Utami",
+    "rombel": "TI 1",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T07:47:49.356Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795074247030-26TI0002-vnj",
+    "sessionId": "session-1791980926444",
+    "courseCode": "MKMI0105",
+    "courseName": "Algoritma dan Pemrograman",
+    "studentNim": "26TI0002",
+    "studentName": "Arif Mustofa",
+    "rombel": "TI 1",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T07:47:49.356Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795074247030-26TI0003-095",
+    "sessionId": "session-1791980926444",
+    "courseCode": "MKMI0105",
+    "courseName": "Algoritma dan Pemrograman",
+    "studentNim": "26TI0003",
+    "studentName": "Cahyo Sukmono",
+    "rombel": "TI 1",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T07:47:49.356Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795074247030-26TI0004-vic",
+    "sessionId": "session-1791980926444",
+    "courseCode": "MKMI0105",
+    "courseName": "Algoritma dan Pemrograman",
+    "studentNim": "26TI0004",
+    "studentName": "Irfan Arif Pamuji",
+    "rombel": "TI 1A",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T07:47:49.356Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795074247031-26TI0005-s02",
+    "sessionId": "session-1791980926444",
+    "courseCode": "MKMI0105",
+    "courseName": "Algoritma dan Pemrograman",
+    "studentNim": "26TI0005",
+    "studentName": "Lukman Hakim",
+    "rombel": "TI 1A",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T07:47:49.356Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795074247031-26TI0006-2kk",
+    "sessionId": "session-1791980926444",
+    "courseCode": "MKMI0105",
+    "courseName": "Algoritma dan Pemrograman",
+    "studentNim": "26TI0006",
+    "studentName": "Naily Oktaviani Karim",
+    "rombel": "TI 1",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T07:47:49.356Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795074247031-26TI0007-ko6",
+    "sessionId": "session-1791980926444",
+    "courseCode": "MKMI0105",
+    "courseName": "Algoritma dan Pemrograman",
+    "studentNim": "26TI0007",
+    "studentName": "Naufal Yuri Bahy",
+    "rombel": "TI 1A",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T07:47:49.356Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795074247031-26TI0008-l79",
+    "sessionId": "session-1791980926444",
+    "courseCode": "MKMI0105",
+    "courseName": "Algoritma dan Pemrograman",
+    "studentNim": "26TI0008",
+    "studentName": "Putri Veronika",
+    "rombel": "TI 1",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T07:47:49.356Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795074247031-26TI0009-v2s",
+    "sessionId": "session-1791980926444",
+    "courseCode": "MKMI0105",
+    "courseName": "Algoritma dan Pemrograman",
+    "studentNim": "26TI0009",
+    "studentName": "Nourmalia Hidayah Anjarkusuma",
+    "rombel": "TI 1",
+    "status": "ALPHA",
+    "scannedAt": "2026-11-19T07:47:49.356Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795074247031-26TI0010-kc1",
+    "sessionId": "session-1791980926444",
+    "courseCode": "MKMI0105",
+    "courseName": "Algoritma dan Pemrograman",
+    "studentNim": "26TI0010",
+    "studentName": "Puji Santoso",
+    "rombel": "TI 1",
+    "status": "ALPHA",
+    "scannedAt": "2026-11-19T07:47:49.356Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795074247031-26TI0011-225",
+    "sessionId": "session-1791980926444",
+    "courseCode": "MKMI0105",
+    "courseName": "Algoritma dan Pemrograman",
+    "studentNim": "26TI0011",
+    "studentName": "Tri Anjarsari",
+    "rombel": "TI 1",
+    "status": "ALPHA",
+    "scannedAt": "2026-11-19T07:47:49.356Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795074479344-26TI0001-qu6",
+    "sessionId": "session-1792632974412",
+    "courseCode": "MKMI0105",
+    "courseName": "Algoritma dan Pemrograman",
+    "studentNim": "26TI0001",
+    "studentName": "Anggi Nauli Utami",
+    "rombel": "TI 1",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T07:49:43.892Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795074479344-26TI0004-od4",
+    "sessionId": "session-1792632974412",
+    "courseCode": "MKMI0105",
+    "courseName": "Algoritma dan Pemrograman",
+    "studentNim": "26TI0004",
+    "studentName": "Irfan Arif Pamuji",
+    "rombel": "TI 1A",
+    "status": "ALPHA",
+    "scannedAt": "2026-11-19T07:49:43.892Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795074479344-26TI0005-v2q",
+    "sessionId": "session-1792632974412",
+    "courseCode": "MKMI0105",
+    "courseName": "Algoritma dan Pemrograman",
+    "studentNim": "26TI0005",
+    "studentName": "Lukman Hakim",
+    "rombel": "TI 1A",
+    "status": "ALPHA",
+    "scannedAt": "2026-11-19T07:49:43.892Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795074479344-26TI0006-2tb",
+    "sessionId": "session-1792632974412",
+    "courseCode": "MKMI0105",
+    "courseName": "Algoritma dan Pemrograman",
+    "studentNim": "26TI0006",
+    "studentName": "Naily Oktaviani Karim",
+    "rombel": "TI 1",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T07:49:43.892Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795074479344-26TI0007-8uk",
+    "sessionId": "session-1792632974412",
+    "courseCode": "MKMI0105",
+    "courseName": "Algoritma dan Pemrograman",
+    "studentNim": "26TI0007",
+    "studentName": "Naufal Yuri Bahy",
+    "rombel": "TI 1A",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T07:49:43.892Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795074479344-26TI0008-md9",
+    "sessionId": "session-1792632974412",
+    "courseCode": "MKMI0105",
+    "courseName": "Algoritma dan Pemrograman",
+    "studentNim": "26TI0008",
+    "studentName": "Putri Veronika",
+    "rombel": "TI 1",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T07:49:43.892Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795074479344-26TI0009-e1b",
+    "sessionId": "session-1792632974412",
+    "courseCode": "MKMI0105",
+    "courseName": "Algoritma dan Pemrograman",
+    "studentNim": "26TI0009",
+    "studentName": "Nourmalia Hidayah Anjarkusuma",
+    "rombel": "TI 1",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T07:49:43.892Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795074479345-26TI0010-ll6",
+    "sessionId": "session-1792632974412",
+    "courseCode": "MKMI0105",
+    "courseName": "Algoritma dan Pemrograman",
+    "studentNim": "26TI0010",
+    "studentName": "Puji Santoso",
+    "rombel": "TI 1",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T07:49:43.893Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795074479345-26TI0011-m7a",
+    "sessionId": "session-1792632974412",
+    "courseCode": "MKMI0105",
+    "courseName": "Algoritma dan Pemrograman",
+    "studentNim": "26TI0011",
+    "studentName": "Tri Anjarsari",
+    "rombel": "TI 1",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T07:49:43.893Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795074535501-26TI0006-gq1",
+    "sessionId": "session-1794399454297",
+    "courseCode": "MKMI0105",
+    "courseName": "Algoritma dan Pemrograman",
+    "studentNim": "26TI0006",
+    "studentName": "Naily Oktaviani Karim",
+    "rombel": "TI 1",
+    "status": "ALPHA",
+    "scannedAt": "2026-11-19T08:07:27.256Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795074535501-26TI0010-8ny",
+    "sessionId": "session-1794399454297",
+    "courseCode": "MKMI0105",
+    "courseName": "Algoritma dan Pemrograman",
+    "studentNim": "26TI0010",
+    "studentName": "Puji Santoso",
+    "rombel": "TI 1",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T08:07:27.256Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795074535501-26TI0011-c7u",
+    "sessionId": "session-1794399454297",
+    "courseCode": "MKMI0105",
+    "courseName": "Algoritma dan Pemrograman",
+    "studentNim": "26TI0011",
+    "studentName": "Tri Anjarsari",
+    "rombel": "TI 1",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T08:07:27.256Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795074592127-26TI0001-s4i",
+    "sessionId": "session-1792581376757",
+    "courseCode": "MKMI0105",
+    "courseName": "Algoritma dan Pemrograman",
+    "studentNim": "26TI0001",
+    "studentName": "Anggi Nauli Utami",
+    "rombel": "TI 1",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T07:50:27.733Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795074592127-26TI0004-5nf",
+    "sessionId": "session-1792581376757",
+    "courseCode": "MKMI0105",
+    "courseName": "Algoritma dan Pemrograman",
+    "studentNim": "26TI0004",
+    "studentName": "Irfan Arif Pamuji",
+    "rombel": "TI 1A",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T07:50:27.733Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795074592127-26TI0005-9cd",
+    "sessionId": "session-1792581376757",
+    "courseCode": "MKMI0105",
+    "courseName": "Algoritma dan Pemrograman",
+    "studentNim": "26TI0005",
+    "studentName": "Lukman Hakim",
+    "rombel": "TI 1A",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T07:50:27.733Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795074592127-26TI0006-n8b",
+    "sessionId": "session-1792581376757",
+    "courseCode": "MKMI0105",
+    "courseName": "Algoritma dan Pemrograman",
+    "studentNim": "26TI0006",
+    "studentName": "Naily Oktaviani Karim",
+    "rombel": "TI 1",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T07:50:27.733Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795074592127-26TI0007-ug3",
+    "sessionId": "session-1792581376757",
+    "courseCode": "MKMI0105",
+    "courseName": "Algoritma dan Pemrograman",
+    "studentNim": "26TI0007",
+    "studentName": "Naufal Yuri Bahy",
+    "rombel": "TI 1A",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T07:50:27.733Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795074592127-26TI0008-9pn",
+    "sessionId": "session-1792581376757",
+    "courseCode": "MKMI0105",
+    "courseName": "Algoritma dan Pemrograman",
+    "studentNim": "26TI0008",
+    "studentName": "Putri Veronika",
+    "rombel": "TI 1",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T07:50:27.733Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795074592127-26TI0009-711",
+    "sessionId": "session-1792581376757",
+    "courseCode": "MKMI0105",
+    "courseName": "Algoritma dan Pemrograman",
+    "studentNim": "26TI0009",
+    "studentName": "Nourmalia Hidayah Anjarkusuma",
+    "rombel": "TI 1",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T07:50:27.733Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795074592127-26TI0010-vye",
+    "sessionId": "session-1792581376757",
+    "courseCode": "MKMI0105",
+    "courseName": "Algoritma dan Pemrograman",
+    "studentNim": "26TI0010",
+    "studentName": "Puji Santoso",
+    "rombel": "TI 1",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T07:50:27.733Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795074592127-26TI0011-4id",
+    "sessionId": "session-1792581376757",
+    "courseCode": "MKMI0105",
+    "courseName": "Algoritma dan Pemrograman",
+    "studentNim": "26TI0011",
+    "studentName": "Tri Anjarsari",
+    "rombel": "TI 1",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T07:50:27.733Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795074660157-24TI0022-51w",
+    "sessionId": "session-1792036168896",
+    "courseCode": "MKTI0111",
+    "courseName": "Pengantar Forensik Digital",
+    "studentNim": "24TI0022",
+    "studentName": "Laeli Muflikhah",
+    "rombel": "TI 3",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T07:51:01.569Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795074810609-25TI0003-ad4",
+    "sessionId": "session-1795074786418",
+    "courseCode": "MKTI0111",
+    "courseName": "Pengantar Forensik Digital",
+    "studentNim": "25TI0003",
+    "studentName": "Ahmad Saefudin",
+    "rombel": "TI 3",
+    "status": "ALPHA",
+    "scannedAt": "2026-11-19T07:59:03.530Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795074810609-25TI0004-r1c",
+    "sessionId": "session-1795074786418",
+    "courseCode": "MKTI0111",
+    "courseName": "Pengantar Forensik Digital",
+    "studentNim": "25TI0004",
+    "studentName": "Alaysa Farha Nur'aini",
+    "rombel": "TI 3",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T07:59:03.530Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795074810609-25TI0005-dd0",
+    "sessionId": "session-1795074786418",
+    "courseCode": "MKTI0111",
+    "courseName": "Pengantar Forensik Digital",
+    "studentNim": "25TI0005",
+    "studentName": "Amanda Farendya Istitanansyah",
+    "rombel": "TI 3",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T07:59:03.530Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795074810609-25TI0006-cab",
+    "sessionId": "session-1795074786418",
+    "courseCode": "MKTI0111",
+    "courseName": "Pengantar Forensik Digital",
+    "studentNim": "25TI0006",
+    "studentName": "Arief Adam Musthofa",
+    "rombel": "TI 3",
+    "status": "ALPHA",
+    "scannedAt": "2026-11-19T07:59:03.530Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795074810609-25TI0007-du4",
+    "sessionId": "session-1795074786418",
+    "courseCode": "MKTI0111",
+    "courseName": "Pengantar Forensik Digital",
+    "studentNim": "25TI0007",
+    "studentName": "Aulya Salsabila Khoirunnisa",
+    "rombel": "TI 3",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T07:59:03.530Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795074810609-25TI0012-qr5",
+    "sessionId": "session-1795074786418",
+    "courseCode": "MKTI0111",
+    "courseName": "Pengantar Forensik Digital",
+    "studentNim": "25TI0012",
+    "studentName": "Habibi",
+    "rombel": "TI 3",
+    "status": "ALPHA",
+    "scannedAt": "2026-11-19T07:59:03.530Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795074810609-25TI0020-ws8",
+    "sessionId": "session-1795074786418",
+    "courseCode": "MKTI0111",
+    "courseName": "Pengantar Forensik Digital",
+    "studentNim": "25TI0020",
+    "studentName": "Hidayat Nuril Maulana",
+    "rombel": "TI 3",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T07:59:03.530Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795074810610-25TI0021-wob",
+    "sessionId": "session-1795074786418",
+    "courseCode": "MKTI0111",
+    "courseName": "Pengantar Forensik Digital",
+    "studentNim": "25TI0021",
+    "studentName": "Miftachul Jannah",
+    "rombel": "TI 3",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T07:59:03.530Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795074810610-25TI0022-8u2",
+    "sessionId": "session-1795074786418",
+    "courseCode": "MKTI0111",
+    "courseName": "Pengantar Forensik Digital",
+    "studentNim": "25TI0022",
+    "studentName": "Mohammad Nayotama Oda Attalloh",
+    "rombel": "TI 3",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T07:59:03.530Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795074810610-25TI0025-k4j",
+    "sessionId": "session-1795074786418",
+    "courseCode": "MKTI0111",
+    "courseName": "Pengantar Forensik Digital",
+    "studentNim": "25TI0025",
+    "studentName": "Madhina Arafati Choeron",
+    "rombel": "TI 3",
+    "status": "ALPHA",
+    "scannedAt": "2026-11-19T07:59:03.530Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795074810610-25TI0028-n3q",
+    "sessionId": "session-1795074786418",
+    "courseCode": "MKTI0111",
+    "courseName": "Pengantar Forensik Digital",
+    "studentNim": "25TI0028",
+    "studentName": "Pasha Wulan Ramadhani",
+    "rombel": "TI 3",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T07:59:03.530Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795074810610-25TI0032-6b2",
+    "sessionId": "session-1795074786418",
+    "courseCode": "MKTI0111",
+    "courseName": "Pengantar Forensik Digital",
+    "studentNim": "25TI0032",
+    "studentName": "Nanindia Tri Rahayu",
+    "rombel": "TI 3",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T07:59:03.530Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795074810610-25TI0033-g64",
+    "sessionId": "session-1795074786418",
+    "courseCode": "MKTI0111",
+    "courseName": "Pengantar Forensik Digital",
+    "studentNim": "25TI0033",
+    "studentName": "Naylin Fikriya Sabrina",
+    "rombel": "TI 3",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T07:59:03.530Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795074810610-25TI0035-ukx",
+    "sessionId": "session-1795074786418",
+    "courseCode": "MKTI0111",
+    "courseName": "Pengantar Forensik Digital",
+    "studentNim": "25TI0035",
+    "studentName": "Septiana Rahmawati",
+    "rombel": "TI 3",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T07:59:03.530Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795074810610-25TI0043-4l6",
+    "sessionId": "session-1795074786418",
+    "courseCode": "MKTI0111",
+    "courseName": "Pengantar Forensik Digital",
+    "studentNim": "25TI0043",
+    "studentName": "Seva Windu Ali",
+    "rombel": "TI 3",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T07:59:03.530Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795074810610-25TI0045-58h",
+    "sessionId": "session-1795074786418",
+    "courseCode": "MKTI0111",
+    "courseName": "Pengantar Forensik Digital",
+    "studentNim": "25TI0045",
+    "studentName": "Susilo Kurniawan",
+    "rombel": "TI 3",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T07:59:03.530Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795074810610-25TI0050-vza",
+    "sessionId": "session-1795074786418",
+    "courseCode": "MKTI0111",
+    "courseName": "Pengantar Forensik Digital",
+    "studentNim": "25TI0050",
+    "studentName": "Dianna Candra Ningtyas",
+    "rombel": "TI 3",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T07:59:03.531Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795074810610-25TI0071-rdq",
+    "sessionId": "session-1795074786418",
+    "courseCode": "MKTI0111",
+    "courseName": "Pengantar Forensik Digital",
+    "studentNim": "25TI0071",
+    "studentName": "Armada Teranda Putra",
+    "rombel": "TI 3",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T07:59:03.531Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795074810610-25TI0076-sbz",
+    "sessionId": "session-1795074786418",
+    "courseCode": "MKTI0111",
+    "courseName": "Pengantar Forensik Digital",
+    "studentNim": "25TI0076",
+    "studentName": "Muhammad Burhanuddin Ikhsan",
+    "rombel": "TI 3",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T07:59:03.531Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795074810610-25TI0080-1xm",
+    "sessionId": "session-1795074786418",
+    "courseCode": "MKTI0111",
+    "courseName": "Pengantar Forensik Digital",
+    "studentNim": "25TI0080",
+    "studentName": "Agis Khaidir Rizki",
+    "rombel": "TI 3",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T07:59:03.531Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795074810610-25TI0087-vq2",
+    "sessionId": "session-1795074786418",
+    "courseCode": "MKTI0111",
+    "courseName": "Pengantar Forensik Digital",
+    "studentNim": "25TI0087",
+    "studentName": "Martin Aditya",
+    "rombel": "TI 3",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T07:59:03.531Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795074810610-25TI0073-g01",
+    "sessionId": "session-1795074786418",
+    "courseCode": "MKTI0111",
+    "courseName": "Pengantar Forensik Digital",
+    "studentNim": "25TI0073",
+    "studentName": "Dwi Mei Indah Aryani",
+    "rombel": "TI 3",
+    "status": "ALPHA",
+    "scannedAt": "2026-11-19T07:59:03.531Z",
+    "verificationMethod": "MANUAL_DOSEN",
+    "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
+  },
+  {
+    "id": "rec-manual-1795074810610-24TI0022-7z2",
+    "sessionId": "session-1795074786418",
+    "courseCode": "MKTI0111",
+    "courseName": "Pengantar Forensik Digital",
+    "studentNim": "24TI0022",
+    "studentName": "Laeli Muflikhah",
+    "rombel": "TI 3",
+    "status": "HADIR",
+    "scannedAt": "2026-11-19T07:59:03.531Z",
     "verificationMethod": "MANUAL_DOSEN",
     "notes": "Presensi manual dosen (Ammar Fauzan, S.Pd., M.Kom.)"
   }

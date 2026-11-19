@@ -37,12 +37,13 @@ export const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
   const [isCloseDialogOpen, setIsCloseDialogOpen] = useState(false);
 
   useEffect(() => {
+    if (!isOpen) return;
     if (defaultSessionId) {
       setSelectedSessionId(defaultSessionId);
     } else if (!selectedSessionId && mySessions.length > 0) {
       setSelectedSessionId(mySessions[0].id);
     }
-  }, [defaultSessionId, mySessions]);
+  }, [defaultSessionId, isOpen]);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [localStatuses, setLocalStatuses] = useState<Record<string, { status: AttendanceStatus; notes: string }>>({});
@@ -96,7 +97,7 @@ export const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
 
     setLocalStatuses(initialMap);
     setSaveSuccessMessage(null);
-  }, [selectedSessionId, isOpen, records.length]);
+  }, [selectedSessionId, isOpen]);
 
   if (!isOpen) return null;
 
@@ -227,7 +228,7 @@ export const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
               >
                 {sessions.map(s => (
                   <option key={s.id} value={s.id}>
-                    [{s.courseCode}] {s.courseName} ({s.rombel})
+                    P{s.meetingNumber} · [{s.courseCode}] {s.courseName} ({s.rombel})
                   </option>
                 ))}
               </select>
