@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { ScheduleItem, User, Course, DayOfWeek, ProgramStudi, Rombel, Student } from '../../types/attendance';
-import { isStudentInRombel, getStudentRombelList, INITIAL_ROMBELS } from '../../data/initialData';
+import { isStudentInRombel, getStudentRombelList, getStudentEnrolledSchedules } from '../../data/initialData';
 import {
   Calendar, Clock, Building2, BookOpen, UserCheck, AlertCircle,
   CheckCircle2, Sparkles, Filter, Check, X, Info, ChevronRight,
@@ -20,7 +20,7 @@ interface ScheduleModalProps {
   onSave: (scheduleData: Omit<ScheduleItem, 'id'>) => void;
   onUpdate?: (id: string, scheduleData: Partial<ScheduleItem>) => void;
   onAddCourse?: (course: Omit<Course, 'id'>) => void;
-  onAddRombel?: (rombelData: Omit<Rombel, 'id'>, connectedScheduleIds?: string[]) => { success: boolean; message: string; rombel?: Rombel };
+  onAddRombel?: (rombelData: Omit<Rombel, 'id'>, connectedScheduleIds?: string[]) => Promise<{ success: boolean; message: string; rombel?: Rombel }>;
 }
 
 // Campus Workdays for scheduling
@@ -122,7 +122,7 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
 
   // Active list of database rombels (excluding archived unless editing schedule)
   const activeRombelsList = useMemo(() => {
-    const source = (rombels && rombels.length > 0) ? rombels : INITIAL_ROMBELS;
+    const source = rombels || [];
     return source.filter(r => !r.isArchived || (editingSchedule && isStudentInRombel(r.code, editingSchedule.rombel)));
   }, [rombels, editingSchedule]);
 
@@ -176,17 +176,14 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
 
   // Compute how many students in the database belong to a rombel code
   const getRombelStudentCount = (rombelCode: string): number => {
-    return students.filter(st => isStudentInRombel(rombelCode, st.rombel, st.rombels)).length;
+    return students.filter(st => isStudentInRombel(st.rombel, rombelCode, st.rombels)).length;
   };
 
   // Connected students for current selected schedule rombel (from Mahasiswa database)
   const connectedStudents = useMemo(() => {
     if (!rombel.trim() || students.length === 0) return [];
-    const parts = rombel.split(/[,;&/]+/).map(p => p.trim()).filter(Boolean);
-    return students.filter(st => {
-      return parts.some(part => isStudentInRombel(part, st.rombel, st.rombels));
-    });
-  }, [students, rombel]);
+    return students.filter(st => getStudentEnrolledSchedules(st,[{id:editingSchedule?.id||'',rombel} as ScheduleItem]).length>0);
+  }, [students, rombel, editingSchedule]);
 
   // Filtered connected students for preview search
   const filteredConnectedStudents = useMemo(() => {
@@ -216,7 +213,7 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
       setProdi(editingSchedule.prodi);
 
       // Parse rombels
-      const parts = editingSchedule.rombel.split(/[,;&/]+/).map(p => p.trim()).filter(Boolean);
+      const parts = getStudentRombelList(editingSchedule.rombel);
       setSelectedRombelCodes(parts);
       setIsMultiRombelMode(parts.length > 1);
 
@@ -297,7 +294,8 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
   };
 
   // Handle Quick Add New Course to Master Database
-  const handleCreateNewMasterCourse = (e: React.FormEvent) => {
+  const handleCreateNewMasterCourse = async (e: React.FormEvent) => {
+    try {
     e.preventDefault();
     if (!newCourseCode.trim() || !newCourseName.trim()) {
       alert('Kode dan Nama Mata Kuliah wajib diisi.');
@@ -308,7 +306,7 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
     const cleanName = newCourseName.trim();
 
     if (onAddCourse) {
-      onAddCourse({
+      await onAddCourse({
         code: cleanCode,
         name: cleanName,
         sks: newCourseSks,
@@ -328,6 +326,7 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
     setShowCourseCatalog(false);
     setNewCourseCode('');
     setNewCourseName('');
+    } catch(error) { window.dispatchEvent(new CustomEvent('hadir-api-error',{detail:error instanceof Error?error.message:'Permintaan gagal.'})); } finally {  }
   };
 
   // Directly remove a rombel from the schedule
@@ -396,7 +395,7 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
   // Manual Trigger to re-sync roster
   const handleManualSyncRoster = () => {
     setIsSyncingRoster(true);
-    setTimeout(() => {
+    setTimeout(async () => {
       setIsSyncingRoster(false);
       setSyncStatusNotice(`Sinkronisasi Berhasil! ${connectedStudents.length} mahasiswa dari rombel [${selectedRombelCodes.join(', ') || '-'}] telah terverifikasi dan terhubung otomatis untuk presensi QR.`);
       setTimeout(() => setSyncStatusNotice(''), 5000);
@@ -583,7 +582,8 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
   };
 
   // Submit Handler
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
+    try {
     e.preventDefault();
     setFormError('');
 
@@ -639,12 +639,13 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
     };
 
     if (editingSchedule && onUpdate) {
-      onUpdate(editingSchedule.id, scheduleData);
+      await onUpdate(editingSchedule.id, scheduleData);
     } else {
-      onSave(scheduleData);
+      await onSave(scheduleData);
     }
 
     onClose();
+    } catch(error) { window.dispatchEvent(new CustomEvent('hadir-api-error',{detail:error instanceof Error?error.message:'Permintaan gagal.'})); } finally {  }
   };
 
   if (!isOpen) return null;

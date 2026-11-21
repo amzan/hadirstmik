@@ -1,3 +1,4 @@
+import { login } from '../../utils/api';
 import React, { useState } from 'react';
 import { useAttendance } from '../../context/AttendanceContext';
 import { User } from '../../types/attendance';
@@ -29,68 +30,7 @@ export const AdminPortalPage: React.FC<AdminPortalPageProps> = ({
 
   const isCurrentNonAdmin = currentUser && currentUser.role !== 'admin';
 
-  const handleAdminLogin = (e: React.FormEvent) => {
-    e.preventDefault();
-    setErrorMessage('');
-    setSuccessMessage('');
-
-    const cleanInput = username.trim().toLowerCase();
-    if (!cleanInput) {
-      setErrorMessage('Silakan masukkan username administrator BAAK.');
-      return;
-    }
-
-    if (!password) {
-      setErrorMessage('Silakan masukkan kata sandi administrator.');
-      return;
-    }
-
-    setIsLoading(true);
-
-    setTimeout(() => {
-      const adminUser = users.find(u => u.role === 'admin') || {
-        id: 'user-admin-1',
-        username: 'baak',
-        name: 'Administrator Akademik (BAAK)',
-        email: 'baak@stmik-arungbinang.ac.id',
-        role: 'admin',
-        avatarUrl: '',
-        title: 'Kepala BAAK',
-        phone: '081234567890',
-      };
-
-      if (cleanInput !== 'baak' && cleanInput !== adminUser.username.toLowerCase()) {
-        setIsLoading(false);
-        setErrorMessage('Username administrator tidak valid.');
-        return;
-      }
-
-      if (adminUser.password) {
-        if (password !== adminUser.password) {
-          setIsLoading(false);
-          if (password === 'baak123' || password === 'admin123') {
-            setErrorMessage('Kata sandi default (baak123) sudah tidak berlaku karena Anda telah memperbarui kata sandi via email. Silakan gunakan kata sandi baru Anda.');
-          } else {
-            setErrorMessage('Kata sandi administrator salah. Silakan periksa kembali atau gunakan fitur Atur Ulang Kata Sandi.');
-          }
-          return;
-        }
-      } else {
-        if (password !== 'baak123' && password !== 'admin123') {
-          setIsLoading(false);
-          setErrorMessage('Kata sandi administrator salah. Gunakan password resmi: baak123');
-          return;
-        }
-      }
-
-      setIsLoading(false);
-      setSuccessMessage('Autentikasi Administrator BAAK berhasil. Mengalihkan ke konsol...');
-
-      setTimeout(() => {
-        onLoginSuccess(adminUser);
-      }, 400);
-    }, 350);
-  };
+  const handleAdminLogin = async (e: React.FormEvent) => { e.preventDefault(); if(isLoading) return; setErrorMessage(''); setSuccessMessage(''); setIsLoading(true); try { const user = await login(username.trim(), password, 'admin'); setSuccessMessage('Login berhasil.'); onLoginSuccess(user);  } catch (error) { setErrorMessage(error instanceof Error ? error.message : 'Login gagal.'); } finally { setIsLoading(false); } };
 
   const stmikLogo = getStmikLogoDataUrl();
 

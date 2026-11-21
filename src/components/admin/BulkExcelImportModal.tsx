@@ -100,14 +100,14 @@ export const BulkExcelImportModal: React.FC<BulkExcelImportModalProps> = ({
     }
   };
 
-  const handleExecuteImport = () => {
+  const handleExecuteImport = async () => {
     if (!importResult) return;
 
     setIsApplying(true);
     setParseError('');
     setSuccessMsg('');
 
-    setTimeout(() => {
+    await (async () => {
       try {
         let schedulesUpdated = 0;
         let usersUpdated = 0;
@@ -115,20 +115,20 @@ export const BulkExcelImportModal: React.FC<BulkExcelImportModalProps> = ({
         let coursesUpdated = 0;
 
         if (category === 'schedules' && importResult.schedules) {
-          const res = bulkUpdateSchedules(importResult.schedules.valid, mode);
+          const res = await bulkUpdateSchedules(importResult.schedules.valid, mode);
           schedulesUpdated = res.total;
         } else if (category === 'users' && importResult.users) {
-          const res = bulkUpdateUsers(importResult.users.valid, mode);
+          const res = await bulkUpdateUsers(importResult.users.valid, mode);
           usersUpdated = res.total;
         } else if (category === 'students' && importResult.students) {
-          const res = bulkUpdateStudents(importResult.students.valid, mode);
+          const res = await bulkUpdateStudents(importResult.students.valid, mode);
           studentsUpdated = res.total;
         } else if (category === 'courses' && importResult.courses) {
-          const res = bulkUpdateCourses(importResult.courses.valid, mode);
+          const res = await bulkUpdateCourses(importResult.courses.valid, mode);
           coursesUpdated = res.total;
         } else {
           // 'all' category: bulkImportAll
-          const res = bulkImportAll({
+          const res = await bulkImportAll({
             schedules: importResult.schedules?.valid,
             users: importResult.users?.valid,
             students: importResult.students?.valid,
@@ -148,7 +148,7 @@ export const BulkExcelImportModal: React.FC<BulkExcelImportModalProps> = ({
         if (coursesUpdated > 0) parts.push(`${coursesUpdated} master mata kuliah`);
 
         const summaryText = parts.length > 0 ? parts.join(', ') : 'Data';
-        setSuccessMsg(`Berhasil mengimpor & memperbarui ${summaryText} via Excel (${mode === 'merge' ? 'Mode Gabung' : 'Mode Timpa Total'})!`);
+        setSuccessMsg(`Berhasil mengimpor & memperbarui ${summaryText} via Excel (${mode === 'merge' ? 'Mode Gabung' : 'Mode Perbarui Lengkap'})!`);
         setImportResult(null);
         setSelectedFile(null);
         if (fileInputRef.current) fileInputRef.current.value = '';
@@ -158,7 +158,7 @@ export const BulkExcelImportModal: React.FC<BulkExcelImportModalProps> = ({
         setIsApplying(false);
         setParseError(`Gagal menerapkan pembaruan data: ${err?.message || 'Kesalahan sistem'}`);
       }
-    }, 400);
+    })();
   };
 
   // Compute total parsed items
@@ -206,7 +206,7 @@ export const BulkExcelImportModal: React.FC<BulkExcelImportModalProps> = ({
         {/* Category Tabs */}
         <div className="flex border-b border-slate-200 bg-slate-50 px-4 sm:px-6 overflow-x-auto shrink-0 text-xs sm:text-sm font-semibold gap-1 sm:gap-2">
           <button
-            onClick={() => {
+            onClick={async () => {
               setCategory('all');
               setImportResult(null);
             }}
@@ -221,7 +221,7 @@ export const BulkExcelImportModal: React.FC<BulkExcelImportModalProps> = ({
           </button>
 
           <button
-            onClick={() => {
+            onClick={async () => {
               setCategory('schedules');
               setImportResult(null);
             }}
@@ -236,7 +236,7 @@ export const BulkExcelImportModal: React.FC<BulkExcelImportModalProps> = ({
           </button>
 
           <button
-            onClick={() => {
+            onClick={async () => {
               setCategory('users');
               setImportResult(null);
             }}
@@ -251,7 +251,7 @@ export const BulkExcelImportModal: React.FC<BulkExcelImportModalProps> = ({
           </button>
 
           <button
-            onClick={() => {
+            onClick={async () => {
               setCategory('students');
               setImportResult(null);
             }}
@@ -266,7 +266,7 @@ export const BulkExcelImportModal: React.FC<BulkExcelImportModalProps> = ({
           </button>
 
           <button
-            onClick={() => {
+            onClick={async () => {
               setCategory('courses');
               setImportResult(null);
             }}
@@ -381,10 +381,10 @@ export const BulkExcelImportModal: React.FC<BulkExcelImportModalProps> = ({
                   }`}
                 >
                   <div className="font-bold flex items-center gap-1">
-                    <span>Timpa Penuh (Replace)</span>
+                    <span>Perbarui Lengkap (tanpa menghapus data lain)</span>
                   </div>
                   <div className="text-[10px] text-slate-500 font-normal mt-0.5">
-                    Ganti seluruh data dengan isi file Excel
+                    Perbarui baris file; baris lain dan histori tetap disimpan
                   </div>
                 </button>
               </div>
@@ -603,7 +603,7 @@ export const BulkExcelImportModal: React.FC<BulkExcelImportModalProps> = ({
         <div className="p-4 sm:p-5 border-t border-slate-200 bg-slate-50 flex items-center justify-between shrink-0 text-xs">
           <div className="text-slate-500">
             {importResult ? (
-              <span>Metode: <strong className="text-slate-800">{mode === 'merge' ? 'Gabung (Merge)' : 'Timpa Penuh (Replace)'}</strong></span>
+              <span>Metode: <strong className="text-slate-800">{mode === 'merge' ? 'Gabung (Merge)' : 'Perbarui Lengkap (tanpa menghapus data lain)'}</strong></span>
             ) : (
               <span>Pilih file Excel untuk mulai impor data</span>
             )}

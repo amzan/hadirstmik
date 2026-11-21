@@ -5,7 +5,13 @@ export type AttendanceStatus = 'HADIR' | 'IZIN' | 'SAKIT' | 'ALPHA';
 export type ProgramStudi = 'Teknologi Informasi' | 'Manajemen Informatika' | 'Lintas Program Studi';
 
 export interface User {
+  isDemo?: boolean;
+  version?: number;
+  hasCredentials?: boolean;
+  mustChangePassword?: boolean;
+  emailVerified?: boolean;
   id: string;
+  loginAlias?: string;
   username: string; // NIDN for lecturer, NIM for student, or admin username
   name: string;
   email: string;
@@ -19,12 +25,13 @@ export interface User {
   rombel?: string; // e.g. "TI 1A", "MI 5A" or "TI 1A, TI 3"
   rombels?: string[]; // Array of assigned rombels for multi-rombel support
   phone?: string;
-  password?: string;
+  password?: never;
   excludedScheduleIds?: string[]; // IDs of schedules excluded/dropped to manage SKS limit
   customScheduleIds?: string[];   // Additional schedule IDs explicitly enrolled
 }
 
 export interface Course {
+  isDemo?: boolean;
   id: string;
   code: string; // e.g. "MKTI0101"
   name: string; // e.g. "Kalkulus"
@@ -41,6 +48,7 @@ export interface Course {
 export type DayOfWeek = 'Senin' | 'Selasa' | 'Rabu' | 'Kamis' | 'Jumat' | 'Sabtu';
 
 export interface ScheduleItem {
+  isDemo?: boolean;
   id: string;
   day: DayOfWeek;
   startTime: string; // e.g. "09:00"
@@ -59,6 +67,7 @@ export interface ScheduleItem {
 }
 
 export interface Rombel {
+  isDemo?: boolean;
   id: string; // e.g. "rombel-ti-1a"
   code: string; // e.g. "TI 1A", "TI 1B", "TI 3", "TI 5", "MI 1A", "MI 1U", "MI 5A"
   name: string; // e.g. "Teknologi Informasi Kelas 1A"
@@ -73,6 +82,8 @@ export interface Rombel {
 }
 
 export interface Student {
+  isDemo?: boolean;
+  version?: number;
   nim: string;
   name: string;
   prodi: ProgramStudi;
@@ -80,12 +91,22 @@ export interface Student {
   rombels?: string[]; // Array of rombels: e.g. ["TI 1A", "TI 3"]
   email: string;
   phone?: string;
-  password?: string; // Custom hashed or stored password if updated by user or admin
+  password?: never; // Credentials are managed only by the authentication API.
   excludedScheduleIds?: string[]; // IDs of schedules excluded/dropped to manage SKS limit (e.g. <= 20 SKS)
   customScheduleIds?: string[];   // Additional schedule IDs explicitly enrolled
 }
 
 export interface AttendanceSession {
+  isDemo?: boolean;
+  academicPeriod?: string;
+  version?: number;
+  archivedAt?: string | null;
+  archivedBy?: string | null;
+  archiveReason?: string | null;
+  archiveKind?: string | null;
+  isArchived?: boolean;
+  reopenedAt?: string | null;
+  studentNims?: string[];
   id: string;
   scheduleId?: string;
   courseCode: string;
@@ -108,6 +129,8 @@ export interface AttendanceSession {
 }
 
 export interface AttendanceRecord {
+  isDemo?: boolean;
+  version?: number;
   id: string;
   sessionId: string;
   courseCode: string;
@@ -127,11 +150,16 @@ export interface AttendanceRecord {
 }
 
 export interface LeaveRequest {
+  isDemo?: boolean;
+  archiveMarker?: 'LEGACY_ARCHIVED_NO_RECIPIENT' | null;
+  legacyArchivePolicy?: string | null;
+  legacySourceHash?: string | null;
+  recipientIds?: string[];
   id: string;
   studentNim: string;
   studentName: string;
-  courseCode: string;
-  courseName: string;
+  courseCode?: string | null;
+  courseName?: string | null;
   rombel: string;
   date: string;
   status: 'PENDING' | 'APPROVED' | 'REJECTED';
@@ -144,7 +172,7 @@ export interface LeaveRequest {
 export interface DeviceSession {
   id: string; // ID sesi unik
   deviceId: string; // ID unik fingerprint perangkat browser
-  sessionToken: string; // Token autentikasi sesi aktif
+  sessionToken?: never; // Authentication tokens are never included in device DTOs.
   userId: string; // ID akun pemilik (mhs-..., dosen-..., user-admin-1)
   userUsername: string; // NIM, NIDN, atau username
   userName: string;
@@ -164,6 +192,7 @@ export interface DeviceSession {
 }
 
 export interface DatabaseBackupData {
+  legacyReviewSource?: string;
   users: User[];
   students: Student[];
   courses: Course[];

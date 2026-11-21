@@ -1,4 +1,6 @@
+import { CURRENT_ACADEMIC_PERIOD, summarizeAttendancePolicy } from '../../../shared/attendance-policy.mjs';
 import React, { useState, useEffect, useMemo } from 'react';
+import { fetchReportSnapshot } from '../../utils/reportSnapshot';
 import { useAttendance } from '../../context/AttendanceContext';
 import { QrScannerModal } from './QrScannerModal';
 import { LeaveRequestModal } from './LeaveRequestModal';
@@ -54,24 +56,23 @@ export const MahasiswaDashboard: React.FC<MahasiswaDashboardProps> = ({
   // Auto-synchronize relational data when student dashboard mounts or student NIM changes
   useEffect(() => {
     if (studentNim) {
-      const res = syncStudentData(studentNim);
-      if (res.syncedAt) {
-        setLastSyncedAt(res.syncedAt);
-      }
+      void syncStudentData(studentNim).then(res => setLastSyncedAt(res.syncedAt)).catch(() => setSyncNotice('Sinkronisasi gagal.'));
     }
   }, [studentNim]);
 
   // Manual trigger to refresh relational data from Dosen & Admin BAAK
-  const handleSyncData = () => {
+  const handleSyncData = async () => {
+    try {
     setIsSyncing(true);
     setSyncNotice(null);
-    setTimeout(() => {
-      const res = syncStudentData(studentNim);
+    await (async () => {
+      const res = await syncStudentData(studentNim);
       setLastSyncedAt(res.syncedAt);
       setSyncNotice(res.message);
       setIsSyncing(false);
       setTimeout(() => setSyncNotice(null), 8000);
-    }, 300);
+    })();
+    } catch(error) { window.dispatchEvent(new CustomEvent('hadir-api-error',{detail:error instanceof Error?error.message:'Permintaan gagal.'})); } finally { setIsSyncing(false); }
   };
 
   // Overall attendance rate
@@ -83,6 +84,7 @@ export const MahasiswaDashboard: React.FC<MahasiswaDashboardProps> = ({
     const validSessionMap = new Map(
       sessions
         .filter(session => {
+          if (session.studentNims) return session.studentNims.includes(studentNim);
           if (session.scheduleId && activeStudent.excludedScheduleIds?.includes(session.scheduleId)) {
             return false;
           }
@@ -127,46 +129,46 @@ export const MahasiswaDashboard: React.FC<MahasiswaDashboardProps> = ({
   });
 
   // Handler to generate and download Kartu Presensi Mahasiswa PDF
-  const handleGenerateKartuPresensi = () => {
+  const handleGenerateKartuPresensi = async () => {
     setIsGeneratingPdf(true);
     setPdfSuccessNotice(null);
 
     try {
-      const coursesSummary: KartuPresensiCourseItem[] = mySchedules.map(sch => {
-        const courseRate = getAttendanceRateForStudent(studentNim, sch.courseCode);
-        return {
-          courseCode: sch.courseCode,
-          courseName: sch.courseName,
-          sks: sch.sks,
-          lecturerName: sch.lecturerName,
-          rombel: sch.rombel,
-          hadir: courseRate.hadir,
-          izin: courseRate.izin,
-          sakit: courseRate.sakit,
-          alpha: courseRate.alpha,
-          totalHeld: courseRate.totalSessions,
-          percentage: courseRate.percentage,
-          eligibleExam: courseRate.percentage >= 75,
-        };
+      const snapshot = await fetchReportSnapshot();
+      const freshStudent = snapshot.students.find(value => value.nim === studentNim);
+      if (!freshStudent) throw new Error('Data mahasiswa tidak tersedia. Ekspor dibatalkan.');
+      const freshSchedules = getStudentEnrolledSchedules(freshStudent, snapshot.schedules);
+      const summarize = (scheduleId?: string) => {
+        const selected = snapshot.sessions.filter(session => session.academicPeriod === CURRENT_ACADEMIC_PERIOD && (!scheduleId || session.scheduleId === scheduleId));
+        const policy = summarizeAttendancePolicy(snapshot.sessions, snapshot.records, studentNim, { sessionIds: selected.map(value => value.id) });
+        if (policy.periodUnresolved) throw new Error('Periode akademik sesi belum terverifikasi. Ekspor efektif dibatalkan.');
+        return { ...policy, unrecorded: policy.belumTercatat };
+      };
+      const coursesSummary: KartuPresensiCourseItem[] = freshSchedules.map(sch => {
+        const rate = summarize(sch.id);
+        return { courseCode: sch.courseCode, courseName: sch.courseName, sks: sch.sks, lecturerName: sch.lecturerName, rombel: sch.rombel,
+          ...rate, totalHeld: rate.totalSessions, eligibleExam: rate.percentage >= 75 };
       });
 
       const studentData: KartuPresensiStudentData = {
+        isDemo: currentUser.isDemo,
         nim: studentNim,
-        name: matchedStudent?.name || currentUser.name,
-        prodi: matchedStudent?.prodi || currentUser.prodi || 'Teknologi Informasi',
-        rombel: studentRombelList.join(', ') || currentUser.rombel || 'TI 3',
-        academicYear: '2026/2027 Ganjil',
+        name: freshStudent.name,
+        prodi: freshStudent.prodi,
+        rombel: (freshStudent.rombels || [freshStudent.rombel]).join(', '),
+        generatedAt: snapshot.generatedAt,
+        academicYear: CURRENT_ACADEMIC_PERIOD,
         semester: CAMPUS_INFO.semester,
       };
 
-      generateKartuPresensiPDF(studentData, coursesSummary, overallRate);
+      generateKartuPresensiPDF(studentData, coursesSummary, summarize());
 
       setPdfSuccessNotice(
         `Dokumen "Kartu Presensi Mahasiswa" (NIM: ${studentNim}) berhasil diunduh. Dokumen mencakup ringkasan kehadiran seluruh mata kuliah beserta dua kotak kosong verifikasi tanda tangan pengawas UTS & UAS.`
       );
       setTimeout(() => setPdfSuccessNotice(null), 8000);
     } catch (err) {
-      console.error('Gagal generate Kartu Presensi Mahasiswa:', err);
+      window.dispatchEvent(new CustomEvent('hadir-api-error', { detail: err instanceof Error ? err.message : 'Data terbaru gagal dimuat. Ekspor dibatalkan.' }));
     } finally {
       setIsGeneratingPdf(false);
     }
@@ -363,7 +365,7 @@ export const MahasiswaDashboard: React.FC<MahasiswaDashboardProps> = ({
 
                   <div className="flex items-center gap-1.5 tabular-nums">
                     <span className="text-xs text-[#555555] font-medium">
-                      {overallRate.hadir}/{overallRate.totalSessions} Sesi
+                      {overallRate.rawHadir}/{overallRate.totalSessions} Sesi
                     </span>
                     <span
                       className={`text-xs font-semibold px-2 py-0.5 rounded-md border ${
@@ -397,11 +399,11 @@ export const MahasiswaDashboard: React.FC<MahasiswaDashboardProps> = ({
                 <div className="grid grid-cols-4 gap-2 text-center pt-0.5 tabular-nums">
                   <div
                     className="p-2 rounded-xl bg-emerald-50/80 border border-emerald-200 flex flex-col items-center justify-center relative overflow-hidden"
-                    title="Total Hadir Efektif (termasuk toleransi Izin < 3x & Sakit < 3x per MK)"
+                    title="Total status asli Hadir, tanpa toleransi Izin/Sakit"
                   >
                     <div className="flex items-center gap-1 text-[10px] font-medium text-emerald-700">
                       <Zap className="w-2.5 h-2.5 text-emerald-600 shrink-0" />
-                      <span>Hadir</span>
+                      <span>Hadir aktual</span>
                     </div>
                     <span className="text-xs font-bold text-emerald-700 mt-0.5">
                       {overallRate.hadir}
@@ -440,10 +442,10 @@ export const MahasiswaDashboard: React.FC<MahasiswaDashboardProps> = ({
                   >
                     <div className="flex items-center gap-1 text-[10px] font-medium text-rose-700">
                       <Skull className="w-2.5 h-2.5 text-rose-600 shrink-0" />
-                      <span>Alpha</span>
+                      <span>Alpa asli</span>
                     </div>
                     <span className="text-xs font-bold text-rose-700 mt-0.5">
-                      {overallRate.alpha}
+                      {overallRate.rawAlpha}
                     </span>
                   </div>
                 </div>
@@ -828,7 +830,7 @@ export const MahasiswaDashboard: React.FC<MahasiswaDashboardProps> = ({
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
           {mySchedules.map((sch) => {
-            const courseRate = getAttendanceRateForStudent(studentNim, sch.courseCode);
+            const courseRate = getAttendanceRateForStudent(studentNim, sch.id);
 
             return (
               <div
@@ -851,7 +853,7 @@ export const MahasiswaDashboard: React.FC<MahasiswaDashboardProps> = ({
                 <div className="pt-3.5 border-t border-[#eeeeee] text-sm space-y-2.5">
                   <div className="flex items-center justify-between tabular-nums">
                     <span className="text-[#555555] text-xs font-medium">
-                      Tingkat Kehadiran ({courseRate.hadir}/{courseRate.totalSessions} Sesi)
+                      Kehadiran efektif ({courseRate.hadir}/{courseRate.totalSessions} Sesi)
                     </span>
                     <span className={`font-semibold text-xs ${
                       courseRate.percentage >= 75 ? 'text-[#017171]' : 'text-[#C73C3C]'
@@ -869,11 +871,12 @@ export const MahasiswaDashboard: React.FC<MahasiswaDashboardProps> = ({
                     />
                   </div>
 
-                  <div className="flex items-center justify-between text-xs text-[#555555] font-medium tabular-nums pt-0.5">
-                    <span title="Total Hadir Efektif">Hadir: {courseRate.hadir}</span>
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-[#555555] font-medium tabular-nums pt-0.5">
+                    <span title="Status asli Hadir">Hadir aktual: {courseRate.rawHadir}</span>
                     <span title="Total Izin (< 3x dianggap Hadir)">Izin: {courseRate.izin}</span>
                     <span title="Total Sakit (< 3x dianggap Hadir)">Sakit: {courseRate.sakit}</span>
-                    <span title="Total Tidak Hadir (Alpha + kelebihan Izin/Sakit)">Alpha: {courseRate.alpha}</span>
+                    <span title="Status asli Alpa">Alpa: {courseRate.rawAlpha}</span>
+                    <span title="Sesi yang belum memiliki catatan presensi">Belum tercatat: {courseRate.belumTercatat}</span>
                   </div>
 
                   {(courseRate.izinAsHadir + courseRate.sakitAsHadir > 0 || courseRate.excessIzin + courseRate.excessSakit > 0) && (

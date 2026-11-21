@@ -1,7 +1,8 @@
+import { validateAccountPassword } from '../../utils/passwordPolicy';
+import { api, invalidateApiSession } from '../../utils/api';
 import React, { useState, useEffect, useRef } from 'react';
 import { useAttendance } from '../../context/AttendanceContext';
 import { User } from '../../types/attendance';
-import { sendPasswordResetEmail } from '../../utils/resendService';
 import {
   KeyRound, Mail, ShieldCheck, CheckCircle2, AlertCircle,
   Eye, EyeOff, RefreshCw, Send, Lock, Clock, Sparkles
@@ -14,16 +15,16 @@ interface ChangePasswordOtpSectionProps {
   onEmailUpdated?: (newEmail: string) => void;
 }
 
-export const ChangePasswordOtpSection: React.FC<ChangePasswordOtpSectionProps> = ({
+export const EmailOtpPasswordChangeSection: React.FC<ChangePasswordOtpSectionProps> = ({
   currentUser,
   onPasswordChanged,
   overrideEmail,
   onEmailUpdated,
 }) => {
-  const { resetUserPassword, updateUser } = useAttendance();
+
 
   // Target email
-  const targetEmail = (overrideEmail !== undefined ? overrideEmail : currentUser.email) || `${currentUser.username}@stmik-arungbinang.ac.id`;
+  const targetEmail = currentUser.email;
 
   // State
   const [step, setStep] = useState<1 | 2>(1); // 1: Pre-send, 2: OTP entered & new password
@@ -72,65 +73,10 @@ export const ChangePasswordOtpSection: React.FC<ChangePasswordOtpSectionProps> =
   };
 
   // Generate and send OTP
-  const handleSendOtp = async () => {
-    setErrorMessage('');
-    setSuccessNotice(null);
-    setDemoNotice(null);
-
-    const emailToSend = targetEmail.trim();
-    if (!emailToSend || !emailToSend.includes('@')) {
-      setErrorMessage('Alamat email belum valid. Harap periksa email pada tab profil.');
-      return;
-    }
-
-    setIsSending(true);
-    // Generate 6-digit random OTP
-    const generatedCode = Math.floor(100000 + Math.random() * 900000).toString();
-    setSentOtpCode(generatedCode);
-
-    try {
-      const res = await sendPasswordResetEmail({
-        to: emailToSend,
-        name: currentUser.name || 'Pengguna STMIK',
-        role: currentUser.role,
-        code: generatedCode,
-      });
-
-      if (res.isDemo) {
-        setDemoNotice(
-          `Mode Simulasi Resend: Kode OTP Anda adalah ${generatedCode}. Salin atau ketik kode ini untuk verifikasi.`
-        );
-      } else {
-        setSuccessNotice(`Kode OTP 6-digit berhasil dikirim ke ${maskEmail(emailToSend)}. Periksa kotak masuk atau spam.`);
-      }
-
-      setStep(2);
-      setExpiresCountdown(900);
-      setResendCooldown(60); // 60s cooldown before resend
-      setOtpDigits(['', '', '', '', '', '']);
-      setTimeout(() => {
-        digitInputRefs.current[0]?.focus();
-      }, 150);
-    } catch (err: any) {
-      console.error('Error sending OTP email:', err);
-      // Fallback gracefully so testing is never blocked
-      setDemoNotice(
-        `Pengiriman email terkendala jaringan/API Resend. Kode OTP simulasi untuk verifikasi: ${generatedCode}`
-      );
-      setStep(2);
-      setExpiresCountdown(900);
-      setResendCooldown(60);
-      setOtpDigits(['', '', '', '', '', '']);
-      setTimeout(() => {
-        digitInputRefs.current[0]?.focus();
-      }, 150);
-    } finally {
-      setIsSending(false);
-    }
-  };
+  const handleSendOtp = async () => {if(isSending)return;setErrorMessage('');setDemoNotice(null);setIsSending(true);try{const result=await api<{challengeId:string;message:string}>('/auth/password-change/request','POST',{});setSentOtpCode(result.challengeId);setSuccessNotice(result.message);setStep(2);setExpiresCountdown(900);setResendCooldown(60);}catch(error){setErrorMessage(error instanceof Error?error.message:'Permintaan gagal.');}finally{setIsSending(false);} };
 
   // OTP inputs handling
-  const handleDigitChange = (index: number, val: string) => {
+  const handleDigitChange = async (index: number, val: string) => {
     const digit = val.slice(-1);
     if (digit && !/^\d+$/.test(digit)) return;
 
@@ -188,71 +134,9 @@ export const ChangePasswordOtpSection: React.FC<ChangePasswordOtpSectionProps> =
   const strength = getPasswordStrength(newPassword);
 
   // Submit verify OTP and change password
-  const handleVerifyAndSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setErrorMessage('');
+  const handleVerifyAndSubmit = async (e: React.FormEvent) => {e.preventDefault();if(isUpdating)return;if(newPassword!==confirmPassword){setErrorMessage('Konfirmasi kata sandi tidak cocok.');return;}setIsUpdating(true);setErrorMessage('');try{validateAccountPassword(newPassword);await api('/auth/password-change/confirm','POST',{challengeId:sentOtpCode,code:otpDigits.join(''),newPassword,...(overrideEmail && overrideEmail!==currentUser.email?{newEmail:overrideEmail}:{})});setNewPassword('');setConfirmPassword('');setIsDone(true);setSuccessNotice('Kata sandi diperbarui. Silakan masuk kembali.');window.dispatchEvent(new Event('hadir-session-expired'));}catch(error){setErrorMessage(error instanceof Error?error.message:'Perubahan gagal.');}finally{setIsUpdating(false);} };
 
-    const fullOtp = otpDigits.join('');
-    if (fullOtp.length < 6) {
-      setErrorMessage('Harap lengkapi 6-digit kode OTP verifikasi.');
-      return;
-    }
-
-    if (fullOtp !== sentOtpCode) {
-      setErrorMessage('Kode OTP verifikasi tidak cocok. Silakan periksa kembali email Anda.');
-      return;
-    }
-
-    if (expiresCountdown <= 0) {
-      setErrorMessage('Kode OTP telah kedaluwarsa. Silakan kirim ulang kode baru.');
-      return;
-    }
-
-    if (!newPassword) {
-      setErrorMessage('Kata sandi baru tidak boleh kosong.');
-      return;
-    }
-
-    if (newPassword.length < 6) {
-      setErrorMessage('Kata sandi baru minimal terdiri dari 6 karakter.');
-      return;
-    }
-
-    if (newPassword !== confirmPassword) {
-      setErrorMessage('Konfirmasi kata sandi tidak cocok dengan kata sandi baru.');
-      return;
-    }
-
-    setIsUpdating(true);
-
-    try {
-      // 1. Update in AttendanceContext using resetUserPassword & updateUser
-      const res = resetUserPassword(currentUser.username, newPassword);
-      const updateData: Partial<User> = { password: newPassword };
-      if (overrideEmail && overrideEmail.trim() && overrideEmail.trim() !== currentUser.email) {
-        updateData.email = overrideEmail.trim();
-        if (onEmailUpdated) {
-          onEmailUpdated(overrideEmail.trim());
-        }
-      }
-      updateUser(currentUser.id, updateData);
-
-      if (onPasswordChanged) {
-        onPasswordChanged(newPassword);
-      }
-
-      setIsDone(true);
-      setSuccessNotice(
-        res.message || 'Kata sandi berhasil diperbarui! Silakan gunakan kata sandi baru untuk login selanjutnya.'
-      );
-    } catch (err: any) {
-      setErrorMessage(err?.message || 'Gagal memperbarui kata sandi. Silakan coba kembali.');
-    } finally {
-      setIsUpdating(false);
-    }
-  };
-
-  const handleResetForm = () => {
+  const handleResetForm = async () => {
     setStep(1);
     setOtpDigits(['', '', '', '', '', '']);
     setNewPassword('');
@@ -334,7 +218,7 @@ export const ChangePasswordOtpSection: React.FC<ChangePasswordOtpSectionProps> =
           {sentOtpCode && (
             <button
               type="button"
-              onClick={() => {
+              onClick={async () => {
                 const arr = sentOtpCode.split('');
                 setOtpDigits(arr);
               }}
@@ -570,4 +454,41 @@ export const ChangePasswordOtpSection: React.FC<ChangePasswordOtpSectionProps> =
       )}
     </div>
   );
+};
+
+
+export const ChangePasswordOtpSection: React.FC<ChangePasswordOtpSectionProps> = () => {
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmation, setConfirmation] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [done, setDone] = useState(false);
+  const [visible, setVisible] = useState(false);
+  return <section className="space-y-4" aria-label="Ganti password sendiri">
+    <h3 className="font-bold text-lg flex items-center gap-2"><KeyRound className="w-5 h-5" />Ganti Kata Sandi</h3>
+    <p className="text-sm text-slate-600">Gunakan password saat ini, tanpa OTP email. Semua sesi akan dicabut setelah berhasil; silakan masuk kembali.</p>
+    {error && <p role="alert" className="text-rose-700">{error}</p>}
+    {done ? <p role="status" className="text-emerald-700">Password diperbarui. Silakan masuk kembali.</p> : <form className="space-y-4" onSubmit={async event => {
+      event.preventDefault();
+      if (busy) return;
+      if (newPassword !== confirmation) { setError('Konfirmasi kata sandi tidak cocok.'); return; }
+      if (newPassword.length < 6) { setError('Kata sandi minimal 6 karakter.'); return; }
+      setBusy(true); setError('');
+      try {
+        validateAccountPassword(newPassword);
+        await api('/auth/password/change', 'POST', { currentPassword, newPassword, confirmPassword: confirmation });
+        setCurrentPassword(''); setNewPassword(''); setConfirmation(''); setDone(true);
+        invalidateApiSession(); window.dispatchEvent(new Event('hadir-session-expired'));
+      } catch (error) { setError(error instanceof Error ? error.message : 'Perubahan password gagal.'); }
+      finally { setBusy(false); }
+    }}>
+      <label className="block text-sm font-semibold">Password saat ini<input aria-label="Password saat ini" className="frost-input w-full" type={visible ? 'text' : 'password'} required autoComplete="current-password" value={currentPassword} onChange={event => setCurrentPassword(event.target.value)} /></label>
+      <label className="block text-sm font-semibold">Password baru<input aria-label="Password baru" className="frost-input w-full" type={visible ? 'text' : 'password'} required minLength={6} autoComplete="new-password" value={newPassword} onChange={event => setNewPassword(event.target.value)} /></label>
+      <label className="block text-sm font-semibold">Konfirmasi password baru<input aria-label="Konfirmasi password baru" className="frost-input w-full" type={visible ? 'text' : 'password'} required minLength={6} autoComplete="new-password" value={confirmation} onChange={event => setConfirmation(event.target.value)} /></label>
+      <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={visible} onChange={event => setVisible(event.target.checked)} />Tampilkan password</label>
+      <p className="text-xs text-slate-500">Minimal 6 karakter. Hindari kata umum, karakter berulang, dan urutan sederhana. Lupa password? Hubungi admin.</p>
+      <button className="frost-btn frost-btn-primary" disabled={busy}>{busy ? 'Menyimpan...' : 'Simpan password baru'}</button>
+    </form>}
+  </section>;
 };

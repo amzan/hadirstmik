@@ -68,7 +68,7 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({ isOpen, onClose 
   // Handle scanned token - safely stop camera BEFORE switching to result view
   const handleTokenScanned = useCallback(async (token: string, currentScanner?: Html5Qrcode | null) => {
     await safeStopScanner(currentScanner || scannerRef.current);
-    const result = scanQrCode(token, currentUser.username);
+    const result = await scanQrCode(token, currentUser.username);
     setScanResult({
       ...result,
       scannedToken: token,
@@ -208,7 +208,7 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({ isOpen, onClose 
         {!scanResult && (
           <div className="flex border-b border-slate-200 bg-slate-50 px-4 py-2 gap-2 text-sm font-semibold">
             <button
-              onClick={() => {
+              onClick={async () => {
                 setCameraError(null);
                 setScanMode('camera');
               }}
@@ -222,7 +222,7 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({ isOpen, onClose 
               <span>Kamera Langsung</span>
             </button>
             <button
-              onClick={() => {
+              onClick={async () => {
                 safeStopScanner();
                 setScanMode('upload');
               }}
@@ -236,7 +236,7 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({ isOpen, onClose 
               <span>Unggah QR</span>
             </button>
             <button
-              onClick={() => {
+              onClick={async () => {
                 safeStopScanner();
                 setScanMode('token');
               }}
@@ -338,7 +338,7 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({ isOpen, onClose 
                         className="flex-1 px-3.5 py-2.5 bg-white border border-slate-300 rounded-lg text-sm font-mono text-slate-900 uppercase font-semibold focus:outline-none focus:border-slate-900"
                       />
                       <button
-                        onClick={() => {
+                        onClick={async () => {
                           if (manualTokenInput.trim()) {
                             handleTokenScanned(manualTokenInput.trim());
                           }

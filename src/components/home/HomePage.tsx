@@ -1,3 +1,4 @@
+import { login } from '../../utils/api';
 import React, { useState, useEffect } from 'react';
 import { useAttendance } from '../../context/AttendanceContext';
 import { User } from '../../types/attendance';
@@ -69,165 +70,7 @@ export const HomePage: React.FC<HomePageProps> = ({
     } catch {}
   }, [activeTab]);
 
-  const handleLoginSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setErrorMessage('');
-    setSuccessMessage('');
-
-    const cleanInput = usernameInput.trim();
-    if (!cleanInput) {
-      if (activeTab === 'mahasiswa') {
-        setErrorMessage('Silakan masukkan Nomor Induk Mahasiswa (NIM).');
-      } else if (activeTab === 'dosen') {
-        setErrorMessage('Silakan masukkan username atau NIDN dosen.');
-      } else {
-        setErrorMessage('Silakan masukkan username administrator BAAK.');
-      }
-      return;
-    }
-
-    if (!passwordInput) {
-      setErrorMessage('Silakan masukkan kata sandi Anda.');
-      return;
-    }
-
-    const saveRememberedState = (usernameVal: string) => {
-      try {
-        if (rememberMe) {
-          localStorage.setItem('stmik_remembered_role', activeTab);
-          localStorage.setItem('stmik_remembered_username', usernameVal);
-        } else {
-          localStorage.removeItem('stmik_remembered_role');
-          localStorage.removeItem('stmik_remembered_username');
-        }
-      } catch {}
-    };
-
-    setIsLoading(true);
-
-    setTimeout(() => {
-      // 1. MAHASISWA LOGIN
-      if (activeTab === 'mahasiswa') {
-        const cleanNim = cleanInput.toUpperCase();
-        const lowerInput = cleanInput.toLowerCase();
-
-        const existingUser = users.find(
-          u => (u.username.toUpperCase() === cleanNim || (u.email && u.email.toLowerCase() === lowerInput)) && u.role === 'mahasiswa'
-        );
-
-        const foundStudent = students.find(
-          s => s.nim.toUpperCase() === cleanNim || (s.email && s.email.toLowerCase() === lowerInput)
-        );
-
-        const currentPassword = existingUser?.password || foundStudent?.password;
-
-        if (currentPassword) {
-          if (passwordInput !== currentPassword) {
-            setIsLoading(false);
-            if (passwordInput === 'pass123') {
-              setErrorMessage('Kata sandi default (pass123) sudah tidak berlaku karena Anda telah memperbarui kata sandi. Silakan gunakan kata sandi baru Anda.');
-            } else {
-              setErrorMessage('Kata sandi salah. Silakan periksa kembali kata sandi baru Anda atau gunakan fitur Lupa Kata Sandi.');
-            }
-            return;
-          }
-        } else {
-          if (passwordInput !== 'pass123') {
-            setIsLoading(false);
-            setErrorMessage('Kata sandi salah. Silakan periksa kembali kata sandi Anda atau gunakan fitur Lupa Kata Sandi.');
-            return;
-          }
-        }
-
-        if (existingUser) {
-          const canonicalUser: User = {
-            ...existingUser,
-            id: existingUser.id || `mhs-${existingUser.username}`,
-            password: currentPassword,
-          };
-          addUser(canonicalUser);
-          saveRememberedState(canonicalUser.username);
-          setIsLoading(false);
-          setSuccessMessage(`Login berhasil! Selamat datang, ${canonicalUser.name}.`);
-          setTimeout(() => onLoginSuccess(canonicalUser), 400);
-          return;
-        }
-
-        if (foundStudent) {
-          const newStudentUser: User = {
-            id: `mhs-${foundStudent.nim}`,
-            username: foundStudent.nim,
-            name: foundStudent.name,
-            email: foundStudent.email,
-            password: foundStudent.password,
-            role: 'mahasiswa',
-            prodi: foundStudent.prodi,
-            rombel: foundStudent.rombel,
-            phone: foundStudent.phone,
-            avatarUrl: '',
-          };
-          addUser(newStudentUser);
-          saveRememberedState(foundStudent.nim);
-          setIsLoading(false);
-          setSuccessMessage(`Login berhasil! Selamat datang, ${newStudentUser.name}.`);
-          setTimeout(() => onLoginSuccess(newStudentUser), 400);
-          return;
-        }
-
-        setIsLoading(false);
-        setErrorMessage(`Identitas mahasiswa "${cleanInput}" tidak terdaftar dalam basis data rombel mahasiswa aktif.`);
-        return;
-      }
-
-      // 2. DOSEN LOGIN
-      if (activeTab === 'dosen') {
-        const lowerInput = cleanInput.toLowerCase();
-        const allLecturers = users.filter(u => u.role === 'dosen');
-
-        const matchedDosen = allLecturers.find(l => {
-          const firstName = l.name.split(' ')[0].toLowerCase().replace(/[^a-z]/g, '') || '';
-          return (
-            firstName === lowerInput ||
-            l.username.toLowerCase() === lowerInput ||
-            (l.email && l.email.toLowerCase() === lowerInput) ||
-            l.name.toLowerCase().includes(lowerInput)
-          );
-        });
-
-        if (!matchedDosen) {
-          setIsLoading(false);
-          setErrorMessage(
-            `Dosen dengan akun atau email "${cleanInput}" tidak ditemukan. Silakan periksa kembali.`
-          );
-          return;
-        }
-
-        if (matchedDosen.password) {
-          if (passwordInput !== matchedDosen.password) {
-            setIsLoading(false);
-            if (passwordInput === 'dosen123' || passwordInput === matchedDosen.username) {
-              setErrorMessage('Kata sandi default dosen sudah tidak berlaku karena Anda telah memperbarui kata sandi via email. Silakan gunakan kata sandi baru Anda.');
-            } else {
-              setErrorMessage('Kata sandi salah. Silakan periksa kembali kata sandi baru Anda atau gunakan fitur Lupa Kata Sandi.');
-            }
-            return;
-          }
-        } else {
-          if (passwordInput !== 'dosen123' && passwordInput !== matchedDosen.username) {
-            setIsLoading(false);
-            setErrorMessage('Kata sandi dosen salah. Silakan periksa kembali atau gunakan fitur Lupa Kata Sandi.');
-            return;
-          }
-        }
-
-        saveRememberedState(matchedDosen.username);
-        setIsLoading(false);
-        setSuccessMessage(`Login berhasil! Selamat datang, ${matchedDosen.name}.`);
-        setTimeout(() => onLoginSuccess(matchedDosen), 400);
-        return;
-      }
-    }, 350);
-  };
+  const handleLoginSubmit = async (e: React.FormEvent) => { e.preventDefault(); if(isLoading) return; setErrorMessage(''); setSuccessMessage(''); setIsLoading(true); try { const user = await login(usernameInput.trim(), passwordInput, activeTab); setSuccessMessage('Login berhasil.'); onLoginSuccess(user);  } catch (error) { setErrorMessage(error instanceof Error ? error.message : 'Login gagal.'); } finally { setIsLoading(false); } };
 
   return (
     <div className="py-2 sm:py-6 space-y-8 sm:space-y-10 w-full max-w-full">
@@ -339,7 +182,7 @@ export const HomePage: React.FC<HomePageProps> = ({
               {/* Field 1: Username / NIM (Frost-UI TextInput) */}
               <div>
                 <label className="frost-label">
-                  {activeTab === 'mahasiswa' ? 'Nomor Induk Mahasiswa (NIM)' : 'Nama Depan / NIDN Dosen'}
+                  {activeTab === 'mahasiswa' ? 'Nomor Induk Mahasiswa (NIM)' : 'Nama Depan / Username'}
                 </label>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-[#777777]">

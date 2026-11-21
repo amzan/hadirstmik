@@ -1,26 +1,31 @@
+import { isDemoDataScope } from './api';
+import { summarizeAttendancePolicy } from '../../shared/attendance-policy.mjs';
+import { reportTimestamp } from './reportSnapshot';
 import * as XLSX from 'xlsx';
-import { CAMPUS_INFO, calculateCourseEffectiveAttendance } from '../data/initialData';
+import { CAMPUS_INFO } from '../data/initialData';
 import { AttendanceRecord, AttendanceSession, Student } from '../types/attendance';
 import { ReportConfig, TeachingLogConfig } from './pdfGenerator';
+import { getSessionAttendanceRows } from './sessionAttendance';
 
 export function generateAttendanceExcel(
   config: ReportConfig,
   students: Student[],
   sessions: AttendanceSession[],
-  records: AttendanceRecord[]
+  records: AttendanceRecord[],
+  save = true
 ) {
-  const sortedSessions = [...sessions].sort((a, b) => a.meetingNumber - b.meetingNumber);
+  const sortedSessions = sessions.filter(session => !session.archivedAt).sort((a, b) => a.meetingNumber - b.meetingNumber);
 
   // Metadata rows
   const worksheetData: (string | number)[][] = [
-    [CAMPUS_INFO.name],
+    [`${isDemoDataScope() || sessions.some(session => session.isDemo) ? 'DATA DEMO - ' : ''}${CAMPUS_INFO.name}`],
     [CAMPUS_INFO.address],
     ['LAPORAN REKAPITULASI PRESENSI MAHASISWA'],
     [''],
     ['Mata Kuliah', `: ${config.courseName} (${config.courseCode})`, '', 'Dosen Pengampu', `: ${config.lecturerName}`],
     ['Program Studi', `: ${config.prodi}`, '', 'Kelas / Rombel', `: ${config.rombel}`],
     ['Bobot SKS', `: ${config.sks} SKS`, '', 'Semester', `: ${CAMPUS_INFO.semester}`],
-    ['Periode', `: ${config.monthName || 'Oktober 2026'}`, '', 'Waktu Unduh', `: ${new Date().toLocaleString('id-ID')}`],
+    ['Periode', `: ${config.monthName || 'Oktober 2026'}`, '', 'Waktu Unduh', `: ${reportTimestamp(config.generatedAt)}`],
     [''],
   ];
 
@@ -37,6 +42,9 @@ export function generateAttendanceExcel(
     'Sakit (S)',
     'Alpha (A)',
     'Total Sesi',
+    'Hadir Efektif',
+    'Toleransi Izin',
+    'Toleransi Sakit',
     'Persentase (%)',
   ];
   worksheetData.push(headerRow);
@@ -50,7 +58,7 @@ export function generateAttendanceExcel(
 
     const sessionCols = sortedSessions.map(session => {
       const rec = records.find(r => r.sessionId === session.id && r.studentNim === student.nim);
-      if (!rec) return '-';
+      if (!rec) return 'Belum tercatat';
       if (rec.status === 'HADIR') {
         hadirCount++;
         return 'H';
@@ -70,14 +78,10 @@ export function generateAttendanceExcel(
       return '-';
     });
 
-    const totalHeld = sortedSessions.length;
-    const effectiveStats = calculateCourseEffectiveAttendance({
-      totalSessions: totalHeld,
-      rawHadir: hadirCount,
-      izin: izinCount,
-      sakit: sakitCount,
-      rawAlpha: alphaCount,
-    });
+    const policy = summarizeAttendancePolicy(config.policySessions || sortedSessions, config.policyRecords || records, student.nim, { sessionIds: sortedSessions.map(value => value.id) });
+    if (policy.periodUnresolved) throw new Error('Periode akademik sesi belum terverifikasi. Ekspor efektif dibatalkan.');
+    const totalHeld = policy.totalSessions;
+    const percentage = policy.percentage;
 
     worksheetData.push([
       index + 1,
@@ -85,12 +89,15 @@ export function generateAttendanceExcel(
       student.name,
       student.rombel,
       ...sessionCols,
-      effectiveStats.hadir,
+      hadirCount,
       izinCount,
       sakitCount,
-      effectiveStats.alpha,
+      alphaCount,
       totalHeld,
-      `${effectiveStats.percentage}%`,
+      policy.hadir,
+      policy.izinAsHadir,
+      policy.sakitAsHadir,
+      `${percentage}%`,
     ]);
   });
 
@@ -125,6 +132,9 @@ export function generateAttendanceExcel(
     { wch: 10 }, // S
     { wch: 10 }, // A
     { wch: 12 }, // Total Sesi
+    { wch: 15 }, // Effective attendance
+    { wch: 15 }, // Izin tolerance
+    { wch: 15 }, // Sakit tolerance
     { wch: 15 }, // %
   ];
   ws['!cols'] = colWidths;
@@ -135,7 +145,8 @@ export function generateAttendanceExcel(
 
   // Trigger download
   const fileName = `Rekap_Presensi_${config.courseCode}_${config.rombel.replace(/\s+/g, '_')}_${Date.now()}.xlsx`;
-  XLSX.writeFile(wb, fileName);
+  if (save) XLSX.writeFile(wb, fileName);
+  return wb;
 }
 
 export function generateTeachingLogExcel(
@@ -143,7 +154,8 @@ export function generateTeachingLogExcel(
   scheduleMeetingDates: Record<number, string> | undefined,
   sessions: AttendanceSession[],
   records: AttendanceRecord[],
-  totalEnrolledStudents: number
+  totalEnrolledStudents: number,
+  save = true
 ) {
   const formatDateIndo = (dateStr: string): string => {
     if (!dateStr) return '-';
@@ -175,7 +187,7 @@ export function generateTeachingLogExcel(
 
   // Metadata Header rows
   const worksheetData: (string | number)[][] = [
-    [CAMPUS_INFO.name],
+    [`${isDemoDataScope() || sessions.some(session => session.isDemo) ? 'DATA DEMO - ' : ''}${CAMPUS_INFO.name}`],
     [CAMPUS_INFO.address],
     ['REKAPAN LOG AKTIVITAS MENGAJAR DOSEN'],
     [`SEMESTER GANJIL TAHUN AKADEMIK ${config.academicYear || '2026/2027'}`],
@@ -184,7 +196,7 @@ export function generateTeachingLogExcel(
     ['Nama Mata Kuliah', `: ${config.courseName}`, '', 'NIDN Dosen', `: ${config.lecturerNidn || '-'}`],
     ['Bobot SKS / Prodi', `: ${config.sks} SKS (${config.prodi})`, '', 'Kelas / Rombel', `: ${config.rombel}`],
     ['Jadwal Rutin', `: ${config.day}, ${config.timeRange} WIB`, '', 'Ruang Perkuliahan', `: ${config.room}`],
-    ['Waktu Unduh', `: ${new Date().toLocaleString('id-ID')}`],
+    ['Waktu Unduh', `: ${reportTimestamp(config.generatedAt)}`],
     [''],
   ];
 
@@ -195,12 +207,14 @@ export function generateTeachingLogExcel(
     'Tanggal Perkuliahan',
     'Topik Pembahasan',
     'Bentuk Evaluasi',
-    'Total Hadir',
+    'Hadir Efektif',
     'Total Mahasiswa',
     'Persentase Kehadiran (%)',
+    'Hadir Asli', 'Izin Asli', 'Sakit Asli', 'Alpa Asli', 'Belum Tercatat', 'Toleransi Izin', 'Toleransi Sakit',
   ];
   worksheetData.push(headerRow);
 
+  sessions = sessions.filter(session => !session.archivedAt);
   // 16 Meeting Rows
   for (let m = 1; m <= 16; m++) {
     const isUts = m === 8;
@@ -227,17 +241,12 @@ export function generateTeachingLogExcel(
       else evaluation = 'Tanya Jawab & Keaktifan di Kelas';
     }
 
-    let hadirCount = 0;
-    const total = totalEnrolledStudents > 0 ? totalEnrolledStudents : 20;
-    let pct = 0;
-    let statusText = 'Terjadwal';
-
-    if (ses) {
-      const sRecords = records.filter(r => r.sessionId === ses.id);
-      hadirCount = sRecords.filter(r => r.status === 'HADIR').length;
-      pct = Math.round((hadirCount / total) * 100);
-      statusText = `${pct}%`;
-    }
+    const policy = ses ? summarizeAttendancePolicy(config.policySessions || sessions, config.policyRecords || records, undefined, { sessionIds: [ses.id] }) : null;
+    if (policy?.periodUnresolved) throw new Error('Periode akademik sesi belum terverifikasi. Ekspor efektif dibatalkan.');
+    const hadirCount = policy?.hadir || 0;
+    const total = policy?.totalSessions || 0;
+    const pct = policy?.percentage || 0;
+    const statusText = 'Terjadwal';
 
     const meetingLabel = `Pertemuan ${m}${isUts ? ' (UTS)' : isUas ? ' (UAS)' : ''}`;
 
@@ -250,11 +259,13 @@ export function generateTeachingLogExcel(
       ses ? hadirCount : 0,
       total,
       ses ? `${pct}%` : statusText,
+      policy?.rawHadir || 0, policy?.izin || 0, policy?.sakit || 0, policy?.rawAlpha || 0,
+      policy?.belumTercatat || 0, policy?.izinAsHadir || 0, policy?.sakitAsHadir || 0,
     ]);
   }
 
   // Signature section rows
-  const todayFormatted = new Date().toLocaleDateString('id-ID', {
+  const todayFormatted = new Date().toLocaleDateString('id-ID', { timeZone: 'Asia/Jakarta',
     day: 'numeric',
     month: 'long',
     year: 'numeric',
@@ -290,6 +301,7 @@ export function generateTeachingLogExcel(
 
   // Trigger download
   const fileName = `Log_Aktivitas_Mengajar_${config.courseCode}_${config.rombel.replace(/\s+/g, '_')}_${Date.now()}.xlsx`;
-  XLSX.writeFile(wb, fileName);
+  if (save) XLSX.writeFile(wb, fileName);
+  return wb;
 }
 

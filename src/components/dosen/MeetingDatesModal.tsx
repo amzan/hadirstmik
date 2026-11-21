@@ -63,13 +63,15 @@ export const MeetingDatesModal: React.FC<MeetingDatesModalProps> = ({
     setDates(newDates);
   };
 
-  const handleSave = () => {
-    setScheduleAllMeetingDates(schedule.id, dates);
+  const handleSave = async () => {
+    try {
+    await setScheduleAllMeetingDates(schedule.id, dates);
     setSaveSuccess(true);
-    setTimeout(() => {
+    setTimeout(async () => {
       setSaveSuccess(false);
       onClose();
     }, 800);
+    } catch(error) { window.dispatchEvent(new CustomEvent('hadir-api-error',{detail:error instanceof Error?error.message:'Permintaan gagal.'})); } finally {  }
   };
 
   const formatDateIndo = (dateStr: string) => {

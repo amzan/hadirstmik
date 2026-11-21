@@ -1,10 +1,27 @@
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
-import { CAMPUS_INFO, calculateCourseEffectiveAttendance } from '../data/initialData';
+import { isDemoDataScope } from './api';
+import { summarizeAttendancePolicy } from '../../shared/attendance-policy.mjs';
+﻿import { jsPDF } from 'jspdf';
+import { autoTable } from 'jspdf-autotable';
+import { CAMPUS_INFO } from '../data/initialData';
 import { AttendanceRecord, AttendanceSession, Student } from '../types/attendance';
+import { reportTimestamp } from './reportSnapshot';
 import { getStmikLogoDataUrl } from './logoStmik';
+import { getSessionAttendanceRows, getSessionAttendanceSummary } from './sessionAttendance';
+
+function labelDemoPages(doc: jsPDF, enabled: boolean) {
+  if (!enabled) return;
+  for (let page = 1; page <= doc.getNumberOfPages(); page++) {
+    doc.setPage(page); doc.setFontSize(10); doc.setTextColor(160, 50, 20);
+    doc.text('DATA DEMO', doc.internal.pageSize.getWidth() - 14, 6, { align: 'right' });
+  }
+}
 
 export interface ReportConfig {
+  isDemo?: boolean;
+  generatedAt?: string;
+  isArchive?: boolean;
+  policySessions?: AttendanceSession[];
+  policyRecords?: AttendanceRecord[];
   courseCode: string;
   courseName: string;
   lecturerName: string;
@@ -20,10 +37,11 @@ export function generateAttendancePDF(
   config: ReportConfig,
   students: Student[],
   sessions: AttendanceSession[],
-  records: AttendanceRecord[]
+  records: AttendanceRecord[],
+  save = true
 ) {
   // Sort sessions by meetingNumber or date
-  const sortedSessions = [...sessions].sort((a, b) => a.meetingNumber - b.meetingNumber);
+  const sortedSessions = sessions.filter(session => !session.archivedAt).sort((a, b) => a.meetingNumber - b.meetingNumber);
   
   // Create jsPDF instance in landscape for attendance matrices
   const doc = new jsPDF({
@@ -79,23 +97,17 @@ export function generateAttendancePDF(
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(30, 41, 59);
 
-  // Left col
-  const leftX = 14;
-  doc.text(`Program Studi`, leftX, 48);
-  doc.text(`: ${config.prodi}`, leftX + 32, 48);
-  doc.text(`Mata Kuliah`, leftX, 53);
-  doc.text(`: ${config.courseName} (${config.courseCode})`, leftX + 32, 53);
-  doc.text(`Bobot SKS`, leftX, 58);
-  doc.text(`: ${config.sks} SKS`, leftX + 32, 58);
-
-  // Right col
-  const rightX = pageWidth / 2 + 20;
-  doc.text(`Dosen Pengampu`, rightX, 48);
-  doc.text(`: ${config.lecturerName}`, rightX + 32, 48);
-  doc.text(`Kelas / Rombel`, rightX, 53);
-  doc.text(`: ${config.rombel}`, rightX + 32, 53);
-  doc.text(`Periode Laporan`, rightX, 58);
-  doc.text(`: ${config.monthName || 'Oktober 2026'}`, rightX + 32, 58);
+  autoTable(doc, {
+    startY: 45, theme: 'plain', margin: { left: 14, right: 14 },
+    body: [
+      ['Program Studi', config.prodi, 'Dosen Pengampu', config.lecturerName],
+      ['Mata Kuliah', `${config.courseName} (${config.courseCode})`, 'Kelas / Rombel', config.rombel],
+      ['Bobot SKS', `${config.sks} SKS`, 'Periode Laporan', config.monthName || '-'],
+    ],
+    styles: { fontSize: 9, cellPadding: 1.5, overflow: 'linebreak' },
+    columnStyles: { 0: { cellWidth: 30 }, 1: { cellWidth: 101 }, 2: { cellWidth: 35 } },
+  });
+  const metadataEndY = (doc as any).lastAutoTable.finalY;
 
   // 4. Construct Table Data
   // Dynamic columns: No, NIM, Nama Mahasiswa, P1, P2, ..., Pn, H, I, S, A, %
@@ -109,6 +121,7 @@ export function generateAttendancePDF(
     'I',
     'S',
     'A',
+    'Efektif / Tol.',
     'Total %',
   ];
 
@@ -120,7 +133,7 @@ export function generateAttendancePDF(
 
     const sessionStatuses = sortedSessions.map(session => {
       const rec = records.find(r => r.sessionId === session.id && r.studentNim === student.nim);
-      if (!rec) return '-';
+      if (!rec) return 'BT';
       if (rec.status === 'HADIR') {
         hadirCount++;
         return 'H';
@@ -140,36 +153,36 @@ export function generateAttendancePDF(
       return '-';
     });
 
-    const totalHeld = sortedSessions.length;
-    const effectiveStats = calculateCourseEffectiveAttendance({
-      totalSessions: totalHeld,
-      rawHadir: hadirCount,
-      izin: izinCount,
-      sakit: sakitCount,
-      rawAlpha: alphaCount,
-    });
+    const policy = summarizeAttendancePolicy(config.policySessions || sortedSessions, config.policyRecords || records, student.nim, { sessionIds: sortedSessions.map(value => value.id) });
+    if (policy.periodUnresolved) throw new Error('Periode akademik sesi belum terverifikasi. Ekspor efektif dibatalkan.');
+    const percentage = policy.percentage;
 
     return [
       (index + 1).toString(),
       student.nim,
       student.name,
       ...sessionStatuses,
-      effectiveStats.hadir.toString(),
+      hadirCount.toString(),
       izinCount.toString(),
       sakitCount.toString(),
-      effectiveStats.alpha.toString(),
-      `${effectiveStats.percentage}%`,
+      alphaCount.toString(),
+      `${policy.hadir} / ${policy.izinAsHadir + policy.sakitAsHadir}`,
+      `${percentage}%`,
     ];
   });
 
   // Render Table via autotable
   autoTable(doc, {
-    startY: 62,
+    startY: metadataEndY + 4,
+    tableWidth: sortedSessions.length ? 'auto' : 154,
     head: [headRow],
     body: bodyRows,
     theme: 'grid',
+    rowPageBreak: 'avoid',
+    margin: { top: 14, bottom: 24 },
     styles: {
       fontSize: 8,
+      overflow: 'linebreak',
       cellPadding: 1.5,
       halign: 'center',
       valign: 'middle',
@@ -187,10 +200,11 @@ export function generateAttendancePDF(
       1: { cellWidth: 24, halign: 'center', fontStyle: 'bold' }, // NIM
       2: { cellWidth: 50, halign: 'left' }, // Nama
       // summary columns
-      [headRow.length - 5]: { cellWidth: 10, halign: 'center', fontStyle: 'bold', fillColor: [240, 253, 244] }, // H
-      [headRow.length - 4]: { cellWidth: 10, halign: 'center', fillColor: [239, 246, 255] }, // I
-      [headRow.length - 3]: { cellWidth: 10, halign: 'center', fillColor: [254, 252, 232] }, // S
-      [headRow.length - 2]: { cellWidth: 10, halign: 'center', fillColor: [254, 242, 242] }, // A
+      [headRow.length - 6]: { cellWidth: 10, halign: 'center', fontStyle: 'bold', fillColor: [240, 253, 244] }, // H
+      [headRow.length - 5]: { cellWidth: 10, halign: 'center', fillColor: [239, 246, 255] }, // I
+      [headRow.length - 4]: { cellWidth: 10, halign: 'center', fillColor: [254, 252, 232] }, // S
+      [headRow.length - 3]: { cellWidth: 10, halign: 'center', fillColor: [254, 242, 242] }, // A
+      [headRow.length - 2]: { cellWidth: 14, halign: 'center' },
       [headRow.length - 1]: { cellWidth: 16, halign: 'center', fontStyle: 'bold' }, // %
     },
     didParseCell: (data) => {
@@ -215,10 +229,12 @@ export function generateAttendancePDF(
 
   // 5. Signatures block (Lecturer only) - Must strictly appear below the table, never overlap
   const finalY = (doc as any).lastAutoTable.finalY;
+  doc.setFontSize(7);
+  doc.text('H/I/S/A: status asli | BT: Belum tercatat | Efektif: H + 2 Izin pertama + 2 Sakit pertama | Tol.: I/S dihitung hadir', 14, finalY + 4);
   const pageHeight = doc.internal.pageSize.getHeight();
   const requiredSignatureHeight = 44;
 
-  let signatureY = finalY + 3;
+  let signatureY = finalY + 10;
   // If not enough space remaining below the table, move signature block to a new page
   if (signatureY + requiredSignatureHeight > pageHeight - 12) {
     doc.addPage();
@@ -229,7 +245,7 @@ export function generateAttendancePDF(
   doc.setTextColor(30, 41, 59);
 
   // Signature: Lecturer (Dosen Pengampu)
-  const todayFormatted = new Date().toLocaleDateString('id-ID', {
+  const todayFormatted = new Date().toLocaleDateString('id-ID', { timeZone: 'Asia/Jakarta',
     day: 'numeric',
     month: 'long',
     year: 'numeric',
@@ -251,7 +267,7 @@ export function generateAttendancePDF(
     doc.setFontSize(7);
     doc.setTextColor(150, 150, 150);
     doc.text(
-      `Halaman ${p} dari ${totalPages} · Dicetak otomatis melalui Sistem Presensi QR - STMIK PGRI Arungbinang Kebumen pada ${new Date().toLocaleString('id-ID')}`,
+      `Halaman ${p} dari ${totalPages} Â· Dicetak otomatis melalui Sistem Presensi QR - STMIK PGRI Arungbinang Kebumen pada ${reportTimestamp(config.generatedAt)}`,
       pageWidth / 2,
       pageHeight - 6,
       { align: 'center' }
@@ -260,10 +276,16 @@ export function generateAttendancePDF(
 
   // Save the document
   const fileName = `Rekap_Presensi_${config.courseCode}_${config.rombel.replace(/\s+/g, '_')}_${Date.now()}.pdf`;
-  doc.save(fileName);
+  labelDemoPages(doc, config.isDemo === true || isDemoDataScope() || sessions.some(session => session.isDemo));
+  if (save) doc.save(fileName);
+  return doc;
 }
 
 export interface TeachingLogConfig {
+  isDemo?: boolean;
+  policySessions?: AttendanceSession[];
+  policyRecords?: AttendanceRecord[];
+  generatedAt?: string;
   courseCode: string;
   courseName: string;
   lecturerName: string;
@@ -284,6 +306,7 @@ export function generateTeachingLogPDF(
   records: AttendanceRecord[],
   totalEnrolledStudents: number
 ) {
+  sessions = sessions.filter(session => !session.archivedAt);
   // Create jsPDF instance in portrait format for teaching log document
   const doc = new jsPDF({
     orientation: 'portrait',
@@ -362,7 +385,7 @@ export function generateTeachingLogPDF(
   doc.setFont('helvetica', 'normal');
 
   doc.text('Bobot & Prodi', col1X, 60.5);
-  doc.text(`: ${config.sks} SKS · ${config.prodi}`, col1ValX, 60.5);
+  doc.text(`: ${config.sks} SKS Â· ${config.prodi}`, col1ValX, 60.5);
 
   // Right column: Dosen Pengampu, Kelas/Rombel, Jadwal Rutin
   doc.text('Dosen Pengampu', col2X, 49.5);
@@ -447,11 +470,13 @@ export function generateTeachingLogPDF(
     // Persentase Kehadiran
     let attendanceText = '-';
     if (ses) {
-      const sRecords = records.filter(r => r.sessionId === ses.id);
-      const hadirCount = sRecords.filter(r => r.status === 'HADIR').length;
-      const total = totalEnrolledStudents > 0 ? totalEnrolledStudents : 20;
-      const pct = Math.round((hadirCount / total) * 100);
-      attendanceText = `${pct}% (${hadirCount}/${total})`;
+      const policy = summarizeAttendancePolicy(config.policySessions || sessions, config.policyRecords || records, undefined, { sessionIds: [ses.id] });
+      if (policy.periodUnresolved) throw new Error('Periode akademik sesi belum terverifikasi. Ekspor efektif dibatalkan.');
+      const hadirCount = policy.hadir;
+      const total = policy.totalSessions;
+      const pct = policy.percentage;
+      const summary = getSessionAttendanceSummary(getSessionAttendanceRows(ses, [], records));
+      attendanceText = `${pct}% (Efektif ${hadirCount}/${total})\nH:${summary.HADIR} I:${summary.IZIN} S:${summary.SAKIT} A:${summary.ALPHA} BT:${summary.UNRECORDED}`;
     } else {
       attendanceText = 'Terjadwal';
     }
@@ -515,7 +540,7 @@ export function generateTeachingLogPDF(
     signatureY = 25;
   }
 
-  const todayFormatted = new Date().toLocaleDateString('id-ID', {
+  const todayFormatted = new Date().toLocaleDateString('id-ID', { timeZone: 'Asia/Jakarta',
     day: 'numeric',
     month: 'long',
     year: 'numeric',
@@ -560,7 +585,7 @@ export function generateTeachingLogPDF(
     doc.setFontSize(7);
     doc.setTextColor(148, 163, 184);
     doc.text(
-      `Halaman ${p} dari ${totalPages} · Dokumen resmi Rekapan Log Aktivitas Mengajar dicetak melalui Sistem Presensi STMIK PGRI Arungbinang Kebumen pada ${new Date().toLocaleString('id-ID')}`,
+      `Halaman ${p} dari ${totalPages} Â· Dokumen resmi Rekapan Log Aktivitas Mengajar dicetak melalui Sistem Presensi STMIK PGRI Arungbinang Kebumen pada ${reportTimestamp(config.generatedAt)}`,
       pageWidth / 2,
       pageHeight - 6,
       { align: 'center' }
@@ -569,6 +594,7 @@ export function generateTeachingLogPDF(
 
   // Save the document
   const fileName = `Log_Aktivitas_Mengajar_${config.courseCode}_${config.rombel.replace(/\s+/g, '_')}_${Date.now()}.pdf`;
+  labelDemoPages(doc, config.isDemo === true || isDemoDataScope() || sessions.some(session => session.isDemo));
   doc.save(fileName);
 }
 
@@ -585,9 +611,16 @@ export interface KartuPresensiCourseItem {
   totalHeld: number;
   percentage: number;
   eligibleExam: boolean;
+  unrecorded?: number;
+  rawHadir?: number;
+  rawAlpha?: number;
+  izinAsHadir?: number;
+  sakitAsHadir?: number;
 }
 
 export interface KartuPresensiStudentData {
+  isDemo?: boolean;
+  generatedAt?: string;
   nim: string;
   name: string;
   prodi: string;
@@ -605,7 +638,8 @@ export interface KartuPresensiStudentData {
 export function generateKartuPresensiPDF(
   student: KartuPresensiStudentData,
   courses: KartuPresensiCourseItem[],
-  overallRate: { totalSessions: number; hadir: number; izin: number; sakit: number; alpha: number; percentage: number }
+  overallRate: { totalSessions: number; hadir: number; izin: number; sakit: number; alpha: number; percentage: number; rawHadir?: number; rawAlpha?: number; izinAsHadir?: number; sakitAsHadir?: number },
+  save = true
 ) {
   // A4 Portrait for official academic cards
   const doc = new jsPDF({
@@ -639,10 +673,10 @@ export function generateKartuPresensiPDF(
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8);
   doc.setTextColor(71, 85, 105);
-  doc.text(`${CAMPUS_INFO.address} · Telp: (0287) 381116`, pageWidth / 2 + 6, 23, { align: 'center' });
+  doc.text(`${CAMPUS_INFO.address} Â· Telp: (0287) 381116`, pageWidth / 2 + 6, 23, { align: 'center' });
   doc.setFontSize(7.5);
   doc.setTextColor(100, 116, 139);
-  doc.text('Laman Resmi: www.stmik-arungbinang.ac.id · Surel: baak@stmik-arungbinang.ac.id', pageWidth / 2 + 6, 26.5, { align: 'center' });
+  doc.text('Laman Resmi: www.stmik-arungbinang.ac.id Â· Surel: baak@stmik-arungbinang.ac.id', pageWidth / 2 + 6, 26.5, { align: 'center' });
 
   // Double line separator under Kop Surat
   doc.setLineWidth(0.8);
@@ -660,7 +694,7 @@ export function generateKartuPresensiPDF(
   doc.setFontSize(9);
   doc.setTextColor(51, 65, 85);
   const semesterTitle = (student.semester || CAMPUS_INFO.semester).toUpperCase();
-  doc.text(`${semesterTitle} · TAHUN AKADEMIK ${student.academicYear || '2026/2027'}`, pageWidth / 2, 41.5, { align: 'center' });
+  doc.text(`${semesterTitle} Â· TAHUN AKADEMIK ${student.academicYear || '2026/2027'}`, pageWidth / 2, 41.5, { align: 'center' });
 
   doc.setFont('helvetica', 'italic');
   doc.setFontSize(7.5);
@@ -740,11 +774,11 @@ export function generateKartuPresensiPDF(
     'SKS',
     'Dosen Pengampu',
     'Rombel',
-    'H',
+    'H asli / Efektif / Tol.',
     'I',
     'S',
-    'A',
-    'Total',
+    'A asli',
+    'Total / BT',
     '%',
     'Status Ujian',
   ];
@@ -758,21 +792,21 @@ export function generateKartuPresensiPDF(
       `${item.sks}`,
       item.lecturerName,
       item.rombel,
-      item.hadir.toString(),
+      `${item.rawHadir ?? item.hadir} / ${item.hadir} / ${(item.izinAsHadir || 0) + (item.sakitAsHadir || 0)}`,
       item.izin.toString(),
       item.sakit.toString(),
-      item.alpha.toString(),
-      item.totalHeld.toString(),
+      (item.rawAlpha ?? item.alpha).toString(),
+      `${item.totalHeld} / ${item.unrecorded ?? Math.max(0, item.totalHeld - (item.rawHadir ?? item.hadir) - item.izin - item.sakit - (item.rawAlpha ?? item.alpha))}`,
       `${item.percentage}%`,
       isEligible ? 'MEMENUHI (>=75%)' : 'BELUM ( <75% )',
     ];
   });
 
   // Summary footer row
-  const totalHadir = courses.reduce((sum, c) => sum + c.hadir, 0);
+  const totalHadir = courses.reduce((sum, c) => sum + (c.rawHadir ?? c.hadir), 0);
   const totalIzin = courses.reduce((sum, c) => sum + c.izin, 0);
   const totalSakit = courses.reduce((sum, c) => sum + c.sakit, 0);
-  const totalAlpha = courses.reduce((sum, c) => sum + c.alpha, 0);
+  const totalAlpha = courses.reduce((sum, c) => sum + (c.rawAlpha ?? c.alpha), 0);
   const totalAllSessions = courses.reduce((sum, c) => sum + c.totalHeld, 0);
 
   const footRow = [
@@ -782,17 +816,18 @@ export function generateKartuPresensiPDF(
     `${totalSksTaken}`,
     '-',
     '-',
-    `${totalHadir}`,
+    `${totalHadir} / ${overallRate.hadir} / ${(overallRate.izinAsHadir || 0) + (overallRate.sakitAsHadir || 0)}`,
     `${totalIzin}`,
     `${totalSakit}`,
     `${totalAlpha}`,
-    `${totalAllSessions}`,
+    `${totalAllSessions} / ${Math.max(0, totalAllSessions - totalHadir - totalIzin - totalSakit - totalAlpha)}`,
     `${overallRate.percentage}%`,
     overallRate.percentage >= 75 ? 'BERHAK UJIAN' : 'EVALUASI BAAK',
   ];
 
   autoTable(doc, {
     startY: biodataY + biodataHeight + 4,
+    margin: { left: 14, right: 14 },
     head: [headRow],
     body: bodyRows,
     foot: [footRow],
@@ -821,19 +856,19 @@ export function generateKartuPresensiPDF(
       halign: 'center',
     },
     columnStyles: {
-      0: { cellWidth: 8, halign: 'center' }, // No
-      1: { cellWidth: 19, halign: 'center', fontStyle: 'bold' }, // Kode
-      2: { cellWidth: 42, halign: 'left', fontStyle: 'bold' }, // Nama MK
-      3: { cellWidth: 9, halign: 'center' }, // SKS
-      4: { cellWidth: 32, halign: 'left' }, // Dosen
-      5: { cellWidth: 14, halign: 'center' }, // Rombel
-      6: { cellWidth: 7.5, halign: 'center', fillColor: [240, 253, 244] }, // H
-      7: { cellWidth: 6.5, halign: 'center' }, // I
-      8: { cellWidth: 6.5, halign: 'center' }, // S
-      9: { cellWidth: 6.5, halign: 'center', fillColor: [254, 242, 242] }, // A
-      10: { cellWidth: 9, halign: 'center' }, // Total
-      11: { cellWidth: 10, halign: 'center', fontStyle: 'bold' }, // %
-      12: { cellWidth: 21, halign: 'center', fontStyle: 'bold' }, // Status Ujian
+      0: { cellWidth: 6, halign: 'center' }, // No
+      1: { cellWidth: 16, halign: 'center', fontStyle: 'bold' }, // Kode
+      2: { cellWidth: 40, halign: 'left', fontStyle: 'bold' }, // Nama MK
+      3: { cellWidth: 7, halign: 'center' }, // SKS
+      4: { cellWidth: 31, halign: 'left' }, // Dosen
+      5: { cellWidth: 11, halign: 'center' }, // Rombel
+      6: { cellWidth: 14, halign: 'center', fillColor: [240, 253, 244] }, // H
+      7: { cellWidth: 6, halign: 'center' }, // I
+      8: { cellWidth: 6, halign: 'center' }, // S
+      9: { cellWidth: 6, halign: 'center', fillColor: [254, 242, 242] }, // A
+      10: { cellWidth: 10, halign: 'center' }, // Total
+      11: { cellWidth: 9, halign: 'center', fontStyle: 'bold' }, // %
+      12: { cellWidth: 20, halign: 'center', fontStyle: 'bold' }, // Status Ujian
     },
     didParseCell: (data) => {
       if (data.section === 'body') {
@@ -989,7 +1024,7 @@ export function generateKartuPresensiPDF(
 
   // 6. Signatures Section: Mahasiswa & BAAK
   const signatureY = boxesY + boxHeight + 4;
-  const todayFormatted = new Date().toLocaleDateString('id-ID', {
+  const todayFormatted = new Date().toLocaleDateString('id-ID', { timeZone: 'Asia/Jakarta',
     day: 'numeric',
     month: 'long',
     year: 'numeric',
@@ -1065,7 +1100,7 @@ export function generateKartuPresensiPDF(
     doc.setFontSize(6.5);
     doc.setTextColor(148, 163, 184);
     doc.text(
-      `Halaman ${p} dari ${totalPages} · Dokumen resmi "Kartu Presensi Mahasiswa" dicetak otomatis melalui Portal Presensi STMIK PGRI Arungbinang pada ${new Date().toLocaleString('id-ID')} WIB`,
+      `Halaman ${p} dari ${totalPages} Â· Dokumen resmi "Kartu Presensi Mahasiswa" dicetak otomatis melalui Portal Presensi STMIK PGRI Arungbinang pada ${reportTimestamp(student.generatedAt)}`,
       pageWidth / 2,
       pageHeight - 5,
       { align: 'center' }
@@ -1075,6 +1110,86 @@ export function generateKartuPresensiPDF(
   // 9. Save PDF with the exact name requested: "Kartu Presensi Mahasiswa"
   const cleanNim = student.nim.replace(/[^a-zA-Z0-9]/g, '_');
   const fileName = `Kartu_Presensi_Mahasiswa_${cleanNim}.pdf`;
-  doc.save(fileName);
+  labelDemoPages(doc, student.isDemo === true || isDemoDataScope());
+  if (save) doc.save(fileName);
+  return doc;
+}
+
+
+
+export function generateSessionAttendancePDF(
+  config: ReportConfig,
+  session: AttendanceSession,
+  students: Student[],
+  records: AttendanceRecord[],
+  save = true
+) {
+  if (session.archivedAt && !config.isArchive) throw new Error('Gunakan laporan Arsip khusus admin.');
+  const rows = getSessionAttendanceRows(session, students, records);
+  const summary = getSessionAttendanceSummary(rows);
+  const effective = rows.map(row => summarizeAttendancePolicy(config.policySessions || [session], config.policyRecords || records, row.nim, { sessionIds: [session.id] }));
+  if (!config.isArchive && effective.some(value => value.periodUnresolved)) throw new Error('Periode akademik sesi belum terverifikasi. Ekspor efektif dibatalkan.');
+  const sessionPolicy = summarizeAttendancePolicy(config.policySessions || [session], config.policyRecords || records, undefined, { sessionIds: [session.id] });
+  const effectiveCount = sessionPolicy.hadir;
+  const toleranceCount = effective.reduce((sum, value) => sum + value.izinAsHadir + value.sakitAsHadir, 0);
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  const width = doc.internal.pageSize.getWidth();
+  const height = doc.internal.pageSize.getHeight();
+  const labels = { HADIR: 'Hadir', IZIN: 'Izin', SAKIT: 'Sakit', ALPHA: 'Alpa' };
+  const logo = getStmikLogoDataUrl();
+  if (logo) {
+    try { doc.addImage(logo, 'PNG', 14, 9, 18, 18); } catch { /* Existing text letterhead remains available. */ }
+  }
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11);
+  doc.text(doc.splitTextToSize(CAMPUS_INFO.name, width - 58), 38, 13);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.text(doc.splitTextToSize(CAMPUS_INFO.address, width - 58), 38, 24);
+  doc.line(14, 32, width - 14, 32);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(12);
+  doc.text(config.isArchive ? 'ARSIP - DAFTAR PRESENSI PER SESI' : 'DAFTAR PRESENSI PER SESI', width / 2, 40, { align: 'center' });
+  autoTable(doc, {
+    startY: 45, theme: 'plain', margin: { left: 14, right: 14 },
+    body: [
+      ['Mata Kuliah', `${session.courseName} (${session.courseCode})`],
+      ['Kelas / Rombel', session.rombel],
+      ['Dosen Pengampu', session.lecturerName],
+      ['Pertemuan / Tanggal', `${session.meetingNumber} / ${session.date}`],
+      ['Topik', session.topic || '-'],
+      ['Kehadiran efektif', config.isArchive ? 'Arsip: tidak masuk perhitungan operasional' : `${effectiveCount}/${summary.total} (${sessionPolicy.percentage}%) | Toleransi I/S: ${toleranceCount}`],
+    ],
+    styles: { fontSize: 9, cellPadding: 1.5, overflow: 'linebreak' },
+    columnStyles: { 0: { cellWidth: 37, fontStyle: 'bold' } },
+  });
+  autoTable(doc, {
+    startY: (doc as any).lastAutoTable.finalY + 4,
+    margin: { top: 14, bottom: 18, left: 14, right: 14 },
+    head: [['No', 'NIM', 'Nama Mahasiswa', 'Status Asli', 'Perhitungan']],
+    body: rows.length ? rows.map((row, index) => [String(index + 1), row.nim, row.name, row.status ? labels[row.status] : 'Belum tercatat', config.isArchive ? 'Arsip' : (effective[index].rows.find(value => value.sessionId === session.id)?.effectiveStatus === 'HADIR' ? 'Dihitung Hadir' : effective[index].rows.find(value => value.sessionId === session.id)?.effectiveStatus === 'ALPHA' ? 'Dihitung Alpa' : 'Belum tercatat')]) : [['-', '-', 'Tidak ada peserta/record terverifikasi', '-', '-']],
+    theme: 'grid', rowPageBreak: 'avoid', showHead: 'everyPage',
+    styles: { fontSize: 9, cellPadding: 2, overflow: 'linebreak', valign: 'middle' },
+    headStyles: { fillColor: [30, 58, 138] },
+    columnStyles: { 0: { cellWidth: 10 }, 1: { cellWidth: 30 }, 2: { cellWidth: 65 }, 3: { cellWidth: 37 }, 4: { cellWidth: 40 } },
+  });
+  autoTable(doc, {
+    startY: (doc as any).lastAutoTable.finalY + 5,
+    margin: { top: 14, bottom: 18, left: 14, right: 14 }, theme: 'grid',
+    head: [['Hadir', 'Izin', 'Sakit', 'Alpa', 'Belum tercatat', 'Total Peserta']],
+    body: [[summary.HADIR, summary.IZIN, summary.SAKIT, summary.ALPHA, summary.UNRECORDED, summary.total]],
+    styles: { fontSize: 9, cellPadding: 2, halign: 'center', overflow: 'linebreak' },
+    headStyles: { fillColor: [30, 58, 138] },
+  });
+  const pages = doc.getNumberOfPages();
+  for (let page = 1; page <= pages; page++) {
+    doc.setPage(page);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7);
+    doc.text(`Halaman ${page} dari ${pages} | ${CAMPUS_INFO.shortName} | ${reportTimestamp(config.generatedAt)}`, width / 2, height - 7, { align: 'center' });
+  }
+  labelDemoPages(doc, config.isDemo === true || isDemoDataScope() || session.isDemo === true);
+  if (save) doc.save(`Presensi_${config.courseCode}_P${session.meetingNumber}_${session.date}.pdf`);
+  return doc;
 }
 

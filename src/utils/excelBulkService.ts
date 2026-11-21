@@ -1,5 +1,5 @@
 import * as XLSX from 'xlsx';
-import { Course, DayOfWeek, ProgramStudi, Role, ScheduleItem, Student, User } from '../types/attendance';
+import type { Course, DayOfWeek, ProgramStudi, Role, ScheduleItem, Student, User } from '../types/attendance';
 
 export type ImportCategory = 'all' | 'schedules' | 'users' | 'students' | 'courses';
 export type ImportMode = 'merge' | 'replace';
@@ -78,7 +78,6 @@ export function downloadUserTemplate(): void {
       'Rombel': '',
       'No Handphone': '081299887766',
       'Ruang Kantor': 'Gedung A Lt. 2 R. 204',
-      'Password Awal (Opsional)': 'dosen123',
     },
     {
       'Username (NIDN / NIM / ID)': '26TI0055',
@@ -91,7 +90,6 @@ export function downloadUserTemplate(): void {
       'Rombel': 'TI 1A',
       'No Handphone': '085711223344',
       'Ruang Kantor': '',
-      'Password Awal (Opsional)': 'pass123',
     },
   ];
 
@@ -99,7 +97,7 @@ export function downloadUserTemplate(): void {
   ws['!cols'] = [
     { wch: 25 }, { wch: 30 }, { wch: 15 }, { wch: 30 },
     { wch: 20 }, { wch: 16 }, { wch: 22 }, { wch: 12 },
-    { wch: 16 }, { wch: 20 }, { wch: 15 }
+    { wch: 16 }, { wch: 20 }
   ];
   XLSX.utils.book_append_sheet(wb, ws, 'Pengguna');
   XLSX.writeFile(wb, 'template_import_pengguna.xlsx');
@@ -384,7 +382,6 @@ export function parseUsersFromRows(rows: any[]): ParseResult<User> {
     const rombel = getNormalizedVal(row, ['Rombel', 'Kelas']);
     const phone = getNormalizedVal(row, ['No Handphone', 'No HP', 'Phone', 'WhatsApp']);
     const officeRoom = getNormalizedVal(row, ['Ruang Kantor', 'Office']);
-    const password = getNormalizedVal(row, ['Password Awal (Opsional)', 'Password']);
 
     if (!username || !name) {
       errors.push({ row: rowNum, item: row, reason: 'Username (NIDN/NIM) dan Nama Lengkap wajib diisi.' });
@@ -412,9 +409,7 @@ export function parseUsersFromRows(rows: any[]): ParseResult<User> {
       prodi,
       rombel: rombel || undefined,
       phone: phone || undefined,
-      officeRoom: officeRoom || undefined,
-      password: password || undefined,
-      avatarUrl: role === 'dosen'
+      officeRoom: officeRoom || undefined,      avatarUrl: role === 'dosen'
         ? 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150'
         : role === 'admin'
         ? 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150'

@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAttendance } from '../../context/AttendanceContext';
+import { sessionsForSchedule } from '../../utils/sessionHistory';
 import { ScheduleItem } from '../../types/attendance';
 import { X, QrCode } from 'lucide-react';
 
@@ -16,7 +17,7 @@ export const CreateSessionModal: React.FC<CreateSessionModalProps> = ({
   onSessionCreated,
   preselectedSchedule,
 }) => {
-  const { currentUser, schedules, courses, createSession } = useAttendance();
+  const { currentUser, schedules, courses, sessions, createSession } = useAttendance();
 
   // Find schedules for this lecturer
   const mySchedules = schedules.filter(s => s.lecturerId === currentUser.id);
@@ -39,11 +40,22 @@ export const CreateSessionModal: React.FC<CreateSessionModalProps> = ({
   const [room, setRoom] = useState<string>(
     currentSelectedSchedule?.room || mySchedules[0]?.room || 'RK 2'
   );
-  const [meetingNumber, setMeetingNumber] = useState<number>(6);
+  const [meetingNumber, setMeetingNumber] = useState<number>(1);
   const [topic, setTopic] = useState<string>('');
   const [evaluation, setEvaluation] = useState<string>('');
   const [isDynamicQr, setIsDynamicQr] = useState<boolean>(true);
   const [errorMessage, setErrorMessage] = useState<string>('');
+
+  const [date, setDate] = useState('');
+  const [startTime, setStartTime] = useState('');
+  const [endTime, setEndTime] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const submittingRef = useRef(false);
+  useEffect(() => {
+    if (!isOpen || !currentSelectedSchedule) return;
+    setDate(new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date()));
+    setStartTime(currentSelectedSchedule.startTime); setEndTime(currentSelectedSchedule.endTime); setErrorMessage('');
+  }, [isOpen, selectedScheduleId]);
 
   if (!isOpen) return null;
 
@@ -59,14 +71,25 @@ export const CreateSessionModal: React.FC<CreateSessionModalProps> = ({
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submittingRef.current) return;
+    submittingRef.current = true; setSubmitting(true); setErrorMessage('');
+    try {
     if (!courseCode || !rombel) {
       setErrorMessage('Pilih mata kuliah dan rombel terlebih dahulu.');
       return;
     }
 
-    const session = createSession({
+    if (!currentSelectedSchedule) throw new Error('Pilih jadwal milik Anda terlebih dahulu.');
+    const existing = sessionsForSchedule(currentSelectedSchedule, sessions).find(s => s.meetingNumber === Number(meetingNumber));
+    if (existing) {
+      if (!existing.isOpen) throw new Error('Pertemuan sudah selesai. Pilih pertemuan berikutnya atau minta admin melakukan Reset Sesi.');
+      onClose(); onSessionCreated(existing.id); return;
+    }
+    if (!date || !startTime || startTime >= endTime) throw new Error('Isi tanggal dan rentang jam sesi yang valid.');
+    const session = await createSession({
+      date, startTime, endTime,
       scheduleId: selectedScheduleId || undefined,
       courseCode,
       courseName,
@@ -80,6 +103,7 @@ export const CreateSessionModal: React.FC<CreateSessionModalProps> = ({
 
     onClose();
     onSessionCreated(session.id);
+    } catch(error) { setErrorMessage(error instanceof Error ? error.message : 'Permintaan gagal.'); } finally { submittingRef.current = false; setSubmitting(false); }
   };
 
   return (
@@ -205,6 +229,7 @@ export const CreateSessionModal: React.FC<CreateSessionModalProps> = ({
             </div>
           </div>
 
+          <div className="grid grid-cols-3 gap-3"><label>Tanggal<input aria-label="Tanggal sesi" type="date" required value={date} onChange={e=>setDate(e.target.value)} className="w-full p-2 border rounded-lg" /></label><label>Jam mulai (WIB)<input aria-label="Jam mulai sesi" type="time" required value={startTime} onChange={e=>setStartTime(e.target.value)} className="w-full p-2 border rounded-lg" /></label><label>Jam selesai (WIB)<input aria-label="Jam selesai sesi" type="time" required value={endTime} onChange={e=>setEndTime(e.target.value)} className="w-full p-2 border rounded-lg" /></label></div>
           {/* Topic */}
           <div>
             <label className="block text-sm font-semibold text-slate-700 mb-1.5">
@@ -266,6 +291,7 @@ export const CreateSessionModal: React.FC<CreateSessionModalProps> = ({
             </button>
             <button
               type="submit"
+              disabled={submitting}
               className="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-sm font-semibold flex items-center gap-2 transition cursor-pointer"
             >
               <QrCode className="w-4 h-4" />

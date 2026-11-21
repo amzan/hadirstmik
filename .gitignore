@@ -6,3 +6,8 @@ coverage/
 *.log
 .env*
 !.env.example
+private/
+.cache/
+test-results/
+playwright-report/
+server.mjs

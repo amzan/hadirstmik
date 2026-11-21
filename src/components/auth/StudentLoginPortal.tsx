@@ -1,3 +1,4 @@
+import { login } from '../../utils/api';
 import React, { useState } from 'react';
 import { useAttendance } from '../../context/AttendanceContext';
 import { User } from '../../types/attendance';
@@ -33,120 +34,7 @@ export const StudentLoginPortal: React.FC<StudentLoginPortalProps> = ({
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setErrorMessage('');
-    setSuccessMessage('');
-
-    const cleanNim = nim.trim().toUpperCase();
-    const cleanLower = nim.trim().toLowerCase();
-
-    if (!cleanNim) {
-      setErrorMessage('Silakan masukkan Nomor Induk Mahasiswa (NIM) atau email Anda.');
-      return;
-    }
-
-    if (!password) {
-      setErrorMessage('Silakan masukkan kata sandi Anda.');
-      return;
-    }
-
-    // Check if user already exists in users list with custom password or matching email/NIM
-    const existingUser = users.find(
-      u => (u.username.toUpperCase() === cleanNim || (u.email && u.email.toLowerCase() === cleanLower)) && u.role === 'mahasiswa'
-    );
-    const foundStudent = students.find(
-      s => s.nim.toUpperCase() === cleanNim || (s.email && s.email.toLowerCase() === cleanLower)
-    );
-
-    const activePassword = existingUser?.password || foundStudent?.password;
-
-    // Password validation rule: jika sudah ada penggantian password, password default 'pass123' TIDAK BERLAKU LAGI
-    if (activePassword) {
-      if (password !== activePassword) {
-        if (password === 'pass123') {
-          setErrorMessage('Password default (pass123) sudah tidak berlaku karena Anda telah mengganti password via email. Silakan gunakan password baru Anda.');
-        } else {
-          setErrorMessage('Password salah! Silakan periksa kembali password baru Anda atau klik Lupa Kata Sandi.');
-        }
-        return;
-      }
-    } else {
-      // Belum pernah ganti password: password default mahasiswa adalah 'pass123'
-      if (password !== 'pass123') {
-        setErrorMessage('Password salah! Silakan periksa kembali password Anda atau klik Lupa Kata Sandi.');
-        return;
-      }
-    }
-
-    setIsLoading(true);
-
-    setTimeout(() => {
-      if (existingUser) {
-        const studentRecord = foundStudent || students.find(s => s.nim.toUpperCase() === existingUser.username.toUpperCase());
-        const rombelList = (studentRecord?.rombels && studentRecord.rombels.length > 0)
-          ? studentRecord.rombels
-          : (existingUser.rombels && existingUser.rombels.length > 0)
-            ? existingUser.rombels
-            : getStudentRombelList(existingUser.rombel || studentRecord?.rombel);
-
-        const canonicalUser: User = {
-          ...existingUser,
-          id: existingUser.id || `mhs-${existingUser.username}`,
-          password: activePassword,
-          rombel: rombelList.join(', ') || existingUser.rombel || studentRecord?.rombel || '',
-          rombels: rombelList,
-          excludedScheduleIds: studentRecord?.excludedScheduleIds || existingUser.excludedScheduleIds,
-          customScheduleIds: studentRecord?.customScheduleIds || existingUser.customScheduleIds,
-        };
-        addUser(canonicalUser);
-        setIsLoading(false);
-        setSuccessMessage(`Login berhasil! Selamat datang, ${canonicalUser.name}.`);
-        setTimeout(() => {
-          onLoginSuccess(canonicalUser);
-        }, 500);
-        return;
-      }
-
-      // 2. Check if student exists in master students database
-      if (foundStudent) {
-        const rombelList = foundStudent.rombels && foundStudent.rombels.length > 0
-          ? foundStudent.rombels
-          : getStudentRombelList(foundStudent.rombel);
-
-        // Create user record for this student
-        const newStudentUser: User = {
-          id: `mhs-${foundStudent.nim}`,
-          username: foundStudent.nim,
-          name: foundStudent.name,
-          email: foundStudent.email,
-          password: foundStudent.password,
-          role: 'mahasiswa',
-          prodi: foundStudent.prodi,
-          rombel: rombelList.join(', ') || foundStudent.rombel,
-          rombels: rombelList,
-          phone: foundStudent.phone,
-          avatarUrl: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150',
-          excludedScheduleIds: foundStudent.excludedScheduleIds,
-          customScheduleIds: foundStudent.customScheduleIds,
-        };
-
-        addUser(newStudentUser);
-        setIsLoading(false);
-        setSuccessMessage(`Login berhasil! Selamat datang, ${foundStudent.name}.`);
-        setTimeout(() => {
-          onLoginSuccess(newStudentUser);
-        }, 500);
-        return;
-      }
-
-      // If NIM not found in system
-      setIsLoading(false);
-      setErrorMessage(
-        `NIM "${cleanNim}" tidak ditemukan dalam database mahasiswa STMIK PGRI Arungbinang. Silakan periksa kembali NIM Anda.`
-      );
-    }, 400);
-  };
+  const handleSubmit = async (e: React.FormEvent) => { e.preventDefault(); if(isLoading) return; setErrorMessage(''); setSuccessMessage(''); setIsLoading(true); try { const user = await login(nim.trim(), password, 'mahasiswa'); setSuccessMessage('Login berhasil.'); onLoginSuccess?.(user); onClose(); } catch (error) { setErrorMessage(error instanceof Error ? error.message : 'Login gagal.'); } finally { setIsLoading(false); } };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-slate-950/70 backdrop-blur-xs overflow-y-auto animate-fadeIn">
@@ -223,7 +111,7 @@ export const StudentLoginPortal: React.FC<StudentLoginPortalProps> = ({
                 {onOpenForgotPassword && (
                   <button
                     type="button"
-                    onClick={() => {
+                    onClick={async () => {
                       onClose();
                       onOpenForgotPassword('mahasiswa', nim);
                     }}
@@ -275,7 +163,7 @@ export const StudentLoginPortal: React.FC<StudentLoginPortalProps> = ({
               <span>Bukan Mahasiswa? </span>
               <button
                 type="button"
-                onClick={() => {
+                onClick={async () => {
                   onClose();
                   onOpenStaffPortal();
                 }}

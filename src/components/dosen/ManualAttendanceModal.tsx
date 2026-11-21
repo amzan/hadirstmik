@@ -1,463 +1,136 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useEffect, useRef, useState } from 'react';
 import { useAttendance } from '../../context/AttendanceContext';
-import { AttendanceStatus } from '../../types/attendance';
+import type { AttendanceRecord, AttendanceSession, AttendanceStatus, Student } from '../../types/attendance';
+import { api } from '../../utils/api';
+import { attendanceStatusLabel, getSessionAttendanceRows } from '../../utils/sessionAttendance';
 import { CloseSessionDialog } from './CloseSessionDialog';
 import { X, Search, Save, CheckCheck, Lock } from 'lucide-react';
 
-interface ManualAttendanceModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  defaultSessionId?: string | null;
-}
+type History = { session: AttendanceSession; students: Student[]; records: AttendanceRecord[] };
+type Draft = { status: AttendanceStatus | null; notes: string };
+interface ManualAttendanceModalProps { isOpen: boolean; onClose: () => void; defaultSessionId?: string | null; onSaved?: () => void }
+const statuses = ['HADIR', 'IZIN', 'SAKIT', 'ALPHA'] as const;
+const colors = { HADIR: 'bg-emerald-600 text-white', IZIN: 'bg-blue-600 text-white', SAKIT: 'bg-amber-600 text-white', ALPHA: 'bg-rose-600 text-white' };
+const classKey = (session: AttendanceSession) => JSON.stringify([session.scheduleId || session.id, session.lecturerId, session.academicPeriod]);
 
-export const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
-  isOpen,
-  onClose,
-  defaultSessionId,
-}) => {
-  const {
-    currentUser,
-    sessions,
-    records,
-    getStudentsForRombel,
-    markStudentAttendanceDirectly,
-    batchMarkAttendance,
-    closeSession,
-    createSession,
-  } = useAttendance();
-
-  const mySessions = sessions.filter(
-    s => s.lecturerId === currentUser.id || s.lecturerName.includes(currentUser.name)
-  );
-
-  const [selectedSessionId, setSelectedSessionId] = useState<string>(
-    defaultSessionId || mySessions[0]?.id || sessions[0]?.id || ''
-  );
-
+export const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({ isOpen, onClose, defaultSessionId, onSaved }) => {
+  const { currentUser, sessions, refresh, closeSession } = useAttendance();
+  const mySessions = sessions.filter(session => !session.archivedAt && !session.isArchived && (currentUser.role === 'admin' || session.lecturerId === currentUser.id));
+  const [selectedSessionId, setSelectedSessionId] = useState(defaultSessionId || '');
+  const [data, setData] = useState<History | null>(null);
+  const [drafts, setDrafts] = useState<Record<string, Draft>>({});
+  const [dirtyCount, setDirtyCount] = useState(0);
+  const [search, setSearch] = useState('');
+  const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
+  const [saving, setSaving] = useState(false);
   const [isCloseDialogOpen, setIsCloseDialogOpen] = useState(false);
-
+  const base = useRef<History | null>(null);
+  const draftRef = useRef<Record<string, Draft>>({});
+  const dirty = useRef(new Set<string>());
+  const pending = useRef<Promise<boolean> | null>(null);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const generation = useRef(0);
+  const cancelTimer = () => { if (timer.current) clearTimeout(timer.current); timer.current = null; };
+  const populate = (value: History) => {
+    base.current = value; setData(value);
+    draftRef.current = Object.fromEntries(getSessionAttendanceRows(value.session, value.students, value.records).map(row => [row.nim, { status: row.status, notes: row.record?.notes || '' }]));
+    dirty.current.clear(); setDrafts(draftRef.current); setDirtyCount(0);
+  };
+  useEffect(() => { if (isOpen) setSelectedSessionId(defaultSessionId || mySessions[0]?.id || ''); }, [isOpen, defaultSessionId]);
   useEffect(() => {
-    if (!isOpen) return;
-    if (defaultSessionId) {
-      setSelectedSessionId(defaultSessionId);
-    } else if (!selectedSessionId && mySessions.length > 0) {
-      setSelectedSessionId(mySessions[0].id);
-    }
-  }, [defaultSessionId, isOpen]);
+    const epoch = ++generation.current;
+    cancelTimer(); base.current = null; setData(null); setError(''); setNotice(''); dirty.current.clear(); setDirtyCount(0); setSearch('');
+    if (isOpen && selectedSessionId) api<History>(`/attendance-sessions/${encodeURIComponent(selectedSessionId)}/history`).then(value => { if (generation.current === epoch) populate(value); })
+      .catch(error => { if (generation.current === epoch) setError(error instanceof Error ? error.message : 'Presensi gagal dimuat.'); });
+    return () => { generation.current++; cancelTimer(); };
+  }, [isOpen, selectedSessionId, currentUser.id]);
 
-  const [searchQuery, setSearchQuery] = useState('');
-  const [localStatuses, setLocalStatuses] = useState<Record<string, { status: AttendanceStatus; notes: string }>>({});
-  const [saveSuccessMessage, setSaveSuccessMessage] = useState<string | null>(null);
-
-  const activeSession = sessions.find(s => s.id === selectedSessionId) || mySessions[0] || sessions[0];
-  const enrolledStudents = activeSession ? getStudentsForRombel(activeSession.rombel) : [];
-
-  // Switch or create meeting session on demand
-  const handleSwitchMeeting = (meetingNum: number) => {
-    if (!activeSession) return;
-    let target = sessions.find(
-      s => s.courseCode === activeSession.courseCode && s.rombel === activeSession.rombel && s.meetingNumber === meetingNum
-    );
-
-    if (!target) {
-      target = createSession({
-        scheduleId: activeSession.scheduleId,
-        courseCode: activeSession.courseCode,
-        courseName: activeSession.courseName,
-        rombel: activeSession.rombel,
-        room: activeSession.room,
-        meetingNumber: meetingNum,
-        topic: `Perkuliahan Pertemuan ${meetingNum}: ${activeSession.courseName}`,
-        isDynamicQr: false,
-      });
-    }
-
-    setSelectedSessionId(target.id);
-  };
-
-  // Initialize local state whenever session changes or modal opens
-  useEffect(() => {
-    if (!activeSession) return;
-    const initialMap: Record<string, { status: AttendanceStatus; notes: string }> = {};
-
-    enrolledStudents.forEach(stu => {
-      const rec = records.find(r => r.sessionId === activeSession.id && r.studentNim === stu.nim);
-      if (rec) {
-        initialMap[stu.nim] = {
-          status: rec.status,
-          notes: rec.notes || '',
-        };
-      } else {
-        initialMap[stu.nim] = {
-          status: 'ALPHA',
-          notes: '',
-        };
-      }
-    });
-
-    setLocalStatuses(initialMap);
-    setSaveSuccessMessage(null);
-  }, [selectedSessionId, isOpen]);
-
-  if (!isOpen) return null;
-
-  const handleSetStudentStatus = (nim: string, status: AttendanceStatus) => {
-    setLocalStatuses(prev => ({
-      ...prev,
-      [nim]: {
-        ...prev[nim],
-        status,
-      },
-    }));
-
-    if (activeSession) {
-      markStudentAttendanceDirectly(activeSession.id, nim, status);
-    }
-  };
-
-  const handleNoteChange = (nim: string, notes: string) => {
-    setLocalStatuses(prev => ({
-      ...prev,
-      [nim]: {
-        ...prev[nim],
-        notes,
-      },
-    }));
-  };
-
-  const handleMarkAllHadir = () => {
-    if (!activeSession) return;
-    const updates: { studentNim: string; status: AttendanceStatus; notes?: string }[] = [];
-    const updatedLocal = { ...localStatuses };
-
-    enrolledStudents.forEach(stu => {
-      updatedLocal[stu.nim] = { status: 'HADIR', notes: updatedLocal[stu.nim]?.notes || '' };
-      updates.push({
-        studentNim: stu.nim,
-        status: 'HADIR',
-        notes: updatedLocal[stu.nim]?.notes,
-      });
-    });
-
-    setLocalStatuses(updatedLocal);
-    batchMarkAttendance(activeSession.id, updates);
-    setSaveSuccessMessage('Seluruh mahasiswa ditandai Hadir.');
-    setTimeout(() => setSaveSuccessMessage(null), 3000);
-  };
-
-  const handleMarkUnscannedAsHadir = () => {
-    if (!activeSession) return;
-    const updates: { studentNim: string; status: AttendanceStatus; notes?: string }[] = [];
-    const updatedLocal = { ...localStatuses };
-
-    enrolledStudents.forEach(stu => {
-      if (updatedLocal[stu.nim]?.status === 'ALPHA') {
-        updatedLocal[stu.nim] = { status: 'HADIR', notes: 'Disahkan Dosen Manual' };
-        updates.push({
-          studentNim: stu.nim,
-          status: 'HADIR',
-          notes: 'Disahkan Dosen Manual',
-        });
-      }
-    });
-
-    setLocalStatuses(updatedLocal);
-    batchMarkAttendance(activeSession.id, updates);
-    setSaveSuccessMessage('Mahasiswa Alpha berhasil dialihkan ke Hadir.');
-    setTimeout(() => setSaveSuccessMessage(null), 3000);
-  };
-
-  const handleSaveAll = () => {
-    if (!activeSession) return;
-    const updates = Object.entries(localStatuses).map(([nim, data]) => ({
-      studentNim: nim,
-      status: data.status,
-      notes: data.notes,
-    }));
-
-    batchMarkAttendance(activeSession.id, updates);
-    setSaveSuccessMessage('Data presensi tersimpan.');
-    setTimeout(() => {
-      setSaveSuccessMessage(null);
-      onClose();
-    }, 800);
-  };
-
-  const filteredStudents = enrolledStudents.filter(s =>
-    s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    s.nim.toLowerCase().includes(searchQuery.toLowerCase())
-  );
-
-  const counts = {
-    hadir: Object.values(localStatuses).filter(v => v.status === 'HADIR').length,
-    izin: Object.values(localStatuses).filter(v => v.status === 'IZIN').length,
-    sakit: Object.values(localStatuses).filter(v => v.status === 'SAKIT').length,
-    alpha: Object.values(localStatuses).filter(v => v.status === 'ALPHA').length,
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs">
-      <div className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden">
-        {/* Clean Header */}
-        <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
-          <div>
-            <h2 className="text-base sm:text-lg font-bold text-slate-900">
-              Lembar Presensi Manual (Roll-Call)
-            </h2>
-            <p className="text-sm text-slate-500 mt-0.5">
-              Ubah atau tetapkan status kehadiran mahasiswa per sesi perkuliahan
-            </p>
-          </div>
-          <button
-            onClick={onClose}
-            className="p-1 rounded-lg text-slate-400 hover:text-slate-700 transition cursor-pointer"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        {/* Toolbar: Session Pick, Meeting Number, Counts & Fast Actions */}
-        <div className="p-4 sm:p-5 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3 text-sm">
-          <div className="flex flex-wrap items-center gap-3 flex-1 min-w-[280px]">
-            <div className="flex items-center gap-2">
-              <label className="text-slate-600 font-medium">Kelas:</label>
-              <select
-                value={selectedSessionId}
-                onChange={(e) => setSelectedSessionId(e.target.value)}
-                className="px-3 py-1.5 bg-white border border-slate-300 rounded-md font-medium text-slate-900 focus:outline-none focus:border-slate-500 max-w-[240px] truncate text-sm"
-              >
-                {sessions.map(s => (
-                  <option key={s.id} value={s.id}>
-                    P{s.meetingNumber} · [{s.courseCode}] {s.courseName} ({s.rombel})
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {activeSession && (
-              <div className="flex items-center gap-2">
-                <label className="text-slate-600 font-medium">Pertemuan:</label>
-                <select
-                  value={activeSession.meetingNumber}
-                  onChange={(e) => handleSwitchMeeting(Number(e.target.value))}
-                  className="px-3 py-1.5 bg-white border border-slate-300 rounded-md font-bold text-slate-900 focus:outline-none focus:border-slate-500 cursor-pointer text-sm"
-                >
-                  {Array.from({ length: 16 }, (_, i) => i + 1).map(num => {
-                    const marker = num === 8 ? ' (UTS)' : num === 16 ? ' (UAS)' : '';
-                    return (
-                      <option key={num} value={num}>
-                        P{num}{marker}
-                      </option>
-                    );
-                  })}
-                </select>
-              </div>
-            )}
-          </div>
-
-          <div className="flex items-center gap-3.5 text-sm font-medium text-slate-600">
-            <span>Hadir: <strong className="text-emerald-700">{counts.hadir}</strong></span>
-            <span>Izin: <strong className="text-blue-700">{counts.izin}</strong></span>
-            <span>Sakit: <strong className="text-amber-700">{counts.sakit}</strong></span>
-            <span>Alpha: <strong className="text-rose-700">{counts.alpha}</strong></span>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              onClick={handleMarkAllHadir}
-              className="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 rounded-md text-sm font-medium transition cursor-pointer flex items-center gap-1.5"
-            >
-              <CheckCheck className="w-4 h-4 text-emerald-600" />
-              <span>Semua Hadir</span>
-            </button>
-
-            <button
-              onClick={handleMarkUnscannedAsHadir}
-              className="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 rounded-md text-sm font-medium transition cursor-pointer"
-            >
-              <span>Hadirkan Sisa Alpha</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Meeting Details Info Bar */}
-        {activeSession && (
-          <div className="px-6 py-2 bg-slate-100/70 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2 text-xs">
-            <div className="flex items-center gap-2 text-slate-600">
-              <span className="font-semibold text-slate-800">Tanggal: {activeSession.date}</span>
-              <span aria-hidden="true">·</span>
-              <span className="truncate max-w-md">Topik: <strong className="text-slate-900">{activeSession.topic || `Pertemuan ${activeSession.meetingNumber}`}</strong></span>
-            </div>
-            {activeSession.evaluationMethod && (
-              <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-700 font-medium border border-blue-200">
-                Evaluasi: {activeSession.evaluationMethod}
-              </span>
-            )}
-          </div>
-        )}
-
-        {/* Search & Status message */}
-        <div className="px-6 pt-4 pb-2 flex items-center justify-between gap-3">
-          <div className="relative flex-1 max-w-sm">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              placeholder="Cari NIM atau nama mahasiswa..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-3 py-1.5 bg-white border border-slate-300 rounded-md text-sm focus:outline-none focus:border-slate-500"
-            />
-          </div>
-
-          {saveSuccessMessage && (
-            <span className="text-sm text-emerald-700 font-medium">
-              ✓ {saveSuccessMessage}
-            </span>
-          )}
-        </div>
-
-        {/* Students Table */}
-        <div className="flex-1 overflow-y-auto px-6 py-2">
-          <table className="w-full text-sm text-left border-collapse">
-            <thead className="sticky top-0 bg-white border-b border-slate-200 text-slate-600 font-semibold z-10">
-              <tr>
-                <th className="py-2.5 px-3 w-12">No</th>
-                <th className="py-2.5 px-3 w-28">NIM</th>
-                <th className="py-2.5 px-3">Nama Lengkap</th>
-                <th className="py-2.5 px-3 text-center w-52">Status Kehadiran</th>
-                <th className="py-2.5 px-3 w-48">Keterangan</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {filteredStudents.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="py-8 text-center text-slate-400 text-sm">
-                    Mahasiswa tidak ditemukan.
-                  </td>
-                </tr>
-              ) : (
-                filteredStudents.map((student, idx) => {
-                  const current = localStatuses[student.nim] || { status: 'ALPHA', notes: '' };
-
-                  return (
-                    <tr key={student.nim} className="hover:bg-slate-50/60">
-                      <td className="py-2.5 px-3 text-slate-400">{idx + 1}</td>
-                      <td className="py-2.5 px-3 font-mono text-slate-900 font-medium">{student.nim}</td>
-                      <td className="py-2.5 px-3 font-semibold text-slate-900">{student.name}</td>
-
-                      {/* 4 Clean Action Buttons */}
-                      <td className="py-2.5 px-3 text-center">
-                        <div className="inline-flex items-center gap-1">
-                          <button
-                            type="button"
-                            onClick={() => handleSetStudentStatus(student.nim, 'HADIR')}
-                            className={`px-2.5 py-1 rounded-md font-semibold text-xs transition cursor-pointer ${
-                              current.status === 'HADIR'
-                                ? 'bg-emerald-600 text-white'
-                                : 'text-slate-600 hover:bg-slate-100'
-                            }`}
-                          >
-                            Hadir
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleSetStudentStatus(student.nim, 'IZIN')}
-                            className={`px-2.5 py-1 rounded-md font-semibold text-xs transition cursor-pointer ${
-                              current.status === 'IZIN'
-                                ? 'bg-blue-600 text-white'
-                                : 'text-slate-600 hover:bg-slate-100'
-                            }`}
-                          >
-                            Izin
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleSetStudentStatus(student.nim, 'SAKIT')}
-                            className={`px-2.5 py-1 rounded-md font-semibold text-xs transition cursor-pointer ${
-                              current.status === 'SAKIT'
-                                ? 'bg-amber-600 text-white'
-                                : 'text-slate-600 hover:bg-slate-100'
-                            }`}
-                          >
-                            Sakit
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleSetStudentStatus(student.nim, 'ALPHA')}
-                            className={`px-2.5 py-1 rounded-md font-semibold text-xs transition cursor-pointer ${
-                              current.status === 'ALPHA'
-                                ? 'bg-rose-600 text-white'
-                                : 'text-slate-600 hover:bg-slate-100'
-                            }`}
-                          >
-                            Alpha
-                          </button>
-                        </div>
-                      </td>
-
-                      <td className="py-2.5 px-3">
-                        <input
-                          type="text"
-                          placeholder="Catatan..."
-                          value={current.notes}
-                          onChange={(e) => handleNoteChange(student.nim, e.target.value)}
-                          className="w-full px-2.5 py-1 bg-white border border-slate-200 rounded text-sm text-slate-800 focus:outline-none focus:border-slate-400"
-                        />
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Footer */}
-        <div className="p-4 sm:p-5 bg-slate-50 border-t border-slate-200 flex items-center justify-between text-sm">
-          <span className="text-slate-500 font-medium">
-            Perubahan otomatis tersinkronisasi.
-          </span>
-          <div className="flex items-center gap-2.5">
-            {activeSession?.isOpen && (
-              <button
-                type="button"
-                onClick={() => setIsCloseDialogOpen(true)}
-                className="px-4 py-2 text-rose-700 hover:bg-rose-50 border border-rose-200 rounded-lg font-semibold cursor-pointer transition flex items-center gap-1.5"
-                title="Tutup sesi jika tidak ada presensi yang ingin diubah lagi"
-              >
-                <Lock className="w-4 h-4" />
-                <span>Akhiri Sesi Kuliah</span>
-              </button>
-            )}
-            <button
-              onClick={onClose}
-              className="px-4 py-2 text-slate-700 hover:bg-slate-200 rounded-lg font-medium cursor-pointer"
-            >
-              Tutup
-            </button>
-            <button
-              onClick={handleSaveAll}
-              className="px-5 py-2 bg-slate-900 hover:bg-slate-800 text-white font-semibold rounded-lg flex items-center gap-2 cursor-pointer"
-            >
-              <Save className="w-4 h-4" />
-              <span>Selesai</span>
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <CloseSessionDialog
-        isOpen={isCloseDialogOpen}
-        session={activeSession}
-        onClose={() => setIsCloseDialogOpen(false)}
-        onConfirm={() => {
-          if (activeSession) {
-            closeSession(activeSession.id);
-            setIsCloseDialogOpen(false);
-            onClose();
+  const save = (): Promise<boolean> => {
+    cancelTimer();
+    if (pending.current) return pending.current;
+    const epoch = generation.current;
+    const operation = async () => {
+      setSaving(true); setError('');
+      let committed = false;
+      try {
+        while (dirty.current.size && generation.current === epoch) {
+          const current = base.current;
+          if (!current || current.session.archivedAt || current.session.isArchived) return false;
+          const captured = Object.fromEntries([...dirty.current].map(nim => [nim, { ...draftRef.current[nim] }]));
+          const updates = Object.entries(captured).filter(([, draft]) => draft.status).map(([nim, draft]) => ({ studentNim: nim, status: draft.status,
+            reason: draft.notes.trim() || 'Presensi manual diinput', version: current.records.find(record => record.studentNim === nim)?.version || 0 }));
+          if (!updates.length) { setError('Pilih status sebelum menyimpan keterangan.'); return false; }
+          await api(`/attendance-sessions/${encodeURIComponent(current.session.id)}/records/batch`, 'POST', { version: current.session.version, updates });
+          const fresh = await api<History>(`/attendance-sessions/${encodeURIComponent(current.session.id)}/history`);
+          if (generation.current !== epoch) return false;
+          base.current = fresh; setData(fresh); committed = true;
+          for (const update of updates) {
+            const nim = update.studentNim;
+            if (JSON.stringify(draftRef.current[nim]) === JSON.stringify(captured[nim])) dirty.current.delete(nim);
           }
-        }}
-      />
-    </div>
-  );
+          setDirtyCount(dirty.current.size);
+          await refresh(); window.dispatchEvent(new Event('hadir-attendance-updated')); onSaved?.();
+        }
+        if (committed && generation.current === epoch) setNotice('Perubahan otomatis tersinkronisasi.');
+        return generation.current === epoch;
+      } catch (error) {
+        if (generation.current === epoch) {
+          setError(error instanceof Error ? error.message : 'Perubahan gagal disimpan. Coba lagi.');
+          // A failed response may follow a committed write; reload versions without discarding the draft.
+          try { const fresh = await api<History>(`/attendance-sessions/${encodeURIComponent(selectedSessionId)}/history`); if (generation.current === epoch) { base.current = fresh; setData(fresh); } } catch { /* Preserve the draft for an explicit retry. */ }
+        }
+        return false;
+      } finally { if (generation.current === epoch) setSaving(false); }
+    };
+    pending.current = operation().finally(() => { pending.current = null; });
+    return pending.current;
+  };
+  const editMany = (changes: Record<string, Partial<Draft>>, delay = 150) => {
+    if (!base.current || base.current.session.archivedAt || base.current.session.isArchived) return;
+    const next = { ...draftRef.current };
+    for (const [nim, value] of Object.entries(changes)) { next[nim] = { ...next[nim], ...value }; dirty.current.add(nim); }
+    draftRef.current = next; setDrafts(next); setDirtyCount(dirty.current.size); setNotice(''); setError('');
+    cancelTimer(); timer.current = setTimeout(() => { void save(); }, delay);
+  };
+  const requestClose = () => {
+    if (saving || pending.current) return;
+    if (dirty.current.size && !window.confirm('Perubahan belum tersimpan. Tutup dan tinggalkan perubahan tersebut?')) return;
+    cancelTimer(); onClose();
+  };
+  const changeSession = (id: string) => {
+    if (saving || pending.current || (dirty.current.size && !window.confirm('Perubahan belum tersimpan. Pindah sesi dan tinggalkan perubahan tersebut?'))) return;
+    cancelTimer(); setSelectedSessionId(id);
+  };
+  if (!isOpen) return null;
+  const activeSession = data?.session;
+  const selected = activeSession || mySessions.find(session => session.id === selectedSessionId);
+  const choices = selected && !mySessions.some(session => session.id === selected.id) ? [selected, ...mySessions] : mySessions;
+  const classes = [...new Map(choices.map(session => [classKey(session), session])).values()];
+  const rows = data ? getSessionAttendanceRows(data.session, data.students, data.records) : [];
+  const blocked = !data || Boolean(activeSession?.archivedAt || activeSession?.isArchived);
+  const bulk = (alphaOnly: boolean) => {
+    if (saving || pending.current || dirty.current.size || blocked) return;
+    const targets = rows.filter(row => !alphaOnly || draftRef.current[row.nim]?.status === 'ALPHA');
+    if (!targets.length || !window.confirm(`${alphaOnly ? 'Hadirkan sisa Alpa' : 'Tandai semua peserta Hadir'} untuk ${targets.length} mahasiswa?`)) return;
+    editMany(Object.fromEntries(targets.map(row => [row.nim, { status: 'HADIR' as const }])));
+  };
+  return <div className="fixed inset-0 z-[60] flex items-center justify-center p-2 sm:p-4 bg-slate-900/60 backdrop-blur-xs">
+    <section role="dialog" aria-modal="true" aria-label="Kelola Presensi Manual" className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-5xl max-h-[94vh] flex flex-col overflow-y-auto">
+      <header className="px-4 py-3 border-b flex justify-between gap-3 shrink-0"><div><h2 className="text-lg font-bold">Lembar Presensi Manual (Roll-Call)</h2><p className="text-sm text-slate-500 mt-1">Ubah atau tetapkan status kehadiran mahasiswa per sesi perkuliahan</p></div><button type="button" aria-label="Tutup presensi manual" onClick={requestClose} disabled={saving} className="frost-btn frost-btn-icon-only"><X className="w-5 h-5" /></button></header>
+      <div className="p-3 border-b bg-slate-50 grid gap-3 sm:grid-cols-[260px_1fr] items-center">
+        <div className="space-y-2"><label className="flex items-center gap-2 text-sm">Kelas:<select aria-label="Kelas presensi manual" className="frost-select max-w-[260px]" disabled={saving} value={selected ? classKey(selected) : ''} onChange={event => { const match = choices.find(session => classKey(session) === event.target.value); if (match) changeSession(match.id); }}>{classes.map(session => <option key={classKey(session)} value={classKey(session)}>[{session.courseCode}] {session.courseName} - {session.rombel}</option>)}</select></label>
+          <label className="flex items-center gap-2 text-sm">Pertemuan:<select aria-label="Sesi presensi manual" className="frost-select" disabled={saving} value={selectedSessionId} onChange={event => changeSession(event.target.value)}>{choices.filter(session => selected && classKey(session) === classKey(selected)).sort((a,b) => a.meetingNumber-b.meetingNumber).map(session => <option key={session.id} value={session.id}>P{session.meetingNumber}{session.isOpen ? '' : ' - Selesai'}</option>)}</select></label></div>
+        <div className="flex flex-wrap items-center gap-2"><p aria-label="Rekap draft presensi" className="text-sm flex flex-wrap gap-3">{([...statuses, null] as const).map(status => <span key={status || 'BT'}>{attendanceStatusLabel(status)}: <strong className={status === 'HADIR' ? 'text-emerald-600' : status === 'IZIN' ? 'text-blue-600' : status === 'SAKIT' ? 'text-amber-600' : status === 'ALPHA' ? 'text-rose-600' : 'text-slate-500'}>{rows.filter(row => (drafts[row.nim]?.status ?? null) === status).length}</strong></span>)}</p><button type="button" disabled={blocked || saving || dirtyCount > 0} className="frost-btn" onClick={() => bulk(false)}><CheckCheck className="w-4 h-4" />Semua Hadir</button><button type="button" disabled={blocked || saving || dirtyCount > 0} className="frost-btn" onClick={() => bulk(true)}>Hadirkan Sisa Alpa</button></div>
+      </div>
+      {activeSession && <div className="px-4 py-3 border-b bg-slate-50 text-xs flex flex-wrap justify-between gap-2"><span>Tanggal: {activeSession.date} · Topik: <strong>{activeSession.topic}</strong></span>{activeSession.evaluationMethod && <span className="text-blue-600">Evaluasi: {activeSession.evaluationMethod}</span>}</div>}
+      <div className="px-4 pt-3 space-y-2">{error && <p role="alert" className="text-rose-700">{error}</p>}{notice && <p role="status" className="text-emerald-700">{notice}</p>}{!data && !error && <p role="status">Memuat presensi...</p>}{blocked && data && <p role="alert">Sesi arsip tidak dapat diubah.</p>}<label className="flex items-center gap-2 max-w-sm"><Search className="w-4 h-4 text-slate-400" /><input aria-label="Cari peserta presensi" className="frost-input" placeholder="Cari NIM atau nama mahasiswa..." value={search} onChange={event => setSearch(event.target.value)} /></label></div>
+      <div className="overflow-auto px-4 py-2 flex-1 min-h-[100px]"><table aria-label="Tabel presensi manual" className="w-full min-w-[720px] text-sm text-left"><thead className="sticky top-0 bg-white"><tr className="border-b text-slate-600"><th className="py-3">No</th><th>NIM</th><th>Nama Lengkap</th><th>Status Kehadiran</th><th>Keterangan</th></tr></thead><tbody>{rows.filter(row => `${row.nim} ${row.name}`.toLowerCase().includes(search.toLowerCase())).map((row,index) => <tr key={row.nim} data-nim={row.nim} className="border-b border-slate-100"><td className="py-4 text-slate-400">{index+1}</td><td className="font-mono pr-3">{row.nim}</td><td className="pr-3">{row.name}</td><td className="pr-3"><div className="flex gap-1">{statuses.map(status => <button key={status} type="button" aria-label={`${attendanceStatusLabel(status)} ${row.nim}`} aria-pressed={drafts[row.nim]?.status === status} disabled={blocked} className={`rounded px-2 py-1 text-xs font-medium ${drafts[row.nim]?.status === status ? colors[status] : 'text-slate-600 hover:bg-slate-100'}`} onClick={() => editMany({[row.nim]:{status}})}>{attendanceStatusLabel(status)}</button>)}</div>{!drafts[row.nim]?.status && <span className="text-xs text-slate-500">Belum tercatat</span>}</td><td><input aria-label={`Alasan ${row.nim}`} placeholder="Catatan..." className="frost-input min-w-[160px]" disabled={blocked} value={drafts[row.nim]?.notes || ''} onChange={event => editMany({[row.nim]:{notes:event.target.value}},600)} /></td></tr>)}</tbody></table>{data && !rows.length && <p>Tidak ada roster valid untuk sesi ini.</p>}</div>
+      <footer className="px-4 py-3 border-t bg-slate-50 flex flex-wrap items-center justify-between gap-2 shrink-0"><p role="status" className={`text-sm ${error ? 'text-rose-600' : 'text-slate-500'}`}>{saving ? 'Menyimpan perubahan...' : error ? 'Belum tersimpan. Coba Simpan Perubahan.' : dirtyCount ? 'Menunggu sinkronisasi...' : !data ? 'Memuat presensi...' : notice || 'Data dimuat dari server.'}</p><div className="flex flex-wrap gap-2">{activeSession?.isOpen && <button type="button" disabled={saving} className="frost-btn text-rose-600" onClick={async () => { if (await save()) setIsCloseDialogOpen(true); }}><Lock className="w-4 h-4" />Akhiri Sesi Kuliah</button>}<button type="button" disabled={saving} className="frost-btn" onClick={requestClose}>Tutup</button>{dirtyCount > 0 && <button type="button" disabled={blocked || saving} className="frost-btn" onClick={() => { void save(); }}>Simpan Perubahan</button>}<button type="button" disabled={blocked || saving} className="frost-btn frost-btn-primary" onClick={async () => { if (await save()) onClose(); }}><Save className="w-4 h-4" />Selesai</button></div></footer>
+    </section>
+    <CloseSessionDialog isOpen={isCloseDialogOpen} session={activeSession || null} onClose={() => setIsCloseDialogOpen(false)} onConfirm={async () => { if (activeSession && await save()) { await closeSession(activeSession.id); populate(await api<History>(`/attendance-sessions/${encodeURIComponent(activeSession.id)}/history`)); setIsCloseDialogOpen(false); } }} />
+  </div>;
 };
+
+
+

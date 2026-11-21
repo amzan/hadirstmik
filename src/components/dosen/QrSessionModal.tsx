@@ -4,6 +4,9 @@ import { useAttendance } from '../../context/AttendanceContext';
 import { AttendanceSession } from '../../types/attendance';
 import { ManualAttendanceModal } from './ManualAttendanceModal';
 import { CloseSessionDialog } from './CloseSessionDialog';
+import { getSessionAttendanceRows, getSessionAttendanceSummary } from '../../utils/sessionAttendance';
+import { SessionAttendanceHistory } from './SessionAttendanceHistory';
+import { summarizeAllAttendancePolicy } from '../../../shared/attendance-policy.mjs';
 import {
   X, Maximize2, Minimize2, RefreshCw, UserCheck
 } from 'lucide-react';
@@ -15,7 +18,7 @@ interface QrSessionModalProps {
 }
 
 export const QrSessionModal: React.FC<QrSessionModalProps> = ({ session, isOpen, onClose }) => {
-  const { refreshQrToken, closeSession, records, getStudentsForRombel } = useAttendance();
+  const { refreshQrToken, closeSession, records, students, sessions } = useAttendance();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -26,7 +29,7 @@ export const QrSessionModal: React.FC<QrSessionModalProps> = ({ session, isOpen,
 
   // Render QR Code onto canvas
   useEffect(() => {
-    if (!session || !isOpen) return;
+    if (!session || !isOpen || !session.isOpen) return;
 
     if (canvasRef.current) {
       QRCode.toCanvas(
@@ -62,17 +65,22 @@ export const QrSessionModal: React.FC<QrSessionModalProps> = ({ session, isOpen,
   // When timer reaches 0, trigger refreshQrToken safely in effect
   useEffect(() => {
     if (dynamicSeconds === 0 && isOpen && session && session.isOpen && session.isDynamicQr) {
-      refreshQrToken(session.id);
+      void refreshQrToken(session.id).catch(() => {});
       setDynamicSeconds(15);
     }
   }, [dynamicSeconds, isOpen, session?.id, session?.isOpen, session?.isDynamicQr, refreshQrToken]);
 
   if (!session || !isOpen) return null;
+  if (!session.isOpen) return <>
+    <SessionAttendanceHistory sessionId={session.id} onClose={onClose} onManageManual={() => setIsManualRollCallOpen(true)} />
+    <ManualAttendanceModal isOpen={isManualRollCallOpen} onClose={() => setIsManualRollCallOpen(false)} defaultSessionId={session.id} />
+  </>;
 
   const sessionRecords = records.filter(r => r.sessionId === session.id);
-  const enrolledStudents = getStudentsForRombel(session.rombel);
-  const totalEnrolled = enrolledStudents.length || 20;
-  const hadirCount = sessionRecords.filter(r => r.status === 'HADIR').length;
+  const summary = getSessionAttendanceSummary(getSessionAttendanceRows(session, students, records));
+  const totalEnrolled = summary.total;
+  const hadirCount = summary.HADIR;
+  const policy = summarizeAllAttendancePolicy(sessions, records, { sessionIds: [session.id] });
 
   const handleCopyToken = () => {
     navigator.clipboard.writeText(session.qrToken);
@@ -98,10 +106,12 @@ export const QrSessionModal: React.FC<QrSessionModalProps> = ({ session, isOpen,
     setIsCloseDialogOpen(true);
   };
 
-  const handleConfirmClose = () => {
-    closeSession(session.id);
+  const handleConfirmClose = async () => {
+    try {
+    await closeSession(session.id);
     setIsCloseDialogOpen(false);
     onClose();
+    } catch(error) { window.dispatchEvent(new CustomEvent('hadir-api-error',{detail:error instanceof Error?error.message:'Permintaan gagal.'})); } finally {  }
   };
 
   return (
@@ -198,10 +208,10 @@ export const QrSessionModal: React.FC<QrSessionModalProps> = ({ session, isOpen,
                   Mahasiswa Masuk
                 </h3>
                 <span className="text-sm font-bold text-emerald-700">
-                  {hadirCount} / {totalEnrolled} Hadir
+                  {hadirCount} / {totalEnrolled} Hadir aktual
                 </span>
               </div>
-
+              <p className="mt-2 text-xs text-slate-600">Kehadiran efektif {policy.hadir}/{policy.totalSessions} ({policy.percentage}%). Toleransi Izin/Sakit masing-masing 2.</p>
               <div className="mt-3 max-h-80 overflow-y-auto divide-y divide-slate-100 text-sm">
                 {sessionRecords.length === 0 ? (
                   <div className="py-16 text-center text-slate-400">

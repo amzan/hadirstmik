@@ -1,3 +1,4 @@
+import { login } from '../../utils/api';
 import React, { useState, useMemo, useEffect } from 'react';
 import { useAttendance } from '../../context/AttendanceContext';
 import { User } from '../../types/attendance';
@@ -17,13 +18,6 @@ interface UnifiedLoginPortalProps {
   onOpenForgotPassword?: (role: 'dosen' | 'admin', identifier?: string) => void;
   isStandalonePage?: boolean;
 }
-
-// Helper to extract lecturer's first name (lowercase)
-export const getLecturerFirstName = (fullName: string): string => {
-  const clean = fullName.replace(/^(dr\.|dra\.|prof\.|ir\.)\s+/i, '').trim();
-  const firstWord = clean.split(/[\s,]+/)[0];
-  return firstWord.toLowerCase();
-};
 
 export const UnifiedLoginPortal: React.FC<UnifiedLoginPortalProps> = ({
   isOpen,
@@ -74,165 +68,13 @@ export const UnifiedLoginPortal: React.FC<UnifiedLoginPortalProps> = ({
   const isCurrentAdmin = currentUser.role === 'admin';
 
   // Handle Lecturer Login Submit
-  const handleDosenLogin = (e: React.FormEvent) => {
-    e.preventDefault();
-    setErrorMessage('');
-    setSuccessMessage('');
-
-    // Rule: Admin cannot login to Dosen without logging out first
-    if (isCurrentAdmin) {
-      setErrorMessage(
-        'Akun Administrator BAAK sedang aktif. Anda harus keluar (logout) dari sesi admin terlebih dahulu sebelum masuk sebagai Dosen.'
-      );
-      return;
-    }
-
-    const cleanInput = dosenUsername.trim().toLowerCase();
-    if (!cleanInput) {
-      setErrorMessage('Silakan masukkan username dosen (nama depan).');
-      return;
-    }
-
-    if (!dosenPassword) {
-      setErrorMessage('Silakan masukkan kata sandi dosen.');
-      return;
-    }
-
-    setIsLoading(true);
-
-    setTimeout(() => {
-      const matched = allLecturers.find(l => {
-        const firstName = getLecturerFirstName(l.name);
-        return (
-          firstName === cleanInput ||
-          l.username.toLowerCase() === cleanInput ||
-          (l.email && l.email.toLowerCase() === cleanInput) ||
-          l.name.toLowerCase().startsWith(cleanInput)
-        );
-      });
-
-      if (!matched) {
-        setIsLoading(false);
-        setErrorMessage(
-          `Username "${cleanInput}" tidak ditemukan. Gunakan nama depan dosen (contoh: nur, agus, teguh, ahmad, fitriani).`
-        );
-        return;
-      }
-
-      // Password verification: jika dosen sudah pernah ganti password, password default TIDAK BERLAKU LAGI
-      if (matched.password) {
-        if (dosenPassword !== matched.password) {
-          setIsLoading(false);
-          if (dosenPassword === 'dosen123' || dosenPassword === matched.username) {
-            setErrorMessage('Kata sandi default dosen sudah tidak berlaku karena Anda telah memperbarui kata sandi via email. Silakan gunakan kata sandi baru Anda.');
-          } else {
-            setErrorMessage('Kata sandi salah. Silakan periksa kembali atau gunakan opsi Lupa Kata Sandi.');
-          }
-          return;
-        }
-      } else {
-        if (dosenPassword !== 'dosen123' && dosenPassword !== matched.username) {
-          setIsLoading(false);
-          setErrorMessage('Kata sandi salah. Password default dosen adalah: dosen123');
-          return;
-        }
-      }
-
-      setIsLoading(false);
-      setSuccessMessage(`Selamat datang kembali, ${matched.name}! Mengalihkan ke dashboard...`);
-
-      setTimeout(() => {
-        setCurrentUser(matched);
-        if (onLoginSuccess) onLoginSuccess(matched);
-        onClose();
-      }, 600);
-    }, 400);
-  };
+  const handleDosenLogin = async (e: React.FormEvent) => { e.preventDefault(); if(isLoading) return; setErrorMessage(''); setSuccessMessage(''); setIsLoading(true); try { const user = await login(dosenUsername.trim(), dosenPassword, 'dosen'); setSuccessMessage('Login berhasil.'); onLoginSuccess?.(user); onClose(); } catch (error) { setErrorMessage(error instanceof Error ? error.message : 'Login gagal.'); } finally { setIsLoading(false); } };
 
   // Handle Admin Login Submit
-  const handleAdminLogin = (e: React.FormEvent) => {
-    e.preventDefault();
-    setErrorMessage('');
-    setSuccessMessage('');
-
-    // Rule: Dosen cannot login to BAAK without logging out first
-    if (isCurrentDosen) {
-      setErrorMessage(
-        'Akun Dosen sedang aktif. Dosen tidak memiliki hak akses untuk login ke sistem BAAK. Silakan keluar (logout) terlebih dahulu untuk masuk sebagai Administrator.'
-      );
-      return;
-    }
-
-    const cleanInput = adminUsername.trim().toLowerCase();
-    if (!cleanInput) {
-      setErrorMessage('Silakan masukkan username administrator.');
-      return;
-    }
-
-    if (!adminPassword) {
-      setErrorMessage('Silakan masukkan kata sandi administrator.');
-      return;
-    }
-
-    setIsLoading(true);
-
-    setTimeout(() => {
-      const adminUser = users.find(u => u.role === 'admin') || {
-        id: 'user-admin-1',
-        username: 'baak',
-        name: 'Administrator Akademik (BAAK)',
-        email: 'baak@stmik-arungbinang.ac.id',
-        role: 'admin',
-        avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150',
-        title: 'Kepala BAAK',
-        phone: '081234567890',
-      };
-
-      const isMatch = (
-        cleanInput === 'baak' ||
-        cleanInput === 'admin' ||
-        cleanInput === adminUser.username.toLowerCase() ||
-        (adminUser.email && cleanInput === adminUser.email.toLowerCase())
-      );
-
-      if (!isMatch) {
-        setIsLoading(false);
-        setErrorMessage('Username atau email administrator tidak valid. Gunakan username resmi: baak atau email terdaftar.');
-        return;
-      }
-
-      // Password verification: jika admin sudah pernah ganti password, password default TIDAK BERLAKU LAGI
-      if (adminUser.password) {
-        if (adminPassword !== adminUser.password) {
-          setIsLoading(false);
-          if (adminPassword === 'baak123' || adminPassword === 'admin123') {
-            setErrorMessage('Kata sandi default administrator (baak123) sudah tidak berlaku karena Anda telah memperbarui kata sandi via email. Silakan gunakan kata sandi baru Anda.');
-          } else {
-            setErrorMessage('Kata sandi administrator salah. Silakan periksa kembali atau gunakan opsi Lupa Kata Sandi.');
-          }
-          return;
-        }
-      } else {
-        if (adminPassword !== 'baak123' && adminPassword !== 'admin123') {
-          setIsLoading(false);
-          setErrorMessage('Kata sandi administrator salah. Gunakan password resmi: baak123');
-          return;
-        }
-      }
-
-      setIsLoading(false);
-      setSuccessMessage('Autentikasi Administrator BAAK berhasil! Mengalihkan ke dashboard...');
-
-      setTimeout(() => {
-        setCurrentUser(adminUser);
-        if (onLoginSuccess) onLoginSuccess(adminUser);
-        onClose();
-      }, 600);
-    }, 400);
-  };
+  const handleAdminLogin = async (e: React.FormEvent) => { e.preventDefault(); if(isLoading) return; setErrorMessage(''); setSuccessMessage(''); setIsLoading(true); try { const user = await login(adminUsername.trim(), adminPassword, 'admin'); setSuccessMessage('Login berhasil.'); onLoginSuccess?.(user); onClose(); } catch (error) { setErrorMessage(error instanceof Error ? error.message : 'Login gagal.'); } finally { setIsLoading(false); } };
 
   // Quick switch & logout helper
-  const handleLogoutToSwitch = (target: 'dosen' | 'admin') => {
+  const handleLogoutToSwitch = async (target: 'dosen' | 'admin') => {
     if (onLogoutAndSwitch) {
       onLogoutAndSwitch(target);
     } else {
@@ -345,7 +187,7 @@ export const UnifiedLoginPortal: React.FC<UnifiedLoginPortalProps> = ({
               <form onSubmit={handleDosenLogin} className="space-y-4">
                 <div>
                   <label className="block text-sm font-semibold text-slate-800 mb-1.5">
-                    Username Dosen (Nama Depan)
+                    Nama Depan / Username
                   </label>
                   <input
                     type="text"
@@ -357,7 +199,7 @@ export const UnifiedLoginPortal: React.FC<UnifiedLoginPortalProps> = ({
                     autoComplete="username"
                   />
                   <span className="text-xs text-slate-500 mt-1 block">
-                    Nama depan dosen (huruf kecil), misal: <strong className="text-slate-700">nur</strong>, <strong className="text-slate-700">agus</strong>, <strong className="text-slate-700">teguh</strong>, dll.
+                    Nama depan atau alias unik dari admin, tanpa membedakan huruf besar/kecil. Contoh: <strong className="text-slate-700">nur</strong>, <strong className="text-slate-700">agus</strong>, <strong className="text-slate-700">teguh</strong>, dll.
                   </span>
                 </div>
 
@@ -367,14 +209,11 @@ export const UnifiedLoginPortal: React.FC<UnifiedLoginPortalProps> = ({
                       <label className="text-sm font-semibold text-slate-800">
                         Kata Sandi
                       </label>
-                      <span className="text-xs text-slate-500 font-mono">
-                        (Default: <strong>dosen123</strong>)
-                      </span>
                     </div>
                     {onOpenForgotPassword && (
                       <button
                         type="button"
-                        onClick={() => {
+                        onClick={async () => {
                           onClose();
                           onOpenForgotPassword('dosen', dosenUsername);
                         }}
@@ -390,7 +229,7 @@ export const UnifiedLoginPortal: React.FC<UnifiedLoginPortalProps> = ({
                       value={dosenPassword}
                       onChange={(e) => setDosenPassword(e.target.value)}
                       disabled={isCurrentAdmin}
-                      placeholder="Masukkan kata sandi (default: dosen123)"
+                      placeholder="Masukkan kata sandi akun"
                       className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-lg text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-slate-900 focus:ring-1 focus:ring-slate-900 transition font-medium pr-10 disabled:bg-slate-100 disabled:text-slate-400"
                       autoComplete="current-password"
                     />
@@ -509,14 +348,11 @@ export const UnifiedLoginPortal: React.FC<UnifiedLoginPortalProps> = ({
                       <label className="text-sm font-semibold text-slate-800">
                         Kata Sandi
                       </label>
-                      <span className="text-xs text-slate-500 font-mono">
-                        (Default: <strong>baak123</strong>)
-                      </span>
                     </div>
                     {onOpenForgotPassword && (
                       <button
                         type="button"
-                        onClick={() => {
+                        onClick={async () => {
                           onClose();
                           onOpenForgotPassword('admin', adminUsername);
                         }}
@@ -532,7 +368,7 @@ export const UnifiedLoginPortal: React.FC<UnifiedLoginPortalProps> = ({
                       value={adminPassword}
                       onChange={(e) => setAdminPassword(e.target.value)}
                       disabled={isCurrentDosen}
-                      placeholder="Masukkan kata sandi (baak123)"
+                      placeholder="Masukkan kata sandi akun"
                       className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-lg text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-slate-900 focus:ring-1 focus:ring-slate-900 transition font-medium pr-10 disabled:bg-slate-100 disabled:text-slate-400"
                       autoComplete="current-password"
                     />
@@ -586,7 +422,7 @@ export const UnifiedLoginPortal: React.FC<UnifiedLoginPortalProps> = ({
               <span>Mahasiswa ingin melakukan presensi? </span>
               <button
                 type="button"
-                onClick={() => {
+                onClick={async () => {
                   onClose();
                   onOpenStudentPortal();
                 }}
@@ -624,8 +460,8 @@ export const UnifiedLoginPortal: React.FC<UnifiedLoginPortalProps> = ({
                   <span>Akun Dosen Pengampu:</span>
                 </div>
                 <ul className="list-disc list-inside space-y-0.5 text-slate-700">
-                  <li><strong>Username:</strong> Nama depan (huruf kecil), misal: <code className="bg-white px-1 py-0.5 rounded border border-slate-200 font-mono text-slate-900">nur</code>, <code className="bg-white px-1 py-0.5 rounded border border-slate-200 font-mono text-slate-900">agus</code>, dll.</li>
-                  <li><strong>Password:</strong> <code className="bg-white px-1 py-0.5 rounded border border-slate-200 font-mono text-slate-900">dosen123</code></li>
+                  <li><strong>Username:</strong> Nama depan atau alias unik dari admin, misal: <code className="bg-white px-1 py-0.5 rounded border border-slate-200 font-mono text-slate-900">nur</code>, <code className="bg-white px-1 py-0.5 rounded border border-slate-200 font-mono text-slate-900">agus</code>, dll.</li>
+                  <li><strong>Password:</strong> Gunakan password akun atau password sementara dari admin. Password sementara wajib diganti saat login.</li>
                 </ul>
               </div>
 
@@ -636,7 +472,7 @@ export const UnifiedLoginPortal: React.FC<UnifiedLoginPortalProps> = ({
                 </div>
                 <ul className="list-disc list-inside space-y-0.5 text-slate-700">
                   <li><strong>Username:</strong> <code className="bg-white px-1 py-0.5 rounded border border-slate-200 font-mono text-slate-900">baak</code></li>
-                  <li><strong>Password:</strong> <code className="bg-white px-1 py-0.5 rounded border border-slate-200 font-mono text-slate-900">baak123</code></li>
+                  <li><strong>Password:</strong> Gunakan password akun yang sudah diaktivasi.</li>
                 </ul>
               </div>
 

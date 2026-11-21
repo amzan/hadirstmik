@@ -1,0 +1,30 @@
+name: Local safety checks
+on: [push, pull_request]
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: synthetic-ci-only
+          MARIADB_ROOT_HOST: '%'
+        ports: ['33079:3306']
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npm run lint
+      - run: npm test
+      - run: npm run test:integration
+        env:
+          HADIR_TEST_DB: '1'
+          HADIR_TEST_PORT: '33079'
+          HADIR_TEST_PASSWORD: synthetic-ci-only
+      - run: npm run build

@@ -116,7 +116,7 @@ export const RoleSwitcherModal: React.FC<RoleSwitcherModalProps> = ({
 
           <button
             type="button"
-            onClick={() => {
+            onClick={async () => {
               onClose();
               if (onLogout) {
                 onLogout();

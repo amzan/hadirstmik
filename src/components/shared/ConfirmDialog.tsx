@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { AlertCircle, X, Check } from 'lucide-react';
 
 interface ConfirmDialogProps {
@@ -8,7 +8,7 @@ interface ConfirmDialogProps {
   confirmLabel?: string;
   cancelLabel?: string;
   isDestructive?: boolean;
-  onConfirm: () => void;
+  onConfirm: () => void | Promise<unknown>;
   onCancel: () => void;
 }
 
@@ -22,6 +22,8 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   onConfirm,
   onCancel,
 }) => {
+  const [pending,setPending]=useState(false), [error,setError]=useState('');
+  const confirm=async()=>{ if(pending)return; setPending(true);setError(''); try{await onConfirm();}catch(err){setError(err instanceof Error?err.message:'Permintaan gagal.');}finally{setPending(false);} };
   if (!isOpen) return null;
 
   return (
@@ -47,6 +49,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
             </div>
           </div>
           <button
+            disabled={pending}
             onClick={onCancel}
             className="p-1 rounded-lg text-slate-400 hover:text-slate-600 transition cursor-pointer"
           >
@@ -61,10 +64,12 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
           </p>
         </div>
 
+        {error && <p role="alert" className="px-6 py-2 text-sm text-rose-700">{error}</p>}
         {/* Footer Actions */}
         <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-2.5">
           <button
             type="button"
+            disabled={pending}
             onClick={onCancel}
             className="px-4 py-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 rounded-lg text-sm font-semibold transition cursor-pointer"
           >
@@ -72,7 +77,8 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
           </button>
           <button
             type="button"
-            onClick={onConfirm}
+            disabled={pending}
+            onClick={confirm}
             className={`px-4 py-2 rounded-lg text-sm font-semibold text-white transition flex items-center gap-1.5 cursor-pointer shadow-xs ${
               isDestructive
                 ? 'bg-rose-600 hover:bg-rose-700'

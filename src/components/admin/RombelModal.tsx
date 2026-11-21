@@ -164,7 +164,8 @@ export const RombelModal: React.FC<RombelModalProps> = ({
     setSelectedScheduleIds(matchingIds);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
+    try {
     e.preventDefault();
     setErrorMsg('');
 
@@ -208,12 +209,13 @@ export const RombelModal: React.FC<RombelModalProps> = ({
     };
 
     if (editingRombel && onUpdate) {
-      onUpdate(editingRombel.id, payload, selectedScheduleIds, editingRombel.code);
+      await onUpdate(editingRombel.id, payload, selectedScheduleIds, editingRombel.code);
     } else {
-      onSave(payload, selectedScheduleIds);
+      await onSave(payload, selectedScheduleIds);
     }
 
     onClose();
+    } catch(error) { window.dispatchEvent(new CustomEvent('hadir-api-error',{detail:error instanceof Error?error.message:'Permintaan gagal.'})); } finally {  }
   };
 
   if (!isOpen) return null;

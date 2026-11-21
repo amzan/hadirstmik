@@ -39,12 +39,12 @@ export const DeviceSessionManager: React.FC<DeviceSessionManagerProps> = ({
     message: string;
     confirmLabel?: string;
     isDestructive?: boolean;
-    onConfirm: () => void;
+    onConfirm: () => void | Promise<void>;
   }>({
     isOpen: false,
     title: '',
     message: '',
-    onConfirm: () => {},
+    onConfirm: async () => {},
   });
 
   // Target user sessions vs all sessions for admin
@@ -111,7 +111,8 @@ export const DeviceSessionManager: React.FC<DeviceSessionManagerProps> = ({
     }
   };
 
-  const handleTerminateSession = (session: DeviceSession) => {
+  const handleTerminateSession = async (session: DeviceSession) => {
+    try {
     const isThisDevice = session.isCurrentDevice;
     setConfirmConfig({
       isOpen: true,
@@ -121,19 +122,21 @@ export const DeviceSessionManager: React.FC<DeviceSessionManagerProps> = ({
         : `Putuskan akses sesi pada perangkat "${session.deviceName}" (${session.ipSimulated})? Perangkat tersebut tidak akan dapat mengakses akun tanpa login ulang.`,
       confirmLabel: 'Ya, Putuskan Sesi',
       isDestructive: true,
-      onConfirm: () => {
-        const res = terminateDeviceSession(session.id);
+      onConfirm: async () => {
+        const res = await terminateDeviceSession(session.id);
         if (res.success) {
-          setActionNotice({ type: 'success', message: res.message });
+          setActionNotice({ type: 'success', message: res.message || 'Sesi diakhiri.' });
           onSessionTerminated?.();
         } else {
-          setActionNotice({ type: 'error', message: res.message });
+          setActionNotice({ type: 'error', message: res.message || 'Sesi diakhiri.' });
         }
       },
     });
+    } catch(error) { window.dispatchEvent(new CustomEvent('hadir-api-error',{detail:error instanceof Error?error.message:'Permintaan gagal.'})); } finally {  }
   };
 
-  const handleTerminateAllOther = () => {
+  const handleTerminateAllOther = async () => {
+    try {
     if (activeOtherSessionsCount === 0) {
       setActionNotice({ type: 'success', message: 'Tidak ada sesi perangkat lain yang aktif.' });
       return;
@@ -145,12 +148,13 @@ export const DeviceSessionManager: React.FC<DeviceSessionManagerProps> = ({
       message: `Tindakan ini akan mencabut akses login akun Anda di ${activeOtherSessionsCount} perangkat lain (seperti smartphone, lab komputer, atau laptop lain). Hanya perangkat ini yang akan tetap aktif.`,
       confirmLabel: `Putuskan ${activeOtherSessionsCount} Sesi Lain`,
       isDestructive: true,
-      onConfirm: () => {
-        const res = terminateOtherDeviceSessions(effectiveUserId);
-        setActionNotice({ type: 'success', message: res.message });
+      onConfirm: async () => {
+        const res = await terminateOtherDeviceSessions(effectiveUserId);
+        setActionNotice({ type: 'success', message: res.message || 'Sesi diakhiri.' });
         onSessionTerminated?.();
       },
     });
+    } catch(error) { window.dispatchEvent(new CustomEvent('hadir-api-error',{detail:error instanceof Error?error.message:'Permintaan gagal.'})); } finally {  }
   };
 
   return (
@@ -509,8 +513,8 @@ export const DeviceSessionManager: React.FC<DeviceSessionManagerProps> = ({
         message={confirmConfig.message}
         confirmLabel={confirmConfig.confirmLabel}
         isDestructive={confirmConfig.isDestructive}
-        onConfirm={() => {
-          confirmConfig.onConfirm();
+        onConfirm={async () => {
+          await confirmConfig.onConfirm();
           setConfirmConfig(prev => ({ ...prev, isOpen: false }));
         }}
         onCancel={() => setConfirmConfig(prev => ({ ...prev, isOpen: false }))}

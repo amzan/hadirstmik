@@ -1,7 +1,10 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useAttendance } from '../../context/AttendanceContext';
-import { AttendanceSession, Student } from '../../types/attendance';
-import { isStudentInRombel } from '../../data/initialData';
+import { AttendanceSession, AttendanceRecord, Student } from '../../types/attendance';
+import { api } from '../../utils/api';
+import { getSessionAttendanceRows, getSessionAttendanceSummary } from '../../utils/sessionAttendance';
+import { SessionAttendanceHistory } from '../dosen/SessionAttendanceHistory';
+import { summarizeAllAttendancePolicy } from '../../../shared/attendance-policy.mjs';
 import { ConfirmDialog } from '../shared/ConfirmDialog';
 import {
   Clock, CheckCircle2, AlertCircle, RotateCcw, Search,
@@ -20,6 +23,14 @@ export const SessionMonitoringTab: React.FC = () => {
     closeSession,
     deleteSession,
   } = useAttendance();
+
+  const [showArchived, setShowArchived] = useState(false);
+  const [archiveData,setArchiveData] = useState<{sessions:AttendanceSession[];records:AttendanceRecord[];students:Student[]}>({sessions:[],records:[],students:[]});
+  const [archiveError,setArchiveError] = useState('');
+  useEffect(()=>{if(!showArchived)return;let active=true;setArchiveError('');api<typeof archiveData>('/reports/snapshot?archived=1').then(value=>{if(active)setArchiveData(value);}).catch(error=>{if(active)setArchiveError(error instanceof Error?error.message:'Arsip gagal dimuat.');});return()=>{active=false;};},[showArchived,sessions]);
+  const displayedSessions=showArchived?archiveData.sessions:sessions;
+  const displayedRecords=showArchived?archiveData.records:records;
+  const displayedStudents=showArchived?archiveData.students:students;
 
   // Filters
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'OPEN' | 'CLOSED'>('ALL');
@@ -44,7 +55,7 @@ export const SessionMonitoringTab: React.FC = () => {
     isOpen: false,
     title: '',
     message: '',
-    onConfirm: () => {},
+    onConfirm: async () => {},
   });
 
   // Calculate statistics
@@ -53,7 +64,7 @@ export const SessionMonitoringTab: React.FC = () => {
 
   // Filtered Sessions
   const filteredSessions = useMemo(() => {
-    return sessions.filter(s => {
+    return displayedSessions.filter(s => {
       // Status filter
       if (statusFilter === 'OPEN' && !s.isOpen) return false;
       if (statusFilter === 'CLOSED' && s.isOpen) return false;
@@ -73,22 +84,21 @@ export const SessionMonitoringTab: React.FC = () => {
 
       return true;
     });
-  }, [sessions, statusFilter, searchQuery]);
+  }, [displayedSessions, statusFilter, searchQuery]);
 
   // Helper to compute attendance breakdown for a session
   const getSessionStats = (session: AttendanceSession) => {
-    const sessionRecords = records.filter(r => r.sessionId === session.id);
-    const eligibleStudents = students.filter(stu => isStudentInRombel(stu.rombel, session.rombel));
+    const sessionRecords = displayedRecords.filter(r => r.sessionId === session.id);
+    const eligibleStudents = getSessionAttendanceRows(session,displayedStudents,displayedRecords);
     const totalStudents = eligibleStudents.length;
 
-    const hadirCount = sessionRecords.filter(r => r.status === 'HADIR').length;
-    const izinCount = sessionRecords.filter(r => r.status === 'IZIN').length;
-    const sakitCount = sessionRecords.filter(r => r.status === 'SAKIT').length;
-    const alphaCount = sessionRecords.filter(r => r.status === 'ALPHA').length;
-    const recordedCount = sessionRecords.length;
-    const unrecordedCount = Math.max(0, totalStudents - recordedCount);
+    const summary = getSessionAttendanceSummary(eligibleStudents);
+    const hadirCount = summary.HADIR, izinCount = summary.IZIN, sakitCount = summary.SAKIT, alphaCount = summary.ALPHA;
+    const unrecordedCount = summary.UNRECORDED;
+    const recordedCount = summary.total - unrecordedCount;
 
-    const attendanceRate = totalStudents > 0 ? Math.round((hadirCount / totalStudents) * 100) : 0;
+    const policy = summarizeAllAttendancePolicy(sessions, records, { sessionIds: [session.id] });
+    const attendanceRate = policy.percentage;
 
     return {
       totalStudents,
@@ -99,88 +109,101 @@ export const SessionMonitoringTab: React.FC = () => {
       sakitCount,
       alphaCount,
       attendanceRate,
+      effectiveHadir: policy.hadir,
     };
   };
 
   // Handler: Batch Reset all closed sessions
-  const handleTriggerResetAllClosed = () => {
+  const handleTriggerResetAllClosed = async () => {
+    try {
     if (closedSessions.length === 0) return;
 
     setConfirmConfig({
       isOpen: true,
       title: 'Reset Ulang Semua Sesi yang Sudah Ditutup?',
-      message: `Tindakan ini akan mengosongkan seluruh data presensi mahasiswa pada ${closedSessions.length} sesi perkuliahan yang telah ditutup. Seluruh mahasiswa pada sesi-sesi tersebut akan kembali ke kondisi awal (belum ter-presensi). Anda yakin ingin melanjutkan?`,
+      message: `Tindakan ini akan mengarsipkan ${closedSessions.length} pelaksanaan beserta seluruh presensinya sebagai dibatalkan. Histori tetap tersimpan. Pertemuan dapat dimulai lagi dengan ID sesi baru. Lanjutkan?`,
       confirmLabel: 'Ya, Reset Semua Sesi Ditutup',
       isDestructive: true,
-      onConfirm: () => {
-        const count = resetClosedSessions();
+      onConfirm: async () => {
+        const count = await resetClosedSessions();
         setConfirmConfig(prev => ({ ...prev, isOpen: false }));
         setActionSuccessMessage(
-          `Berhasil me-reset ulang ${count} sesi perkuliahan yang sudah ditutup. Data presensi mahasiswa telah dibersihkan kembali ke sesi awal.`
+          `Berhasil me-reset ulang ${count} sesi perkuliahan yang sudah ditutup. Histori dan presensi lama tetap tersimpan di Arsip Sesi.`
         );
         setTimeout(() => setActionSuccessMessage(''), 6000);
       },
     });
+    } catch(error) { window.dispatchEvent(new CustomEvent('hadir-api-error',{detail:error instanceof Error?error.message:'Permintaan gagal.'})); } finally {  }
   };
 
   // Handler: Reset a single session
-  const handleTriggerResetSingle = (session: AttendanceSession) => {
+  const handleTriggerResetSingle = async (session: AttendanceSession) => {
+    try {
     setConfirmConfig({
       isOpen: true,
-      title: `Reset Presensi Sesi ${session.courseName}?`,
-      message: `Data presensi mahasiswa untuk mata kuliah ${session.courseName} (Pertemuan ${session.meetingNumber}, Rombel ${session.rombel}) akan dibersihkan kembali ke sesi awal (mahasiswa belum ter-presensi).`,
-      confirmLabel: 'Ya, Reset Presensi Sesi Ini',
+      title: `Reset Sesi ${session.courseName}?`,
+      message: `Pelaksanaan ${session.courseName} (Pertemuan ${session.meetingNumber}, Rombel ${session.rombel}) akan dibatalkan dan diarsipkan beserta seluruh presensinya. Pelaksanaan ulang memakai ID sesi baru. Histori tidak dihapus.`,
+      confirmLabel: 'Ya, Reset Sesi Ini',
       isDestructive: true,
-      onConfirm: () => {
-        resetSingleSession(session.id);
+      onConfirm: async () => {
+        await resetSingleSession(session.id);
         setConfirmConfig(prev => ({ ...prev, isOpen: false }));
         setActionSuccessMessage(
-          `Presensi sesi "${session.courseName}" (Pertemuan ${session.meetingNumber}) berhasil di-reset ulang ke kondisi awal.`
+          `Presensi sesi "${session.courseName}" (Pertemuan ${session.meetingNumber}) dibatalkan dan diarsipkan; histori presensi tetap tersimpan.`
         );
         setTimeout(() => setActionSuccessMessage(''), 5000);
       },
     });
+    } catch(error) { window.dispatchEvent(new CustomEvent('hadir-api-error',{detail:error instanceof Error?error.message:'Permintaan gagal.'})); } finally {  }
   };
 
   // Handler: Reopen a closed session
-  const handleTriggerReopen = (session: AttendanceSession) => {
-    reopenSession(session.id);
+  const handleTriggerReopen = async (session: AttendanceSession) => {
+    try {
+    await reopenSession(session.id);
     setActionSuccessMessage(
-      `Sesi "${session.courseName}" berhasil dibuka kembali. Mahasiswa kini dapat melakukan presensi.`
+      `Sesi "${session.courseName}" berhasil dibuka kembali. Presensi lama tetap tersimpan. QR lama tidak diaktifkan kembali.`
     );
     setTimeout(() => setActionSuccessMessage(''), 5000);
+    } catch(error) { window.dispatchEvent(new CustomEvent('hadir-api-error',{detail:error instanceof Error?error.message:'Permintaan gagal.'})); } finally {  }
   };
 
   // Handler: Close an open session
-  const handleTriggerClose = (session: AttendanceSession) => {
-    closeSession(session.id);
+  const handleTriggerClose = async (session: AttendanceSession) => {
+    try {
+    await closeSession(session.id);
     setActionSuccessMessage(
       `Sesi "${session.courseName}" telah ditutup oleh BAAK. Mahasiswa yang tidak hadir dialihkan ke Alpha.`
     );
     setTimeout(() => setActionSuccessMessage(''), 5000);
+    } catch(error) { window.dispatchEvent(new CustomEvent('hadir-api-error',{detail:error instanceof Error?error.message:'Permintaan gagal.'})); } finally {  }
   };
 
   // Handler: Delete a closed session
-  const handleTriggerDelete = (session: AttendanceSession) => {
+  const handleTriggerDelete = async (session: AttendanceSession) => {
+    try {
     setConfirmConfig({
       isOpen: true,
       title: `Hapus Sesi ${session.courseName}?`,
-      message: `Apakah Anda yakin ingin menghapus sesi perkuliahan ${session.courseName} (Pertemuan ${session.meetingNumber}, tanggal ${session.date})? Seluruh riwayat presensi yang terhubung dengan sesi ini akan dihapus secara permanen.`,
+      message: `Apakah Anda yakin ingin menghapus sesi perkuliahan ${session.courseName} (Pertemuan ${session.meetingNumber}, tanggal ${session.date})? Sesi beserta seluruh presensinya akan diarsipkan dan tidak dihapus permanen.`,
       confirmLabel: 'Ya, Hapus Sesi',
       isDestructive: true,
-      onConfirm: () => {
-        deleteSession(session.id);
+      onConfirm: async () => {
+        await deleteSession(session.id);
         setConfirmConfig(prev => ({ ...prev, isOpen: false }));
         setActionSuccessMessage(
-          `Sesi perkuliahan "${session.courseName}" (Pertemuan ${session.meetingNumber}) berhasil dihapus.`
+          `Sesi perkuliahan "${session.courseName}" (Pertemuan ${session.meetingNumber}) berhasil diarsipkan.`
         );
         setTimeout(() => setActionSuccessMessage(''), 5000);
       },
     });
+    } catch(error) { window.dispatchEvent(new CustomEvent('hadir-api-error',{detail:error instanceof Error?error.message:'Permintaan gagal.'})); } finally {  }
   };
 
   return (
     <div className="space-y-6">
+      <div className="flex gap-3"><button type="button" className="frost-btn" aria-pressed={!showArchived} onClick={()=>setShowArchived(false)}>Sesi Operasional</button><button type="button" className="frost-btn" aria-pressed={showArchived} onClick={()=>setShowArchived(true)}>Arsip Sesi</button></div>
+      {archiveError&&<p role="alert" className="text-rose-700">{archiveError}</p>}
       {/* Top Banner & Batch Reset Header */}
       <div className="bg-white border border-slate-200 rounded-xl p-5 sm:p-6 space-y-4">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
@@ -195,7 +218,7 @@ export const SessionMonitoringTab: React.FC = () => {
               Monitoring Seluruh Sesi Perkuliahan
             </h3>
             <p className="text-xs sm:text-sm text-slate-600 mt-1 max-w-2xl leading-relaxed">
-              BAAK dapat memantau semua sesi perkuliahan aktif (sedang berlangsung) maupun yang telah ditutup oleh dosen pengampu, serta me-reset ulang status presensi ke kondisi awal.
+              BAAK dapat memantau semua sesi perkuliahan aktif (sedang berlangsung) maupun yang telah ditutup oleh dosen pengampu, serta membatalkan pelaksanaan sesi melalui Reset Sesi tanpa menghapus histori.
             </p>
           </div>
 
@@ -203,9 +226,9 @@ export const SessionMonitoringTab: React.FC = () => {
           <div className="flex items-center gap-2.5 shrink-0">
             <button
               onClick={handleTriggerResetAllClosed}
-              disabled={closedSessions.length === 0}
+              disabled={showArchived || closedSessions.length === 0}
               className="px-4 py-2.5 bg-rose-600 hover:bg-rose-700 active:bg-rose-800 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-lg text-xs sm:text-sm font-semibold flex items-center gap-2 transition cursor-pointer shadow-xs"
-              title="Reset semua sesi yang sudah ditutup menjadi sesi awal / belum ter-presensi"
+              title="Batalkan dan arsipkan semua sesi tertutup tanpa menghapus histori"
             >
               <RotateCcw className="w-4 h-4" />
               <span>Reset Semua Sesi yang Sudah Ditutup ({closedSessions.length})</span>
@@ -255,7 +278,7 @@ export const SessionMonitoringTab: React.FC = () => {
             <div className="text-xl sm:text-2xl font-bold text-slate-800 mt-0.5">
               {closedSessions.length} Sesi Selesai
             </div>
-            <span className="text-[11px] text-slate-500 mt-0.5 block">Dapat di-reset ulang ke awal</span>
+            <span className="text-[11px] text-slate-500 mt-0.5 block">Histori tetap tersimpan saat reset</span>
           </div>
 
           <div className="p-3.5 bg-indigo-50/70 border border-indigo-200 rounded-xl">
@@ -344,7 +367,7 @@ export const SessionMonitoringTab: React.FC = () => {
                   const stats = getSessionStats(session);
 
                   return (
-                    <tr key={session.id} className="hover:bg-slate-50/80 transition">
+                    <tr key={session.id} data-session-id={session.id} className="hover:bg-slate-50/80 transition">
                       {/* Status & Meeting */}
                       <td className="py-3.5 px-4">
                         <div className="space-y-1">
@@ -412,14 +435,15 @@ export const SessionMonitoringTab: React.FC = () => {
                         <div className="space-y-1.5 min-w-[150px]">
                           <div className="flex items-center justify-between text-xs">
                             <span className="font-bold text-slate-900">
-                              {stats.hadirCount} / {stats.totalStudents} Mahasiswa
+                              {showArchived ? 'Arsip: hadir aktual' : 'Kehadiran efektif'} {showArchived ? stats.hadirCount : stats.effectiveHadir} / {stats.totalStudents}
                             </span>
                             <span className="text-slate-500 font-mono text-[11px]">
-                              {stats.attendanceRate}%
+                              {showArchived ? '-' : `${stats.attendanceRate}%`}
                             </span>
                           </div>
 
                           {/* Progress bar */}
+                          {!showArchived && <p className="text-[10px] text-slate-500">Toleransi Izin/Sakit masing-masing 2 per kelas dan periode.</p>}
                           <div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden">
                             <div
                               className="h-full bg-emerald-500 transition-all duration-300"
@@ -456,15 +480,15 @@ export const SessionMonitoringTab: React.FC = () => {
                           </button>
 
                           {/* If session is closed: show Reset, Reopen, and Delete */}
-                          {!session.isOpen && (
+                          {!session.isOpen && !session.isArchived && (
                             <>
                               <button
                                 onClick={() => handleTriggerResetSingle(session)}
                                 className="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
-                                title="Reset presensi sesi ini agar mahasiswa belum ter-presensi"
+                                title="Batalkan pelaksanaan sesi dan simpan histori dalam arsip"
                               >
                                 <RotateCcw className="w-3.5 h-3.5" />
-                                <span>Reset Presensi</span>
+                                <span>Reset Sesi</span>
                               </button>
 
                               <button
@@ -509,113 +533,7 @@ export const SessionMonitoringTab: React.FC = () => {
       </div>
 
       {/* Modal Detail Mahasiswa Sesi */}
-      {viewDetailSession && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-slate-950/70 backdrop-blur-xs overflow-y-auto animate-fadeIn">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-2xl w-full my-auto overflow-hidden flex flex-col max-h-[90vh]">
-            <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between border-b border-slate-800">
-              <div>
-                <span className="text-xs text-indigo-300 font-bold uppercase tracking-wider block">
-                  Detail Kehadiran Mahasiswa
-                </span>
-                <h4 className="text-base sm:text-lg font-bold text-white mt-0.5">
-                  {viewDetailSession.courseName} · Pertemuan {viewDetailSession.meetingNumber}
-                </h4>
-                <p className="text-xs text-slate-400 mt-0.5">
-                  Rombel {viewDetailSession.rombel} · Ruang {viewDetailSession.room} · Dosen: {viewDetailSession.lecturerName}
-                </p>
-              </div>
-              <button
-                onClick={() => setViewDetailSession(null)}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="p-6 overflow-y-auto space-y-4">
-              {/* Token and Status pill */}
-              <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between text-xs">
-                <div>
-                  <span className="text-slate-500 font-medium">Status Sesi:</span>{' '}
-                  <span className={`font-bold ${viewDetailSession.isOpen ? 'text-emerald-700' : 'text-slate-700'}`}>
-                    {viewDetailSession.isOpen ? 'Sedang Berlangsung (Aktif)' : 'Sudah Ditutup (Selesai)'}
-                  </span>
-                </div>
-                <div className="font-mono text-slate-600">
-                  Token: <strong>{viewDetailSession.qrToken}</strong>
-                </div>
-              </div>
-
-              {/* Student attendance list */}
-              <div className="border border-slate-200 rounded-xl overflow-hidden">
-                <table className="w-full text-xs text-left">
-                  <thead className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
-                    <tr>
-                      <th className="py-2.5 px-3">No</th>
-                      <th className="py-2.5 px-3">NIM</th>
-                      <th className="py-2.5 px-3">Nama Mahasiswa</th>
-                      <th className="py-2.5 px-3">Status</th>
-                      <th className="py-2.5 px-3">Waktu Presensi</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {students
-                      .filter(stu => isStudentInRombel(stu.rombel, viewDetailSession.rombel))
-                      .map((student, idx) => {
-                        const rec = records.find(
-                          r => r.sessionId === viewDetailSession.id && r.studentNim === student.nim
-                        );
-
-                        return (
-                          <tr key={student.nim} className="hover:bg-slate-50/70">
-                            <td className="py-2 px-3 text-slate-400">{idx + 1}</td>
-                            <td className="py-2 px-3 font-mono font-medium text-slate-800">{student.nim}</td>
-                            <td className="py-2 px-3 font-semibold text-slate-900">{student.name}</td>
-                            <td className="py-2 px-3">
-                              {rec ? (
-                                <span
-                                  className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                                    rec.status === 'HADIR'
-                                      ? 'bg-emerald-100 text-emerald-800'
-                                      : rec.status === 'IZIN'
-                                      ? 'bg-amber-100 text-amber-800'
-                                      : rec.status === 'SAKIT'
-                                      ? 'bg-blue-100 text-blue-800'
-                                      : 'bg-rose-100 text-rose-800'
-                                  }`}
-                                >
-                                  {rec.status}
-                                </span>
-                              ) : (
-                                <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-100 text-slate-500">
-                                  BELUM PRESENSI
-                                </span>
-                              )}
-                            </td>
-                            <td className="py-2 px-3 text-slate-500 font-mono">
-                              {rec?.scannedAt
-                                ? new Date(rec.scannedAt).toLocaleTimeString('id-ID')
-                                : '-'}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            <div className="p-4 bg-slate-50 border-t border-slate-200 flex justify-end">
-              <button
-                onClick={() => setViewDetailSession(null)}
-                className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-semibold cursor-pointer"
-              >
-                Tutup
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {viewDetailSession && <SessionAttendanceHistory sessionId={viewDetailSession.id} onClose={()=>setViewDetailSession(null)} />}
 
       {/* Confirmation Dialog */}
       <ConfirmDialog

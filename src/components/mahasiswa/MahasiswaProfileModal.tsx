@@ -1,3 +1,4 @@
+import { EmailVerificationSection } from '../shared/EmailVerificationSection';
 import React, { useState, useEffect, useRef } from 'react';
 import { useAttendance } from '../../context/AttendanceContext';
 import { ProgramStudi, User as AppUser } from '../../types/attendance';
@@ -56,8 +57,8 @@ export const MahasiswaProfileModal: React.FC<MahasiswaProfileModalProps> = ({
   const [prodi, setProdi] = useState<ProgramStudi>(currentUser.prodi || 'Teknologi Informasi');
   const [rombel, setRombel] = useState(currentUser.rombel || 'TI 3');
   const [email, setEmail] = useState(currentUser.email || '');
-  const [newPassword, setNewPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
+  const [emailPassword, setEmailPassword] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
   const [phone, setPhone] = useState(currentUser.phone || '');
   const [avatarUrl, setAvatarUrl] = useState(currentUser.avatarUrl || STUDENT_AVATAR_PRESETS[0].url);
   const [showCustomAvatarInput, setShowCustomAvatarInput] = useState(false);
@@ -75,8 +76,7 @@ export const MahasiswaProfileModal: React.FC<MahasiswaProfileModalProps> = ({
       setProdi(currentUser.prodi || 'Teknologi Informasi');
       setRombel(currentUser.rombel || 'TI 3');
       setEmail(currentUser.email || '');
-      setNewPassword('');
-      setShowPassword(false);
+      setEmailPassword('');
       setPhone(currentUser.phone || '');
       setAvatarUrl(currentUser.avatarUrl || STUDENT_AVATAR_PRESETS[0].url);
       setSaveSuccess(false);
@@ -86,7 +86,7 @@ export const MahasiswaProfileModal: React.FC<MahasiswaProfileModalProps> = ({
       setShowCustomAvatarInput(false);
       setActiveTab(defaultTab);
     }
-  }, [isOpen, currentUser, defaultTab]);
+  }, [isOpen, currentUser.id, defaultTab]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setUploadError('');
@@ -168,8 +168,11 @@ export const MahasiswaProfileModal: React.FC<MahasiswaProfileModalProps> = ({
 
   const attendanceStats = getAttendanceRateForStudent(currentUser.username);
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSaving) return;
+    setIsSaving(true);
+    try {
     setErrorMessage('');
 
     const cleanName = name.trim();
@@ -179,34 +182,33 @@ export const MahasiswaProfileModal: React.FC<MahasiswaProfileModalProps> = ({
     }
 
     const cleanEmail = email.trim();
-    if (!cleanEmail || !cleanEmail.includes('@')) {
+    if (cleanEmail !== (currentUser.email || '') && (!cleanEmail || !cleanEmail.includes('@'))) {
       setErrorMessage('Alamat email kampus/pribadi harus valid.');
       return;
     }
 
-    const updatePayload: Partial<AppUser> = {
+    const updatePayload: Partial<AppUser> & { currentPassword?: string } = {
       name: cleanName,
-      prodi,
-      rombel: rombel.trim(),
       email: cleanEmail,
+      ...(cleanEmail.toLowerCase() !== (currentUser.email || '').toLowerCase() ? { currentPassword: emailPassword } : {}),
       phone: phone.trim(),
       avatarUrl: avatarUrl.trim(),
     };
 
-    if (newPassword.trim()) {
-      if (newPassword.trim().length < 6) {
-        setErrorMessage('Kata sandi baru minimal terdiri dari 6 karakter.');
-        return;
-      }
-      updatePayload.password = newPassword.trim();
+    if (email.trim().toLowerCase() !== (currentUser.email || '').toLowerCase() && !emailPassword) {
+      setErrorMessage('Masukkan password saat ini untuk mengubah email.');
+      return;
     }
 
-    updateUser(currentUser.id, updatePayload);
 
+    await updateUser(currentUser.id, updatePayload);
+
+    setEmailPassword('');
     setSaveSuccess(true);
-    setTimeout(() => {
+    setTimeout(async () => {
       setSaveSuccess(false);
     }, 2500);
+    } catch(error) { setErrorMessage(error instanceof Error ? error.message : 'Permintaan gagal.'); } finally { setIsSaving(false); }
   };
 
   return (
@@ -260,9 +262,9 @@ export const MahasiswaProfileModal: React.FC<MahasiswaProfileModalProps> = ({
             }`}
           >
             <KeyRound className="w-4 h-4" />
-            <span>Ganti Password (OTP Email)</span>
+            <span>Ganti Password</span>
             <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-700">
-              Resend OTP
+              Tanpa OTP
             </span>
           </button>
           <button
@@ -400,7 +402,7 @@ export const MahasiswaProfileModal: React.FC<MahasiswaProfileModalProps> = ({
                         <button
                           type="button"
                           key={idx}
-                          onClick={() => {
+                          onClick={async () => {
                             setAvatarUrl(p.url);
                             setUploadSuccessInfo('');
                             setUploadError('');
@@ -439,7 +441,7 @@ export const MahasiswaProfileModal: React.FC<MahasiswaProfileModalProps> = ({
                   <input
                     type="text"
                     required
-                    value={name}
+                    aria-label="Nama profil" value={name}
                     onChange={(e) => setName(e.target.value)}
                     placeholder="Contoh: Muhammad Fauzan"
                     className="w-full px-3.5 py-2 text-sm rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-hidden font-medium text-slate-900"
@@ -466,7 +468,7 @@ export const MahasiswaProfileModal: React.FC<MahasiswaProfileModalProps> = ({
                     Program Studi
                   </label>
                   <select
-                    value={prodi}
+                    value={prodi} disabled
                     onChange={(e) => setProdi(e.target.value as ProgramStudi)}
                     className="w-full px-3.5 py-2 text-sm rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-hidden bg-white text-slate-900"
                   >
@@ -481,7 +483,7 @@ export const MahasiswaProfileModal: React.FC<MahasiswaProfileModalProps> = ({
                   </label>
                   <input
                     type="text"
-                    value={rombel}
+                    value={rombel} disabled
                     onChange={(e) => setRombel(e.target.value)}
                     placeholder="Contoh: TI 1A / TI 3 / TI 5"
                     className="w-full px-3.5 py-2 text-sm rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-hidden text-slate-900"
@@ -494,7 +496,7 @@ export const MahasiswaProfileModal: React.FC<MahasiswaProfileModalProps> = ({
                   </label>
                   <input
                     type="tel"
-                    value={phone}
+                    aria-label="Telepon profil" value={phone}
                     onChange={(e) => setPhone(e.target.value)}
                     placeholder="08xxxxxxxxxx"
                     className="w-full px-3.5 py-2 text-sm rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-hidden text-slate-900"
@@ -503,47 +505,27 @@ export const MahasiswaProfileModal: React.FC<MahasiswaProfileModalProps> = ({
 
                 <div className="sm:col-span-2">
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Email Mahasiswa (Untuk Notifikasi & Verifikasi OTP) <span className="text-rose-500">*</span>
+                    Email Mahasiswa <span className="text-rose-500">*</span>
                   </label>
                   <input
                     type="email"
-                    required
-                    value={email}
+                    aria-label="Email profil" value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder="fauzan.ammar@gmail.com atau mhs@stmik-arungbinang.ac.id"
+                    placeholder="akun@example.test atau mhs@stmik-arungbinang.ac.id"
                     className="w-full px-3.5 py-2 text-sm rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-hidden text-slate-900 font-mono"
                   />
+                  <EmailVerificationSection email={email} />
                   <p className="text-[11px] text-slate-500 mt-1">
-                    Email ini akan digunakan untuk menerima kode verifikasi OTP saat ganti kata sandi dan login.
+                    Perubahan email memerlukan password saat ini. Email baru belum terverifikasi.
                   </p>
                 </div>
 
-                <div className="sm:col-span-2">
-                  <label className="block text-xs font-semibold text-slate-700 mb-1 flex items-center justify-between">
-                    <span>Kata Sandi Baru (Opsional)</span>
-                    <span className="text-[11px] font-normal text-slate-500">Kosongkan jika tidak ingin mengubah</span>
-                  </label>
-                  <div className="relative">
-                    <input
-                      type={showPassword ? 'text' : 'password'}
-                      value={newPassword}
-                      onChange={(e) => setNewPassword(e.target.value)}
-                      placeholder="Masukkan kata sandi baru (minimal 6 karakter)"
-                      className="w-full px-3.5 py-2 pr-10 text-sm rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-hidden text-slate-900 font-mono"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 p-1 cursor-pointer"
-                      title={showPassword ? 'Sembunyikan sandi' : 'Tampilkan sandi'}
-                    >
-                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                  </div>
-                  <p className="text-[11px] text-slate-500 mt-1">
-                    Jika diisi, kata sandi login mahasiswa akan otomatis tersinkronisasi ke seluruh database sistem.
-                  </p>
-                </div>
+                {email.trim().toLowerCase() !== (currentUser.email || '').toLowerCase() && <div className="sm:col-span-2">
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Password saat ini untuk mengubah email
+                <input aria-label="Password konfirmasi perubahan email" type="password" autoComplete="current-password" required value={emailPassword} onChange={event => setEmailPassword(event.target.value)} className="frost-input w-full" />
+              </label>
+              <p className="text-xs text-slate-500 mt-1">Email baru ditandai belum terverifikasi. OTP tidak diperlukan.</p>
+            </div>}
               </div>
 
               {/* Bottom Buttons */}
@@ -554,7 +536,7 @@ export const MahasiswaProfileModal: React.FC<MahasiswaProfileModalProps> = ({
                   className="text-xs text-blue-600 hover:text-blue-800 font-semibold flex items-center gap-1.5 transition cursor-pointer"
                 >
                   <KeyRound className="w-3.5 h-3.5" />
-                  <span>Ingin ubah via OTP? Buka Tab Password</span>
+                  <span>Ingin ubah kata sandi? Buka Tab Password</span>
                 </button>
 
                 <div className="flex items-center gap-2.5">
@@ -566,7 +548,7 @@ export const MahasiswaProfileModal: React.FC<MahasiswaProfileModalProps> = ({
                     Tutup
                   </button>
                   <button
-                    type="submit"
+                    type="submit" disabled={isSaving}
                     className="px-5 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 active:bg-blue-800 rounded-lg transition flex items-center gap-1.5 shadow-xs cursor-pointer"
                   >
                     <Check className="w-4 h-4" />
@@ -580,11 +562,6 @@ export const MahasiswaProfileModal: React.FC<MahasiswaProfileModalProps> = ({
             <div className="space-y-4">
               <ChangePasswordOtpSection
                 currentUser={currentUser}
-                overrideEmail={email}
-                onEmailUpdated={(updatedEm) => setEmail(updatedEm)}
-                onPasswordChanged={(newPwd) => {
-                  setNewPassword('');
-                }}
               />
             </div>
           ) : (

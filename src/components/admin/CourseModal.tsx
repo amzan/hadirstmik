@@ -89,7 +89,8 @@ export const CourseModal: React.FC<CourseModalProps> = ({
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
+    try {
     e.preventDefault();
     setErrorMsg('');
 
@@ -130,12 +131,13 @@ export const CourseModal: React.FC<CourseModalProps> = ({
     };
 
     if (editingCourse && onUpdate) {
-      onUpdate(editingCourse.id, payload);
+      await onUpdate(editingCourse.id, payload);
     } else {
-      onSave(payload);
+      await onSave(payload);
     }
 
     onClose();
+    } catch(error) { window.dispatchEvent(new CustomEvent('hadir-api-error',{detail:error instanceof Error?error.message:'Permintaan gagal.'})); } finally {  }
   };
 
   if (!isOpen) return null;

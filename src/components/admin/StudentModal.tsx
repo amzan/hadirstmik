@@ -4,7 +4,7 @@ import { isStudentInRombel, getStudentRombelList } from '../../data/initialData'
 import {
   X, UserPlus, Users, BookOpen, Calendar, Clock,
   CheckCircle2, AlertCircle, AlertTriangle, Sparkles, Building2,
-  Check, Plus, Trash2, Shield, Info, Minus, RefreshCw, Eye, EyeOff, KeyRound
+  Check, Plus, Trash2, Shield, Info, Minus, RefreshCw
 } from 'lucide-react';
 
 interface StudentModalProps {
@@ -38,22 +38,20 @@ export const StudentModal: React.FC<StudentModalProps> = ({
   const [customRombelInput, setCustomRombelInput] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
-  const [studentPassword, setStudentPassword] = useState('');
-  const [showStudentPassword, setShowStudentPassword] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
   // Collect all unique rombels from existing rombels, students, schedules + defaults
   const allAvailableRombels = useMemo(() => {
     const set = new Set<string>(DEFAULT_ROMBELS);
     existingRombels.forEach(r => {
-      if (r.code) set.add(r.code.trim().toUpperCase());
+      if (r.code) set.add(getStudentRombelList(r.code)[0]);
     });
     existingStudents.forEach(s => {
       const list = s.rombels && s.rombels.length > 0 ? s.rombels : getStudentRombelList(s.rombel);
-      list.forEach(r => set.add(r));
+      getStudentRombelList(list).forEach(r => set.add(r));
     });
     schedules.forEach(s => {
-      const parts = s.rombel ? s.rombel.split(/[,;&/]+/).map(p => p.trim()).filter(Boolean) : [];
+      const parts = s.rombel ? getStudentRombelList(s.rombel) : [];
       parts.forEach(p => set.add(p));
     });
     return Array.from(set).sort();
@@ -70,11 +68,10 @@ export const StudentModal: React.FC<StudentModalProps> = ({
       const list = editingStudent.rombels && editingStudent.rombels.length > 0
         ? editingStudent.rombels
         : getStudentRombelList(editingStudent.rombel);
-      setSelectedRombels(list.length > 0 ? list : ['TI 3']);
+      setSelectedRombels(list.length > 0 ? getStudentRombelList(list) : ['TI 3']);
       setExcludedScheduleIds(editingStudent.excludedScheduleIds || []);
       setEmail(editingStudent.email || '');
       setPhone(editingStudent.phone || '');
-      setStudentPassword(editingStudent.password || '');
     } else {
       setNim('');
       setName('');
@@ -83,9 +80,7 @@ export const StudentModal: React.FC<StudentModalProps> = ({
       setExcludedScheduleIds([]);
       setEmail('');
       setPhone('');
-      setStudentPassword('');
     }
-    setShowStudentPassword(false);
     setCustomRombelInput('');
     setErrorMsg('');
   }, [isOpen, editingStudent]);
@@ -187,7 +182,8 @@ export const StudentModal: React.FC<StudentModalProps> = ({
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
+    try {
     e.preventDefault();
     setErrorMsg('');
 
@@ -220,21 +216,20 @@ export const StudentModal: React.FC<StudentModalProps> = ({
 
     const finalEmail = email.trim() || `${cleanNim.toLowerCase()}@student.stmik-arungbinang.ac.id`;
 
-    onSave({
+    await onSave({
       nim: cleanNim,
       name: cleanName,
       prodi,
       rombel: selectedRombels.join(', '),
       rombels: selectedRombels,
       email: finalEmail,
-      phone: phone.trim() || undefined,
-      password: studentPassword.trim() || editingStudent?.password || undefined,
-      excludedScheduleIds: excludedScheduleIds.length > 0
+      phone: phone.trim() || undefined,      excludedScheduleIds: excludedScheduleIds.length > 0
         ? excludedScheduleIds.filter(id => linkedSchedules.some(s => s.id === id))
         : undefined,
     });
 
     onClose();
+    } catch(error) { window.dispatchEvent(new CustomEvent('hadir-api-error',{detail:error instanceof Error?error.message:'Permintaan gagal.'})); } finally {  }
   };
 
   return (
@@ -584,10 +579,12 @@ export const StudentModal: React.FC<StudentModalProps> = ({
               <input
                 type="email"
                 value={email}
+                readOnly={!!editingStudent}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="nim@student.stmik-arungbinang.ac.id"
                 className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs sm:text-sm text-slate-900 focus:bg-white focus:outline-none focus:border-indigo-600 transition"
               />
+              {editingStudent && <p className="text-xs text-slate-500 mt-1">Ubah email melalui panel Email dan Aktivasi Akun di Kelola Pengguna.</p>}
             </div>
 
             <div>
@@ -598,7 +595,7 @@ export const StudentModal: React.FC<StudentModalProps> = ({
                 type="tel"
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
-                placeholder="081234567890"
+                placeholder=""
                 className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs sm:text-sm text-slate-900 focus:bg-white focus:outline-none focus:border-indigo-600 transition"
               />
             </div>
@@ -606,31 +603,8 @@ export const StudentModal: React.FC<StudentModalProps> = ({
 
           {/* Kata Sandi Akun Mahasiswa */}
           <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1.5 flex items-center justify-between">
-              <span>Kata Sandi Akun Mahasiswa (Opsional)</span>
-              <span className="text-[11px] font-normal text-slate-500">
-                {editingStudent ? 'Kosongkan jika tetap menggunakan kata sandi saat ini' : 'Default: pass123'}
-              </span>
-            </label>
-            <div className="relative">
-              <input
-                type={showStudentPassword ? 'text' : 'password'}
-                value={studentPassword}
-                onChange={(e) => setStudentPassword(e.target.value)}
-                placeholder={editingStudent ? 'Masukkan kata sandi baru untuk akun mahasiswa ini' : 'pass123'}
-                className="w-full px-3.5 py-2.5 pr-10 bg-slate-50 border border-slate-300 rounded-xl text-xs sm:text-sm text-slate-900 focus:bg-white focus:outline-none focus:border-indigo-600 transition font-mono"
-              />
-              <button
-                type="button"
-                onClick={() => setShowStudentPassword(!showStudentPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 p-1 cursor-pointer"
-                title={showStudentPassword ? 'Sembunyikan sandi' : 'Tampilkan sandi'}
-              >
-                {showStudentPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              </button>
-            </div>
             <p className="text-[11px] text-slate-500 mt-1">
-              Perubahan email dan kata sandi otomatis disinkronkan ke akun login mahasiswa dan seluruh database presensi.
+              Aktivasi dan reset password mahasiswa tersedia pada panel Email dan Aktivasi Akun di Kelola Pengguna.
             </p>
           </div>
 

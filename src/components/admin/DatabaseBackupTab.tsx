@@ -1,3 +1,4 @@
+import { downloadServerBackup } from '../../utils/serverBackup';
 import React, { useState, useRef } from 'react';
 import { useAttendance } from '../../context/AttendanceContext';
 import {
@@ -6,7 +7,7 @@ import {
   validateAndParseBackupFile,
   calculateDatabaseSizeEstimate,
   formatBytes,
-  getLatestMasterBackup,
+  createDatabaseBackupObject,
 } from '../../utils/databaseBackupService';
 import { DatabaseBackup, DatabaseSnapshot } from '../../types/attendance';
 import { BulkExcelImportModal } from './BulkExcelImportModal';
@@ -65,26 +66,28 @@ export const DatabaseBackupTab: React.FC<DatabaseBackupTabProps> = ({
 
   // Current database statistics
   const currentBackupData = getDatabaseBackupData();
-  const masterBackupObj = getLatestMasterBackup();
+  const masterBackupObj = createDatabaseBackupObject(currentBackupData, currentUser);
 
-  const handleExecuteRestoreMaster = () => {
+  const handleExecuteRestoreMaster = async () => {
+    try {
     setIsRestoring(true);
     setRestoreErrorMsg('');
     setRestoreSuccessMsg('');
     setIsConfirmMasterOpen(false);
 
-    setTimeout(() => {
-      const res = restoreMasterDatabase();
+    await (async () => {
+      const res = await restoreMasterDatabase();
       setIsRestoring(false);
       if (res.success) {
         setRestoreSuccessMsg(
-          `Berhasil memulihkan basis data ke Master Backup Terkini! 17 Akun, 64 Mahasiswa, 35 Jadwal, 29 Matakuliah, 84 Presensi telah aktif. Matakuliah Algoritma dan Pemrograman tetap milik Dosen Ammar Fauzan, S.Pd., M.Kom. (Rabu 18.00 WIB, 2 SKS).`
+          res.message
         );
         window.scrollTo({ top: 0, behavior: 'smooth' });
       } else {
         setRestoreErrorMsg(res.message);
       }
-    }, 400);
+    })();
+    } catch(error) { setParseError(error instanceof Error ? error.message : 'Permintaan gagal.'); } finally { setIsRestoring(false); }
   };
   const estimatedSizeBytes = calculateDatabaseSizeEstimate(currentBackupData);
   const totalEntities =
@@ -135,15 +138,16 @@ export const DatabaseBackupTab: React.FC<DatabaseBackupTabProps> = ({
   };
 
   // Execute restore from uploaded JSON file
-  const handleExecuteRestore = () => {
+  const handleExecuteRestore = async () => {
+    try {
     if (!parsedBackup) return;
 
     setIsRestoring(true);
     setRestoreErrorMsg('');
     setRestoreSuccessMsg('');
 
-    setTimeout(() => {
-      const result = restoreDatabase(parsedBackup.data);
+    await (async () => {
+      const result = await restoreDatabase(parsedBackup.data);
       setIsRestoring(false);
 
       if (result.success) {
@@ -156,17 +160,19 @@ export const DatabaseBackupTab: React.FC<DatabaseBackupTabProps> = ({
       } else {
         setRestoreErrorMsg(result.message);
       }
-    }, 400);
+    })();
+    } catch(error) { setParseError(error instanceof Error ? error.message : 'Permintaan gagal.'); } finally { setIsRestoring(false); }
   };
 
   // Create manual local snapshot
-  const handleCreateSnapshot = (e: React.FormEvent) => {
+  const handleCreateSnapshot = async (e: React.FormEvent) => {
+    try {
     e.preventDefault();
     setIsCreatingSnapshot(true);
     setSnapshotSuccessMsg('');
 
-    setTimeout(() => {
-      const newSnap = createSnapshot(
+    await (async () => {
+      const newSnap = await createSnapshot(
         snapshotName.trim() || undefined,
         snapshotNote.trim() || undefined
       );
@@ -175,12 +181,14 @@ export const DatabaseBackupTab: React.FC<DatabaseBackupTabProps> = ({
       setSnapshotNote('');
       setSnapshotSuccessMsg(`Snapshot "${newSnap.name}" berhasil dibuat dan disimpan di browser!`);
       setTimeout(() => setSnapshotSuccessMsg(''), 4000);
-    }, 300);
+    })();
+    } catch(error) { setParseError(error instanceof Error ? error.message : 'Permintaan gagal.'); } finally { setIsCreatingSnapshot(false); }
   };
 
   // Restore from snapshot
-  const handleConfirmRestoreSnapshot = (snap: DatabaseSnapshot) => {
-    const res = restoreSnapshot(snap.id);
+  const handleConfirmRestoreSnapshot = async (snap: DatabaseSnapshot) => {
+    try {
+    const res = await restoreSnapshot(snap.id);
     if (res.success) {
       setRestoreSuccessMsg(`Snapshot "${snap.name}" berhasil dipulihkan!`);
       setSnapshotToRestore(null);
@@ -188,6 +196,7 @@ export const DatabaseBackupTab: React.FC<DatabaseBackupTabProps> = ({
     } else {
       setRestoreErrorMsg(res.message);
     }
+    } catch(error) { setParseError(error instanceof Error ? error.message : 'Permintaan gagal.'); } finally {  }
   };
 
   return (
@@ -219,7 +228,7 @@ export const DatabaseBackupTab: React.FC<DatabaseBackupTabProps> = ({
               <span>Impor Excel Massal</span>
             </button>
             <button
-              onClick={() => downloadDatabaseBackupFile(currentBackupData, currentUser)}
+              onClick={() => downloadServerBackup().catch(error => window.dispatchEvent(new CustomEvent('hadir-api-error',{detail:error.message})))}
               className="px-4 py-2.5 rounded-xl bg-white text-indigo-950 font-bold text-xs sm:text-sm flex items-center gap-2 hover:bg-indigo-50 active:bg-indigo-100 transition shadow-sm cursor-pointer"
               title="Unduh file backup JSON lengkap saat ini"
             >
@@ -261,9 +270,9 @@ export const DatabaseBackupTab: React.FC<DatabaseBackupTabProps> = ({
             <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-900 text-xs flex items-start gap-2.5 mt-2">
               <Shield className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
               <div>
-                <strong className="font-semibold block text-amber-950">Proteksi Pengecualian Matakuliah Algoritma dan Pemrograman:</strong>
+                <strong className="font-semibold block text-amber-950">Perlindungan perubahan data:</strong>
                 <span className="leading-relaxed">
-                  Sesuai instruksi akademik terbaru, database mata kuliah <strong>Algoritma dan Pemrograman (MKMI0105)</strong> telah dikecualikan dari kepemilikan Bu Fitri dan secara permanen ditetapkan menjadi milik <strong>Dosen Ammar Fauzan, S.Pd., M.Kom.</strong> dengan jadwal <strong>hari Rabu pukul 18.00 WIB (2 SKS)</strong>.
+                  Pemulihan memvalidasi relasi dan menolak penimpaan data yang telah berubah. Snapshot tersimpan privat di server.
                 </span>
               </div>
             </div>
@@ -278,7 +287,7 @@ export const DatabaseBackupTab: React.FC<DatabaseBackupTabProps> = ({
               <span>Pulihkan ke Master Terkini</span>
             </button>
             <button
-              onClick={() => downloadDatabaseBackupFile(masterBackupObj.data, currentUser)}
+              onClick={() => downloadServerBackup().catch(error => window.dispatchEvent(new CustomEvent('hadir-api-error',{detail:error.message})))}
               className="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs flex items-center justify-center gap-2 transition cursor-pointer"
             >
               <Download className="w-4 h-4 text-slate-600" />
@@ -654,7 +663,7 @@ export const DatabaseBackupTab: React.FC<DatabaseBackupTabProps> = ({
 
                 <div className="flex items-center gap-2 shrink-0 pt-2 md:pt-0 border-t md:border-t-0 border-slate-100">
                   <button
-                    onClick={() => downloadDatabaseBackupFile(snap.data, currentUser)}
+                    onClick={() => downloadServerBackup(snap.id).catch(error => window.dispatchEvent(new CustomEvent('hadir-api-error',{detail:error.message})))}
                     className="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
                     title="Unduh snapshot ini sebagai file JSON"
                   >
@@ -693,7 +702,7 @@ export const DatabaseBackupTab: React.FC<DatabaseBackupTabProps> = ({
             <span>Zona Pengaturan Awal (Default Reset)</span>
           </h4>
           <p className="text-xs text-slate-500 mt-0.5 max-w-xl">
-            Ingin mengembalikan seluruh database ke template resmi awal kampus? Pastikan Anda telah mengunduh cadangan terlebih dahulu sebelum melakukan reset.
+            Reset data memerlukan kebijakan retensi dan snapshot tujuan yang disetujui. Cadangan dapat diunduh tanpa menghapus data.
           </p>
         </div>
 
@@ -765,7 +774,7 @@ export const DatabaseBackupTab: React.FC<DatabaseBackupTabProps> = ({
                 Terapkan Master Backup Database Terkini?
               </h3>
               <p className="text-xs text-slate-600 mt-1 leading-relaxed">
-                Tindakan ini akan menyinkronkan seluruh database aplikasi ke master database paling baru dengan proteksi pengecualian mata kuliah.
+                Tindakan ini memulihkan data yang belum ada dari snapshot server terbaru. Konflik data harus direkonsiliasi terlebih dahulu.
               </p>
             </div>
 

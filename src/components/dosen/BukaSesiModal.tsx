@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { ScheduleItem } from '../../types/attendance';
 import { useAttendance } from '../../context/AttendanceContext';
+import { sessionsForSchedule } from '../../utils/sessionHistory';
 import { X, Calendar, BookOpen, ClipboardCheck, QrCode, UserCheck, AlertCircle } from 'lucide-react';
 
 interface BukaSesiModalProps {
@@ -35,7 +36,6 @@ export const BukaSesiModal: React.FC<BukaSesiModalProps> = ({
   const {
     sessions,
     createSession,
-    setScheduleMeetingDate,
     getMeetingDateForSchedule,
   } = useAttendance();
 
@@ -44,6 +44,11 @@ export const BukaSesiModal: React.FC<BukaSesiModalProps> = ({
   const [topic, setTopic] = useState<string>('');
   const [selectedEvaluation, setSelectedEvaluation] = useState<string>(EVALUATION_OPTIONS[0]);
   const [customEvaluation, setCustomEvaluation] = useState<string>('');
+  const [startTime, setStartTime] = useState('');
+  const [endTime, setEndTime] = useState('');
+  const [errorMessage, setErrorMessage] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const submittingRef = useRef(false);
 
   // Sync state whenever schedule or modal opens
   useEffect(() => {
@@ -51,15 +56,15 @@ export const BukaSesiModal: React.FC<BukaSesiModalProps> = ({
 
     const mNum = initialMeetingNumber || 1;
     setMeetingNumber(mNum);
+    setStartTime(schedule.startTime);
+    setEndTime(schedule.endTime);
+    setErrorMessage('');
 
     const mDate = getMeetingDateForSchedule(schedule, mNum);
     setDate(mDate);
 
     // Check if session for this meeting already exists to prefill topic / evaluation
-    const existing = sessions.find(
-      s => (s.scheduleId === schedule.id || (s.courseCode === schedule.courseCode && s.rombel === schedule.rombel)) &&
-           s.meetingNumber === mNum
-    );
+    const existing = sessionsForSchedule(schedule, sessions).find(s => s.meetingNumber === mNum);
 
     if (existing) {
       setTopic(existing.topic || `Perkuliahan Pertemuan ${mNum}: ${schedule.courseName}`);
@@ -80,20 +85,18 @@ export const BukaSesiModal: React.FC<BukaSesiModalProps> = ({
       setSelectedEvaluation(mNum === 8 ? 'Ujian Tengah Semester (UTS)' : mNum === 16 ? 'Ujian Akhir Semester (UAS)' : EVALUATION_OPTIONS[0]);
       setCustomEvaluation('');
     }
-  }, [schedule, isOpen, initialMeetingNumber, sessions, getMeetingDateForSchedule]);
+  }, [schedule?.id, isOpen, initialMeetingNumber]);
 
   if (!schedule || !isOpen) return null;
 
   // Handler when meeting number changes in dropdown
   const handleMeetingChange = (newMeetingNum: number) => {
     setMeetingNumber(newMeetingNum);
+    setErrorMessage('');
     const mDate = getMeetingDateForSchedule(schedule, newMeetingNum);
     setDate(mDate);
 
-    const existing = sessions.find(
-      s => (s.scheduleId === schedule.id || (s.courseCode === schedule.courseCode && s.rombel === schedule.rombel)) &&
-           s.meetingNumber === newMeetingNum
-    );
+    const existing = sessionsForSchedule(schedule, sessions).find(s => s.meetingNumber === newMeetingNum);
 
     if (existing) {
       setTopic(existing.topic || `Perkuliahan Pertemuan ${newMeetingNum}: ${schedule.courseName}`);
@@ -128,17 +131,27 @@ export const BukaSesiModal: React.FC<BukaSesiModalProps> = ({
     meetingNumber <= 16 &&
     date.trim() &&
     topic.trim() &&
+    startTime && endTime && startTime < endTime &&
     finalEvaluation.trim()
   );
 
-  const handleStartSession = (method: 'MANUAL' | 'QR') => {
-    if (!isFormValid) return;
+  const handleStartSession = async (method: 'MANUAL' | 'QR') => {
+    if (!isFormValid || submittingRef.current) return;
+    submittingRef.current = true; setSubmitting(true); setErrorMessage('');
+    try {
+    const existing = sessionsForSchedule(schedule, sessions).find(s => s.meetingNumber === meetingNumber);
+    if (existing) {
+      if (!existing.isOpen) throw new Error('Pertemuan sudah selesai. Pilih pertemuan berikutnya atau minta admin melakukan Reset Sesi.');
+      onClose();
+      if (method === 'MANUAL') onOpenManual(existing.id); else onOpenQr(existing.id);
+      return;
+    }
 
     // 1. Sync meeting date into schedule mapping
-    setScheduleMeetingDate(schedule.id, meetingNumber, date);
+    // The backend commits the meeting date together with the new session.
 
     // 2. Create or update session
-    const newSession = createSession({
+    const newSession = await createSession({
       scheduleId: schedule.id,
       courseCode: schedule.courseCode,
       courseName: schedule.courseName,
@@ -148,6 +161,8 @@ export const BukaSesiModal: React.FC<BukaSesiModalProps> = ({
       topic: topic.trim(),
       evaluationMethod: finalEvaluation,
       date,
+      startTime,
+      endTime,
       isDynamicQr: method === 'QR',
     });
 
@@ -158,6 +173,7 @@ export const BukaSesiModal: React.FC<BukaSesiModalProps> = ({
     } else {
       onOpenQr(newSession.id);
     }
+    } catch(error) { setErrorMessage(error instanceof Error ? error.message : 'Permintaan gagal.'); } finally { submittingRef.current = false; setSubmitting(false); }
   };
 
   return (
@@ -233,6 +249,8 @@ export const BukaSesiModal: React.FC<BukaSesiModalProps> = ({
             </p>
           </div>
 
+          <div className="grid grid-cols-2 gap-3"><label>Jam mulai (WIB)<input aria-label="Jam mulai sesi" type="time" required value={startTime} onChange={e=>setStartTime(e.target.value)} className="w-full p-2 border rounded-lg" /></label><label>Jam selesai (WIB)<input aria-label="Jam selesai sesi" type="time" required value={endTime} onChange={e=>setEndTime(e.target.value)} className="w-full p-2 border rounded-lg" /></label></div>
+          {errorMessage && <p role="alert" className="text-rose-700">{errorMessage}</p>}
           {/* Field 3: Topik Pembahasan */}
           <div>
             <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
@@ -306,7 +324,7 @@ export const BukaSesiModal: React.FC<BukaSesiModalProps> = ({
             {/* Tombol Presensi Manual */}
             <button
               type="button"
-              disabled={!isFormValid}
+              disabled={!isFormValid || submitting}
               onClick={() => handleStartSession('MANUAL')}
               className={`flex-1 sm:flex-initial px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold flex items-center justify-center gap-2 transition cursor-pointer border ${
                 isFormValid
@@ -322,7 +340,7 @@ export const BukaSesiModal: React.FC<BukaSesiModalProps> = ({
             {/* Tombol Presensi QR */}
             <button
               type="button"
-              disabled={!isFormValid}
+              disabled={!isFormValid || submitting}
               onClick={() => handleStartSession('QR')}
               className={`flex-1 sm:flex-initial px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold flex items-center justify-center gap-2 transition cursor-pointer shadow-xs ${
                 isFormValid

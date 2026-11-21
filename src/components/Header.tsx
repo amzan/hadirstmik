@@ -59,7 +59,7 @@ export const Header: React.FC<HeaderProps> = ({
 
   return (
     <header className="sticky top-0 z-40 bg-white border-b border-[#dddddd] w-full">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4 sm:gap-8 w-full">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 min-h-16 py-2 sm:py-0 flex flex-wrap sm:flex-nowrap items-center justify-between gap-2 sm:gap-8 w-full">
         {/* Zone 1: Brand Lockup (Single-Line Wordmark) */}
         <div className="flex items-center gap-3 min-w-0 shrink-0">
           <div className="w-9 h-9 rounded-[6px] bg-[#fafafa] border border-[#dddddd] flex items-center justify-center overflow-hidden shrink-0">
@@ -173,7 +173,7 @@ export const Header: React.FC<HeaderProps> = ({
                 title="Konfigurasi Profil Mahasiswa & Ganti Sandi"
               >
                 <span className="w-5 h-5 rounded-full bg-[#E4F2FF] text-[#0080FF] text-[10px] font-semibold flex items-center justify-center shrink-0">
-                  {getInitials(currentUser.name)}
+                  {currentUser.avatarUrl ? <img src={currentUser.avatarUrl} alt="Foto profil" className="w-full h-full rounded-full object-cover" /> : getInitials(currentUser.name)}
                 </span>
                 <span className="truncate font-medium text-[#222222]">{currentUser.name}</span>
                 <UserCog className="w-3.5 h-3.5 text-[#777777] hidden sm:block shrink-0" />
@@ -218,7 +218,7 @@ export const Header: React.FC<HeaderProps> = ({
                 title="Konfigurasi Profil Dosen & Ganti Sandi"
               >
                 <span className="w-5 h-5 rounded-full bg-[#eeeeee] text-[#222222] text-[10px] font-semibold flex items-center justify-center shrink-0">
-                  {getInitials(currentUser.name)}
+                  {currentUser.avatarUrl ? <img src={currentUser.avatarUrl} alt="Foto profil" className="w-full h-full rounded-full object-cover" /> : getInitials(currentUser.name)}
                 </span>
                 <span className="truncate font-medium text-[#222222]">{currentUser.name}</span>
                 <UserCog className="w-3.5 h-3.5 text-[#777777] hidden sm:block shrink-0" />
@@ -263,7 +263,7 @@ export const Header: React.FC<HeaderProps> = ({
                 title="Konfigurasi Profil Administrator BAAK & Ganti Sandi"
               >
                 <span className="w-5 h-5 rounded-full bg-[#E4F2FF] text-[#0080FF] text-[10px] font-semibold flex items-center justify-center shrink-0">
-                  {getInitials(currentUser.name)}
+                  {currentUser.avatarUrl ? <img src={currentUser.avatarUrl} alt="Foto profil" className="w-full h-full rounded-full object-cover" /> : getInitials(currentUser.name)}
                 </span>
                 <span className="truncate font-medium text-[#222222]">{currentUser.name}</span>
                 <UserCog className="w-3.5 h-3.5 text-[#777777] hidden sm:block shrink-0" />

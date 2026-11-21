@@ -1,6 +1,11 @@
+import { summarizeAttendancePolicy } from '../../../shared/attendance-policy.mjs';
+import type { Student, ProgramStudi } from '../../types/attendance';
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAttendance } from '../../context/AttendanceContext';
 import { generateAttendancePDF, generateTeachingLogPDF, ReportConfig, TeachingLogConfig } from '../../utils/pdfGenerator';
+import { fetchReportSnapshot } from '../../utils/reportSnapshot';
+import { sessionsForSchedule } from '../../utils/sessionHistory';
+import { getSessionAttendanceRows } from '../../utils/sessionAttendance';
 import { generateAttendanceExcel, generateTeachingLogExcel } from '../../utils/excelGenerator';
 import {
   X, FileText, FileSpreadsheet, BookOpen, ClipboardList, Calendar,
@@ -22,20 +27,22 @@ export const ReportExportModal: React.FC<ReportExportModalProps> = ({
   defaultRombel,
   defaultReportType = 'teachingLog',
 }) => {
-  const { courses, schedules, sessions, records, currentUser, getStudentsForRombel } = useAttendance();
+  const { courses, schedules, sessions, records, currentUser, students } = useAttendance();
 
   const isDosen = currentUser.role === 'dosen';
 
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState('');
   const [activeReportTab, setActiveReportTab] = useState<'teachingLog' | 'attendance'>(defaultReportType);
   const [sessionRangeFilter, setSessionRangeFilter] = useState<'ALL' | 'PRA_UTS' | 'PASCA_UTS' | 'CLOSED_ONLY'>('ALL');
 
   // Strict scope: Lecturer only has access to their assigned teaching schedules & sessions
   const mySchedules = useMemo(() => schedules.filter(
-    s => s.lecturerId === currentUser.id || s.lecturerName.includes(currentUser.name)
+    s => s.lecturerId === currentUser.id
   ), [schedules, currentUser]);
 
   const mySessions = useMemo(() => sessions.filter(
-    s => s.lecturerId === currentUser.id || s.lecturerName.includes(currentUser.name)
+    s => s.lecturerId === currentUser.id
   ), [sessions, currentUser]);
 
   // Build complete allowed courses list (from courses + schedules + sessions so no course is ever missing)
@@ -87,7 +94,7 @@ export const ReportExportModal: React.FC<ReportExportModalProps> = ({
     });
 
     const list = Array.from(map.values());
-    return list.length > 0 ? list : courses;
+    return list;
   }, [isDosen, courses, mySchedules, mySessions, currentUser.prodi]);
 
   const [selectedCourseCode, setSelectedCourseCode] = useState<string>(
@@ -102,26 +109,22 @@ export const ReportExportModal: React.FC<ReportExportModalProps> = ({
     const targetSchedules = isDosen
       ? mySchedules.filter(sch => sch.courseCode === selectedCourseCode)
       : schedules.filter(sch => sch.courseCode === selectedCourseCode);
-    const targetSessions = isDosen
-      ? mySessions.filter(ses => ses.courseCode === selectedCourseCode)
-      : sessions.filter(ses => ses.courseCode === selectedCourseCode);
 
     targetSchedules.forEach(sch => {
       if (sch.rombel) rombelSet.add(sch.rombel);
     });
-    targetSessions.forEach(ses => {
-      if (ses.rombel) rombelSet.add(ses.rombel);
-    });
 
     const arr = Array.from(rombelSet);
-    return arr.length > 0 ? arr : ['TI 3'];
+    return arr;
   }, [isDosen, mySchedules, schedules, mySessions, sessions, selectedCourseCode]);
 
   const [selectedRombel, setSelectedRombel] = useState<string>(
     defaultRombel && safeAvailableRombels.includes(defaultRombel)
       ? defaultRombel
-      : safeAvailableRombels[0] || 'TI 3'
+      : safeAvailableRombels[0] || ''
   );
+
+  const [selectedScheduleId, setSelectedScheduleId] = useState('');
 
   const [selectedMonth, setSelectedMonth] = useState<string>('Semester Ganjil Penuh (16 Pertemuan)');
 
@@ -141,15 +144,9 @@ export const ReportExportModal: React.FC<ReportExportModalProps> = ({
       const targetSchedules = isDosen
         ? mySchedules.filter(sch => sch.courseCode === initialCourse)
         : schedules.filter(sch => sch.courseCode === initialCourse);
-      const targetSessions = isDosen
-        ? mySessions.filter(ses => ses.courseCode === initialCourse)
-        : sessions.filter(ses => ses.courseCode === initialCourse);
 
       targetSchedules.forEach(sch => {
         if (sch.rombel) rombelSet.add(sch.rombel);
-      });
-      targetSessions.forEach(ses => {
-        if (ses.rombel) rombelSet.add(ses.rombel);
       });
       const rombels = Array.from(rombelSet);
 
@@ -169,15 +166,9 @@ export const ReportExportModal: React.FC<ReportExportModalProps> = ({
     const targetSchedules = isDosen
       ? mySchedules.filter(sch => sch.courseCode === newCourseCode)
       : schedules.filter(sch => sch.courseCode === newCourseCode);
-    const targetSessions = isDosen
-      ? mySessions.filter(ses => ses.courseCode === newCourseCode)
-      : sessions.filter(ses => ses.courseCode === newCourseCode);
 
     targetSchedules.forEach(sch => {
       if (sch.rombel) rombelSet.add(sch.rombel);
-    });
-    targetSessions.forEach(ses => {
-      if (ses.rombel) rombelSet.add(ses.rombel);
     });
     const newRombels = Array.from(rombelSet);
 
@@ -190,16 +181,15 @@ export const ReportExportModal: React.FC<ReportExportModalProps> = ({
 
   const currentCourse = safeAllowedCourses.find(c => c.code === selectedCourseCode) || safeAllowedCourses[0];
 
-  const matchingSchedule = schedules.find(
-    s => s.courseCode === selectedCourseCode && (s.rombel === selectedRombel || s.rombel.includes(selectedRombel))
-  );
+  if (!currentCourse) return null;
 
-  // All sessions for this course and rombel
-  const allCourseSessions = sessions
-    .filter(
-      s => s.courseCode === selectedCourseCode && (s.rombel === selectedRombel || s.rombel.includes(selectedRombel))
-    )
-    .sort((a, b) => a.meetingNumber - b.meetingNumber);
+  const matchingSchedules = (isDosen ? mySchedules : schedules).filter(
+    schedule => schedule.courseCode === selectedCourseCode && schedule.rombel === selectedRombel
+  );
+  const matchingSchedule = matchingSchedules.find(schedule => schedule.id === selectedScheduleId) || matchingSchedules[0];
+  const allCourseSessions = matchingSchedule
+    ? sessionsForSchedule(matchingSchedule, sessions).sort((a, b) => a.meetingNumber - b.meetingNumber)
+    : [];
 
   // Filtered sessions based on classification filter
   const courseSessions = allCourseSessions.filter(s => {
@@ -210,17 +200,19 @@ export const ReportExportModal: React.FC<ReportExportModalProps> = ({
   });
 
   // Strictly filter students enrolled in this course and rombel
-  const rombelStudents = getStudentsForRombel(selectedRombel);
+  const roster = new Map<string, ReturnType<typeof getSessionAttendanceRows>[number]>();
+  courseSessions.forEach(session => getSessionAttendanceRows(session, students, records).forEach(row => roster.set(row.nim, row)));
+  const rombelStudents: Student[] = Array.from(roster.values()).map(row => ({
+    ...(students.find(student => student.nim === row.nim) || { prodi: currentCourse.prodi as ProgramStudi, rombel: selectedRombel, email: '' }),
+    nim: row.nim, name: row.name,
+  }));
   const totalEnrolled = rombelStudents.length;
 
   // Calculate attendance rate for the selected course & sessions
   const courseSessionIds = courseSessions.map(s => s.id);
   const courseRecords = records.filter(r => courseSessionIds.includes(r.sessionId));
-  const hadirRecordsCount = courseRecords.filter(r => r.status === 'HADIR').length;
-  const totalExpected = courseSessions.length * Math.max(totalEnrolled, 1);
-  const courseAttendancePercentage = courseSessions.length > 0
-    ? Math.min(100, Math.round((hadirRecordsCount / totalExpected) * 100))
-    : 0;
+  const coursePolicy = summarizeAttendancePolicy(allCourseSessions, records, undefined, { sessionIds: courseSessionIds });
+  const courseAttendancePercentage = coursePolicy.percentage;
 
   const rangeLabel =
     sessionRangeFilter === 'PRA_UTS'
@@ -258,33 +250,35 @@ export const ReportExportModal: React.FC<ReportExportModalProps> = ({
     academicYear: '2026/2027',
   };
 
-  // Export handlers
-  const handleExportAttendancePDF = () => {
-    generateAttendancePDF(attendanceConfig, rombelStudents, courseSessions, records);
-  };
-
-  const handleExportAttendanceExcel = () => {
-    generateAttendanceExcel(attendanceConfig, rombelStudents, courseSessions, records);
-  };
-
-  const handleExportTeachingLogPDF = () => {
-    generateTeachingLogPDF(
-      teachingLogConfig,
-      matchingSchedule?.meetingDates,
-      courseSessions,
-      records,
-      totalEnrolled
-    );
-  };
-
-  const handleExportTeachingLogExcel = () => {
-    generateTeachingLogExcel(
-      teachingLogConfig,
-      matchingSchedule?.meetingDates,
-      courseSessions,
-      records,
-      totalEnrolled
-    );
+  // Each export uses one committed server snapshot, never the preview state.
+  const exportReport = async (kind: 'attendancePDF' | 'attendanceExcel' | 'teachingPDF' | 'teachingExcel') => {
+    if (exporting) return;
+    setExporting(true); setExportError('');
+    try {
+      const snapshot = await fetchReportSnapshot();
+      const schedule = snapshot.schedules.find(value => value.id === matchingSchedule?.id);
+      if (!schedule) throw new Error('Jadwal tidak lagi tersedia. Muat ulang laporan.');
+      const freshCourse = snapshot.courses.find(value => value.code === schedule.courseCode);
+      const freshSessions = sessionsForSchedule(schedule, snapshot.sessions).filter(value => {
+        if (sessionRangeFilter === 'PRA_UTS') return value.meetingNumber <= 8;
+        if (sessionRangeFilter === 'PASCA_UTS') return value.meetingNumber >= 9;
+        if (sessionRangeFilter === 'CLOSED_ONLY') return !value.isOpen;
+        return true;
+      }).sort((a, b) => a.meetingNumber - b.meetingNumber);
+      const roster = new Map<string, ReturnType<typeof getSessionAttendanceRows>[number]>();
+      freshSessions.forEach(session => getSessionAttendanceRows(session, snapshot.students, snapshot.records).forEach(row => roster.set(row.nim, row)));
+      const freshStudents: Student[] = Array.from(roster.values()).map(row => ({
+        ...(snapshot.students.find(value => value.nim === row.nim) || { prodi: schedule.prodi as ProgramStudi, rombel: schedule.rombel, email: '' }), nim: row.nim, name: row.name,
+      }));
+      const config = { ...attendanceConfig, courseCode: schedule.courseCode, courseName: freshCourse?.name || schedule.courseName,
+        lecturerName: schedule.lecturerName, sks: schedule.sks, prodi: schedule.prodi, rombel: schedule.rombel, generatedAt: snapshot.generatedAt, policySessions: snapshot.sessions, policyRecords: snapshot.records };
+      const logConfig = { ...teachingLogConfig, ...config, room: schedule.room, day: schedule.day, timeRange: `${schedule.startTime}-${schedule.endTime}` };
+      if (kind === 'attendancePDF') generateAttendancePDF(config, freshStudents, freshSessions, snapshot.records);
+      if (kind === 'attendanceExcel') generateAttendanceExcel(config, freshStudents, freshSessions, snapshot.records);
+      if (kind === 'teachingPDF') generateTeachingLogPDF(logConfig, schedule.meetingDates, freshSessions, snapshot.records, freshStudents.length);
+      if (kind === 'teachingExcel') generateTeachingLogExcel(logConfig, schedule.meetingDates, freshSessions, snapshot.records, freshStudents.length);
+    } catch (error) { setExportError(error instanceof Error ? error.message : 'Data terbaru gagal dimuat. Ekspor dibatalkan.'); }
+    finally { setExporting(false); }
   };
 
   return (
@@ -467,6 +461,15 @@ export const ReportExportModal: React.FC<ReportExportModalProps> = ({
             </div>
           )}
 
+          {matchingSchedules.length > 1 && (
+            <label className="block text-xs font-bold text-slate-700">
+              Jadwal laporan
+              <select value={matchingSchedule?.id || ''} onChange={event => setSelectedScheduleId(event.target.value)} className="block w-full mt-1 border border-slate-300 rounded-lg p-2">
+                {matchingSchedules.map(schedule => <option key={schedule.id} value={schedule.id}>{schedule.day}, {schedule.startTime} - {schedule.endTime} | {schedule.lecturerName} | {schedule.room}</option>)}
+              </select>
+            </label>
+          )}
+
           {/* Ringkasan & Preview Klasifikasi Riwayat Sesi */}
           <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-2.5">
@@ -489,7 +492,7 @@ export const ReportExportModal: React.FC<ReportExportModalProps> = ({
                   {totalEnrolled} Mhs
                 </span>
                 <span className="px-2.5 py-1 bg-emerald-50 border border-emerald-200 rounded-lg text-emerald-800 font-bold">
-                  {courseAttendancePercentage}% Hadir
+                  {coursePolicy.periodUnresolved ? 'Periode belum terverifikasi' : `${courseAttendancePercentage}% Hadir efektif`}
                 </span>
               </div>
             </div>
@@ -501,7 +504,8 @@ export const ReportExportModal: React.FC<ReportExportModalProps> = ({
             ) : (
               <div className="max-h-36 overflow-y-auto divide-y divide-slate-200/70 bg-white border border-slate-200 rounded-lg">
                 {courseSessions.map((ses) => {
-                  const sesHadir = records.filter(r => r.sessionId === ses.id && r.status === 'HADIR').length;
+                  const sessionPolicy = summarizeAttendancePolicy(allCourseSessions, records, undefined, { sessionIds: [ses.id] });
+                  const sesHadir = sessionPolicy.hadir;
                   return (
                     <div key={ses.id} className="px-3 py-2 flex items-center justify-between text-xs hover:bg-slate-50">
                       <div className="flex items-center gap-2 min-w-0">
@@ -515,7 +519,7 @@ export const ReportExportModal: React.FC<ReportExportModalProps> = ({
                       <div className="flex items-center gap-2.5 shrink-0 ml-2 text-slate-600">
                         <span className="font-mono text-[11px]">{ses.date}</span>
                         <span className="font-bold text-slate-900">
-                          {sesHadir}/{totalEnrolled} Hadir
+                          {sesHadir}/{sessionPolicy.totalSessions} Hadir efektif
                         </span>
                         <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
                           ses.isOpen
@@ -532,13 +536,15 @@ export const ReportExportModal: React.FC<ReportExportModalProps> = ({
             )}
           </div>
 
+          {exportError && <p role="alert" className="text-sm text-rose-700">{exportError}</p>}
+          {exporting && <p role="status">Mengambil snapshot terbaru...</p>}
           {/* Action Download Buttons */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
             {activeReportTab === 'teachingLog' ? (
               <>
                 <button
                   type="button"
-                  onClick={handleExportTeachingLogPDF}
+                  disabled={exporting} onClick={() => void exportReport('teachingPDF')}
                   className="py-3 px-4 bg-slate-900 hover:bg-slate-800 active:bg-black text-white rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition cursor-pointer shadow-xs"
                 >
                   <FileText className="w-4 h-4 text-emerald-400" />
@@ -547,7 +553,7 @@ export const ReportExportModal: React.FC<ReportExportModalProps> = ({
 
                 <button
                   type="button"
-                  onClick={handleExportTeachingLogExcel}
+                  disabled={exporting} onClick={() => void exportReport('teachingExcel')}
                   className="py-3 px-4 bg-white hover:bg-slate-50 text-slate-800 border border-slate-300 rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition cursor-pointer shadow-xs"
                 >
                   <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
@@ -558,7 +564,7 @@ export const ReportExportModal: React.FC<ReportExportModalProps> = ({
               <>
                 <button
                   type="button"
-                  onClick={handleExportAttendancePDF}
+                  disabled={exporting} onClick={() => void exportReport('attendancePDF')}
                   className="py-3 px-4 bg-slate-900 hover:bg-slate-800 active:bg-black text-white rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition cursor-pointer shadow-xs"
                 >
                   <FileText className="w-4 h-4 text-emerald-400" />
@@ -567,7 +573,7 @@ export const ReportExportModal: React.FC<ReportExportModalProps> = ({
 
                 <button
                   type="button"
-                  onClick={handleExportAttendanceExcel}
+                  disabled={exporting} onClick={() => void exportReport('attendanceExcel')}
                   className="py-3 px-4 bg-white hover:bg-slate-50 text-slate-800 border border-slate-300 rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition cursor-pointer shadow-xs"
                 >
                   <FileSpreadsheet className="w-4 h-4 text-emerald-600" />

@@ -1,3 +1,4 @@
+import { downloadServerBackup } from '../../utils/serverBackup';
 import React, { useState, useRef } from 'react';
 import { useAttendance } from '../../context/AttendanceContext';
 import {
@@ -6,7 +7,7 @@ import {
   validateAndParseBackupFile,
   calculateDatabaseSizeEstimate,
   formatBytes,
-  getLatestMasterBackup,
+  createDatabaseBackupObject,
 } from '../../utils/databaseBackupService';
 import { DatabaseBackup } from '../../types/attendance';
 import {
@@ -55,27 +56,30 @@ export const DatabaseBackupModal: React.FC<DatabaseBackupModalProps> = ({
 
   if (!isOpen) return null;
 
-  const masterBackupObj = getLatestMasterBackup();
 
-  const handleRestoreMaster = () => {
+
+  const handleRestoreMaster = async () => {
+    try {
     setIsRestoring(true);
     setParseError('');
     setRestoreSuccess('');
 
-    setTimeout(() => {
-      const res = restoreMasterDatabase();
+    await (async () => {
+      const res = await restoreMasterDatabase();
       setIsRestoring(false);
       if (res.success) {
         setRestoreSuccess(
-          'Berhasil memulihkan ke Master Database Terkini! (Algoritma dan Pemrograman tetap milik Dosen Ammar Fauzan, Rabu 18.00 WIB, 2 SKS).'
+          res.message
         );
       } else {
         setParseError(res.message);
       }
-    }, 400);
+    })();
+    } catch(error) { setParseError(error instanceof Error ? error.message : 'Permintaan gagal.'); } finally { setIsRestoring(false); }
   };
 
   const currentData = getDatabaseBackupData();
+  const masterBackupObj = createDatabaseBackupObject(currentData,currentUser);
   const estimatedSize = calculateDatabaseSizeEstimate(currentData);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -111,14 +115,15 @@ export const DatabaseBackupModal: React.FC<DatabaseBackupModalProps> = ({
     reader.readAsText(file);
   };
 
-  const handleExecuteRestore = () => {
+  const handleExecuteRestore = async () => {
+    try {
     if (!parsedBackup) return;
     setIsRestoring(true);
     setParseError('');
     setRestoreSuccess('');
 
-    setTimeout(() => {
-      const res = restoreDatabase(parsedBackup.data);
+    await (async () => {
+      const res = await restoreDatabase(parsedBackup.data);
       setIsRestoring(false);
       if (res.success) {
         setRestoreSuccess(res.message);
@@ -128,15 +133,18 @@ export const DatabaseBackupModal: React.FC<DatabaseBackupModalProps> = ({
       } else {
         setParseError(res.message);
       }
-    }, 400);
+    })();
+    } catch(error) { setParseError(error instanceof Error ? error.message : 'Permintaan gagal.'); } finally { setIsRestoring(false); }
   };
 
-  const handleCreateQuickSnapshot = (e: React.FormEvent) => {
+  const handleCreateQuickSnapshot = async (e: React.FormEvent) => {
+    try {
     e.preventDefault();
-    const snap = createSnapshot(snapshotLabel.trim() || undefined);
+    const snap = await createSnapshot(snapshotLabel.trim() || undefined);
     setSnapshotSuccess(`Snapshot "${snap.name}" berhasil disimpan di browser!`);
     setSnapshotLabel('');
     setTimeout(() => setSnapshotSuccess(''), 3500);
+    } catch(error) { setParseError(error instanceof Error ? error.message : 'Permintaan gagal.'); } finally {  }
   };
 
   return (
@@ -243,7 +251,7 @@ export const DatabaseBackupModal: React.FC<DatabaseBackupModalProps> = ({
               <div className="space-y-3 pt-2">
                 <button
                   type="button"
-                  onClick={() => downloadDatabaseBackupFile(currentData, currentUser)}
+                  onClick={() => downloadServerBackup().catch(error => window.dispatchEvent(new CustomEvent('hadir-api-error',{detail:error.message})))}
                   className="w-full p-4 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-sm flex items-center justify-between transition cursor-pointer shadow-sm group"
                 >
                   <div className="flex items-center gap-3 text-left">
@@ -317,7 +325,7 @@ export const DatabaseBackupModal: React.FC<DatabaseBackupModalProps> = ({
                   </span>
                 </div>
                 <p className="text-[11px] text-slate-600 leading-relaxed">
-                  Muat basis data teranyar (17 Akun, 64 Mahasiswa, 35 Jadwal, 84 Presensi). Matakuliah Algoritma dan Pemrograman tetap dialihkan ke <strong>Dosen Ammar Fauzan, S.Pd., M.Kom.</strong> (Rabu 18.00 WIB, 2 SKS).
+                  Pulihkan snapshot server terbaru. Konflik perubahan ditolak; data sumber tetap tersimpan.
                 </p>
                 <div className="pt-1 flex gap-2">
                   <button
@@ -331,7 +339,7 @@ export const DatabaseBackupModal: React.FC<DatabaseBackupModalProps> = ({
                   </button>
                   <button
                     type="button"
-                    onClick={() => downloadDatabaseBackupFile(masterBackupObj.data, currentUser)}
+                    onClick={() => downloadServerBackup().catch(error => window.dispatchEvent(new CustomEvent('hadir-api-error',{detail:error.message})))}
                     className="py-2 px-3 rounded-lg bg-white border border-indigo-200 text-indigo-900 hover:bg-indigo-50 text-xs font-semibold flex items-center justify-center gap-1 transition cursor-pointer"
                     title="Unduh master backup JSON"
                   >
@@ -453,7 +461,7 @@ export const DatabaseBackupModal: React.FC<DatabaseBackupModalProps> = ({
                 <div className="pt-2 text-center">
                   <button
                     type="button"
-                    onClick={() => {
+                    onClick={async () => {
                       onClose();
                       onNavigateToTab();
                     }}
@@ -473,7 +481,7 @@ export const DatabaseBackupModal: React.FC<DatabaseBackupModalProps> = ({
           {onNavigateToTab ? (
             <button
               type="button"
-              onClick={() => {
+              onClick={async () => {
                 onClose();
                 onNavigateToTab();
               }}

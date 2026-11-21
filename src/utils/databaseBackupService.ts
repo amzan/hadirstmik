@@ -1,15 +1,8 @@
 import * as XLSX from 'xlsx';
 import {
   CAMPUS_INFO,
-  INITIAL_USERS,
-  INITIAL_STUDENTS,
-  INITIAL_COURSES,
-  INITIAL_SCHEDULES,
-  INITIAL_SESSIONS,
-  INITIAL_RECORDS,
-  INITIAL_LEAVE_REQUESTS,
-} from '../data/initialData';
-import {
+} from '../data/initialData.ts';
+import type {
   DatabaseBackup,
   DatabaseBackupData,
   DatabaseSnapshot,
@@ -28,110 +21,19 @@ export const DEFAULT_MASTER_SNAPSHOT_ID = 'snap-master-terbaru';
  * dan TIDAK PERNAH tertimpa kembali ke Bu Fitri (Fitriani Dwi Ratna Sari) saat pemulihan / sinkronisasi backup.
  */
 export function sanitizeAlgoritmaCourseAndSchedules(data: DatabaseBackupData): DatabaseBackupData {
-  if (!data) return data;
-
-  const sanitizedCourses = (data.courses || []).map(c => {
-    if (c.code === 'MKMI0105' || c.name.toLowerCase().includes('algoritma dan pemrograman')) {
-      return {
-        ...c,
-        name: 'Algoritma dan Pemrograman',
-        sks: 2,
-        defaultLecturerId: 'dosen-10',
-        defaultLecturerName: 'Ammar Fauzan, S.Pd., M.Kom.',
-      };
-    }
-    return c;
-  });
-
-  const sanitizedSchedules: ScheduleItem[] = (data.schedules || []).map(s => {
-    if (s.courseCode === 'MKMI0105' || s.courseName.toLowerCase().includes('algoritma dan pemrograman')) {
-      return {
-        ...s,
-        day: 'Rabu' as DayOfWeek,
-        startTime: '18:00',
-        endTime: '19:40',
-        sks: 2,
-        lecturerId: 'dosen-10',
-        lecturerName: 'Ammar Fauzan, S.Pd., M.Kom.',
-      };
-    }
-    return s;
-  });
-
-  const sanitizedSessions = (data.sessions || []).map(sess => {
-    if (sess.courseCode === 'MKMI0105' || sess.courseName.toLowerCase().includes('algoritma dan pemrograman')) {
-      return {
-        ...sess,
-        startTime: '18:00',
-        endTime: '19:40',
-        lecturerId: 'dosen-10',
-        lecturerName: 'Ammar Fauzan, S.Pd., M.Kom.',
-      };
-    }
-    return sess;
-  });
-
-  return {
-    ...data,
-    courses: sanitizedCourses,
-    schedules: sanitizedSchedules,
-    sessions: sanitizedSessions,
-  };
+  return data;
 }
 
 /**
  * Mengambil master backup database terbaru resmi kampus yang telah dikecualikan
  * (Algoritma dan Pemrograman milik Ammar Fauzan, Rabu 18.00 WIB, 2 SKS)
  */
-export function getLatestMasterBackup(): DatabaseBackup {
-  const sanitized = sanitizeAlgoritmaCourseAndSchedules({
-    users: INITIAL_USERS,
-    students: INITIAL_STUDENTS,
-    courses: INITIAL_COURSES,
-    schedules: INITIAL_SCHEDULES,
-    sessions: INITIAL_SESSIONS,
-    records: INITIAL_RECORDS,
-    leaveRequests: INITIAL_LEAVE_REQUESTS,
-  });
 
-  return {
-    version: BACKUP_FORMAT_VERSION,
-    timestamp: '2026-11-19T08:15:45.213Z',
-    appName: 'Sistem Presensi QR Kampus - STMIK PGRI Arungbinang Kebumen',
-    campusName: CAMPUS_INFO.name,
-    semester: CAMPUS_INFO.semester,
-    exportedBy: {
-      userId: 'user-admin-1',
-      userName: 'Administrator Akademik (BAAK)',
-      role: 'admin',
-    },
-    summary: {
-      totalUsers: sanitized.users?.length || 0,
-      totalStudents: sanitized.students?.length || 0,
-      totalCourses: sanitized.courses?.length || 0,
-      totalSchedules: sanitized.schedules?.length || 0,
-      totalSessions: sanitized.sessions?.length || 0,
-      totalRecords: sanitized.records?.length || 0,
-      totalLeaveRequests: sanitized.leaveRequests?.length || 0,
-    },
-    data: sanitized,
-  };
-}
 
 /**
  * Snapshot master bawaan teranyar yang disematkan ke browser
  */
-export function getDefaultMasterSnapshot(): DatabaseSnapshot {
-  const backup = getLatestMasterBackup();
-  return {
-    id: DEFAULT_MASTER_SNAPSHOT_ID,
-    name: 'Master Backup Database Terkini (Resmi BAAK)',
-    note: 'Database paling mutakhir (19 Nov 2026 15:15 WIB): 78 Akun Pengguna, 66 Mahasiswa, 29 Mata Kuliah, 34 Jadwal, 30 Sesi Presensi, 643 Rekaman Kehadiran, 3 Pengajuan Izin.',
-    timestamp: '2026-11-19T08:15:45.213Z',
-    summary: backup.summary,
-    data: backup.data,
-  };
-}
+
 
 /**
  * Membuat payload cadangan terstruktur lengkap untuk basis data aplikasi
@@ -161,6 +63,7 @@ export function createDatabaseBackupObject(
       totalLeaveRequests: data.leaveRequests?.length || 0,
     },
     data: {
+      legacyReviewSource: data.legacyReviewSource,
       users: data.users || [],
       students: data.students || [],
       courses: data.courses || [],
@@ -168,6 +71,7 @@ export function createDatabaseBackupObject(
       sessions: data.sessions || [],
       records: data.records || [],
       leaveRequests: data.leaveRequests || [],
+      rombels: data.rombels || [],
     },
   };
 }
@@ -239,7 +143,7 @@ export function downloadDatabaseExcelFile(data: DatabaseBackupData): void {
       No_HP: u.phone || '-',
       Prodi: u.prodi || '-',
       Rombel: u.rombel || '-',
-      Status_Password: u.password ? 'Kustom (Telah Diganti)' : 'Default',
+      Status_Password: u.hasCredentials ? 'Aktif' : 'Perlu aktivasi',
     }));
     const wsUsers = XLSX.utils.json_to_sheet(userRows);
     XLSX.utils.book_append_sheet(wb, wsUsers, 'Pengguna');
@@ -393,7 +297,7 @@ export function validateAndParseBackupFile(fileContent: string): {
       payloadData = parsed;
     }
 
-    const { users, students, courses, schedules, sessions, records, leaveRequests } = payloadData;
+    const { users, students, courses, schedules, sessions, records, leaveRequests, rombels } = payloadData;
 
     // Minimal harus memiliki salah satu dari tabel pokok
     const hasCoreData =
@@ -426,6 +330,7 @@ export function validateAndParseBackupFile(fileContent: string): {
         totalLeaveRequests: Array.isArray(leaveRequests) ? leaveRequests.length : 0,
       },
       data: sanitizeAlgoritmaCourseAndSchedules({
+        legacyReviewSource: payloadData.legacyReviewSource,
         users: Array.isArray(users) ? users : [],
         students: Array.isArray(students) ? students : [],
         courses: Array.isArray(courses) ? courses : [],
@@ -433,6 +338,7 @@ export function validateAndParseBackupFile(fileContent: string): {
         sessions: Array.isArray(sessions) ? sessions : [],
         records: Array.isArray(records) ? records : [],
         leaveRequests: Array.isArray(leaveRequests) ? leaveRequests : [],
+        rombels: Array.isArray(rombels) ? rombels : [],
       }),
     };
 
@@ -473,72 +379,11 @@ export function formatBytes(bytes: number): string {
 // ==========================================
 
 export function loadLocalSnapshots(): DatabaseSnapshot[] {
-  const latestMaster = getDefaultMasterSnapshot();
-  try {
-    const saved = localStorage.getItem(STORAGE_KEY_SNAPSHOTS);
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        const sanitizedList = parsed
-          .filter(snap => snap.id !== DEFAULT_MASTER_SNAPSHOT_ID)
-          .map(snap => ({
-            ...snap,
-            data: sanitizeAlgoritmaCourseAndSchedules(snap.data || {}),
-          }));
-        return [latestMaster, ...sanitizedList];
-      }
-    }
-  } catch {}
-  return [latestMaster];
+  try { const raw=localStorage.getItem(STORAGE_KEY_SNAPSHOTS);const snapshots=raw?JSON.parse(raw):[];return Array.isArray(snapshots)?snapshots:[]; } catch{return [];}
 }
 
-export function saveLocalSnapshot(
-  name: string,
-  note: string | undefined,
-  data: DatabaseBackupData
-): DatabaseSnapshot {
-  const snapshots = loadLocalSnapshots().filter(s => s.id !== DEFAULT_MASTER_SNAPSHOT_ID);
-  const newSnapshot: DatabaseSnapshot = {
-    id: `snap-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    name: name || `Snapshot ${new Date().toLocaleDateString('id-ID')}`,
-    note: note || '',
-    timestamp: new Date().toISOString(),
-    summary: {
-      totalUsers: data.users?.length || 0,
-      totalStudents: data.students?.length || 0,
-      totalCourses: data.courses?.length || 0,
-      totalSchedules: data.schedules?.length || 0,
-      totalSessions: data.sessions?.length || 0,
-      totalRecords: data.records?.length || 0,
-      totalLeaveRequests: data.leaveRequests?.length || 0,
-    },
-    data: {
-      users: [...(data.users || [])],
-      students: [...(data.students || [])],
-      courses: [...(data.courses || [])],
-      schedules: [...(data.schedules || [])],
-      sessions: [...(data.sessions || [])],
-      records: [...(data.records || [])],
-      leaveRequests: [...(data.leaveRequests || [])],
-    },
-  };
-
-  // Simpan maksimal 4 snapshot kustom terbaru dengan proteksi kuota localStorage
-  let candidates = [newSnapshot, ...snapshots.slice(0, 3)];
-  while (candidates.length > 0) {
-    try {
-      localStorage.setItem(STORAGE_KEY_SNAPSHOTS, JSON.stringify(candidates));
-      break;
-    } catch {
-      candidates = candidates.slice(0, candidates.length - 1);
-      if (candidates.length === 0) {
-        try {
-          localStorage.removeItem(STORAGE_KEY_SNAPSHOTS);
-        } catch {}
-      }
-    }
-  }
-  return newSnapshot;
+export function saveLocalSnapshot(name: string, note: string | undefined, data: DatabaseBackupData): DatabaseSnapshot {
+  throw new Error('Gunakan snapshot server. Snapshot browser lama tetap disimpan.');
 }
 
 export function deleteLocalSnapshot(snapshotId: string): DatabaseSnapshot[] {
@@ -549,7 +394,7 @@ export function deleteLocalSnapshot(snapshotId: string): DatabaseSnapshot[] {
   try {
     localStorage.setItem(STORAGE_KEY_SNAPSHOTS, JSON.stringify(updatedCustom));
   } catch {}
-  return [getDefaultMasterSnapshot(), ...updatedCustom];
+  return updatedCustom;
 }
 
 export function clearAllLocalSnapshots(): void {

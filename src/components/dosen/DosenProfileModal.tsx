@@ -1,3 +1,4 @@
+import { EmailVerificationSection } from '../shared/EmailVerificationSection';
 import React, { useState, useEffect, useRef } from 'react';
 import { useAttendance } from '../../context/AttendanceContext';
 import { ProgramStudi, User as AppUser } from '../../types/attendance';
@@ -59,8 +60,8 @@ export const DosenProfileModal: React.FC<DosenProfileModalProps> = ({
   const [academicRank, setAcademicRank] = useState(currentUser.academicRank || 'Lektor');
   const [prodi, setProdi] = useState<ProgramStudi>(currentUser.prodi || 'Teknologi Informasi');
   const [email, setEmail] = useState(currentUser.email || '');
-  const [newPassword, setNewPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
+  const [emailPassword, setEmailPassword] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
   const [phone, setPhone] = useState(currentUser.phone || '');
   const [officeRoom, setOfficeRoom] = useState(currentUser.officeRoom || 'Gedung A Lt. 2 R. Dosen');
   const [avatarUrl, setAvatarUrl] = useState(currentUser.avatarUrl || AVATAR_PRESETS[0].url);
@@ -82,8 +83,7 @@ export const DosenProfileModal: React.FC<DosenProfileModalProps> = ({
       setAcademicRank(currentUser.academicRank || 'Lektor');
       setProdi(currentUser.prodi || 'Teknologi Informasi');
       setEmail(currentUser.email || '');
-      setNewPassword('');
-      setShowPassword(false);
+      setEmailPassword('');
       setPhone(currentUser.phone || '');
       setOfficeRoom(currentUser.officeRoom || 'Gedung A Lt. 2 R. Dosen');
       setAvatarUrl(currentUser.avatarUrl || AVATAR_PRESETS[0].url);
@@ -94,7 +94,7 @@ export const DosenProfileModal: React.FC<DosenProfileModalProps> = ({
       setShowCustomAvatarInput(false);
       setActiveTab(defaultTab);
     }
-  }, [isOpen, currentUser, defaultTab]);
+  }, [isOpen, currentUser.id, defaultTab]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setUploadError('');
@@ -183,8 +183,11 @@ export const DosenProfileModal: React.FC<DosenProfileModalProps> = ({
     s => s.lecturerId === currentUser.id || s.lecturerName.includes(currentUser.name)
   );
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSaving) return;
+    setIsSaving(true);
+    try {
     setErrorMessage('');
 
     const cleanName = name.trim();
@@ -200,35 +203,31 @@ export const DosenProfileModal: React.FC<DosenProfileModalProps> = ({
       return;
     }
 
-    const payload: Partial<AppUser> = {
+    const payload: Partial<AppUser> & { currentPassword?: string } = {
       name: cleanName,
-      username: cleanNidn,
-      nidn: cleanNidn,
-      title: title.trim(),
-      academicRank: academicRank.trim(),
-      prodi,
       email: email.trim(),
+      ...(email.trim().toLowerCase() !== (currentUser.email || '').toLowerCase() ? { currentPassword: emailPassword } : {}),
       phone: phone.trim(),
       officeRoom: officeRoom.trim(),
       avatarUrl: avatarUrl.trim(),
     };
 
-    if (newPassword.trim()) {
-      if (newPassword.trim().length < 6) {
-        setErrorMessage('Kata sandi baru minimal terdiri dari 6 karakter.');
-        return;
-      }
-      payload.password = newPassword.trim();
+    if (email.trim().toLowerCase() !== (currentUser.email || '').toLowerCase() && !emailPassword) {
+      setErrorMessage('Masukkan password saat ini untuk mengubah email.');
+      return;
     }
 
-    // Update user in context and persist automatically
-    updateUser(currentUser.id, payload);
 
+    // Update user in context and persist automatically
+    await updateUser(currentUser.id, payload);
+
+    setEmailPassword('');
     setSaveSuccess(true);
-    setTimeout(() => {
+    setTimeout(async () => {
       setSaveSuccess(false);
       onClose();
     }, 1200);
+    } catch(error) { setErrorMessage(error instanceof Error ? error.message : 'Permintaan gagal.'); } finally { setIsSaving(false); }
   };
 
   const todayFormatted = new Date().toLocaleDateString('id-ID', {
@@ -288,9 +287,9 @@ export const DosenProfileModal: React.FC<DosenProfileModalProps> = ({
             }`}
           >
             <KeyRound className="w-4 h-4" />
-            <span>Ganti Password (OTP Email)</span>
+            <span>Ganti Password</span>
             <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-700">
-              Resend OTP
+              Tanpa OTP
             </span>
           </button>
           <button
@@ -428,7 +427,7 @@ export const DosenProfileModal: React.FC<DosenProfileModalProps> = ({
                     <button
                       type="button"
                       key={idx}
-                      onClick={() => {
+                      onClick={async () => {
                         setAvatarUrl(p.url);
                         setUploadSuccessInfo('');
                         setUploadError('');
@@ -470,7 +469,7 @@ export const DosenProfileModal: React.FC<DosenProfileModalProps> = ({
                 <input
                   type="text"
                   required
-                  value={name}
+                  aria-label="Nama profil" value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="Contoh: Ammar Fauzan, S.Pd., M.Kom."
                   className="w-full px-3.5 py-2 text-sm rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-hidden font-medium text-slate-900"
@@ -489,7 +488,7 @@ export const DosenProfileModal: React.FC<DosenProfileModalProps> = ({
               <input
                 type="text"
                 required
-                value={nidn}
+                value={nidn} disabled
                 onChange={(e) => setNidn(e.target.value)}
                 placeholder="Contoh: 198711102013011010"
                 className="w-full px-3.5 py-2 text-sm rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-hidden font-mono text-slate-900"
@@ -505,7 +504,7 @@ export const DosenProfileModal: React.FC<DosenProfileModalProps> = ({
                 Program Studi Homebase
               </label>
               <select
-                value={prodi}
+                value={prodi} disabled
                 onChange={(e) => setProdi(e.target.value as ProgramStudi)}
                 className="w-full px-3.5 py-2 text-sm rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-hidden bg-white text-slate-900"
               >
@@ -520,7 +519,7 @@ export const DosenProfileModal: React.FC<DosenProfileModalProps> = ({
                 Jabatan Fungsional Akademik
               </label>
               <select
-                value={academicRank}
+                value={academicRank} disabled
                 onChange={(e) => setAcademicRank(e.target.value)}
                 className="w-full px-3.5 py-2 text-sm rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-hidden bg-white text-slate-900"
               >
@@ -539,7 +538,7 @@ export const DosenProfileModal: React.FC<DosenProfileModalProps> = ({
               </label>
               <input
                 type="text"
-                value={title}
+                value={title} disabled
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder="Contoh: Dosen Tetap / Dosen Wali"
                 className="w-full px-3.5 py-2 text-sm rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-hidden text-slate-900"
@@ -554,11 +553,12 @@ export const DosenProfileModal: React.FC<DosenProfileModalProps> = ({
               <div className="relative">
                 <input
                   type="email"
-                  value={email}
+                  aria-label="Email profil" value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="dosen@stmik-arungbinang.ac.id"
                   className="w-full px-3.5 py-2 text-sm rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-hidden text-slate-900"
                 />
+                  <EmailVerificationSection email={email} />
               </div>
             </div>
 
@@ -569,40 +569,20 @@ export const DosenProfileModal: React.FC<DosenProfileModalProps> = ({
               </label>
               <input
                 type="tel"
-                value={phone}
+                aria-label="Telepon profil" value={phone}
                 onChange={(e) => setPhone(e.target.value)}
-                placeholder="081234567890"
+                placeholder=""
                 className="w-full px-3.5 py-2 text-sm rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-hidden text-slate-900"
               />
             </div>
 
             {/* Kata Sandi Baru (Opsional) */}
-            <div className="sm:col-span-2">
-              <label className="block text-xs font-semibold text-slate-700 mb-1 flex items-center justify-between">
-                <span>Kata Sandi Baru Dosen (Opsional)</span>
-                <span className="text-[11px] font-normal text-slate-500">Kosongkan jika tidak ingin mengubah</span>
+            {email.trim().toLowerCase() !== (currentUser.email || '').toLowerCase() && <div className="sm:col-span-2">
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Password saat ini untuk mengubah email
+                <input aria-label="Password konfirmasi perubahan email" type="password" autoComplete="current-password" required value={emailPassword} onChange={event => setEmailPassword(event.target.value)} className="frost-input w-full" />
               </label>
-              <div className="relative">
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  placeholder="Masukkan kata sandi baru dosen (minimal 6 karakter)"
-                  className="w-full px-3.5 py-2 pr-10 text-sm rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-hidden text-slate-900 font-mono"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 p-1 cursor-pointer"
-                  title={showPassword ? 'Sembunyikan sandi' : 'Tampilkan sandi'}
-                >
-                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-              </div>
-              <p className="text-[11px] text-slate-500 mt-1">
-                Jika diisi, kata sandi login dosen akan langsung tersinkronisasi ke seluruh database sistem.
-              </p>
-            </div>
+              <p className="text-xs text-slate-500 mt-1">Email baru ditandai belum terverifikasi. OTP tidak diperlukan.</p>
+            </div>}
 
             {/* Ruang Kerja / Kantor */}
             <div className="sm:col-span-2">
@@ -691,7 +671,7 @@ export const DosenProfileModal: React.FC<DosenProfileModalProps> = ({
                 Batal
               </button>
               <button
-                type="submit"
+                type="submit" disabled={isSaving}
                 className="px-5 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 active:bg-blue-800 rounded-lg transition flex items-center gap-1.5 shadow-xs cursor-pointer"
               >
                 <Check className="w-4 h-4" />
@@ -705,10 +685,9 @@ export const DosenProfileModal: React.FC<DosenProfileModalProps> = ({
         <div className="space-y-4">
           <ChangePasswordOtpSection
             currentUser={currentUser}
-            overrideEmail={email}
             onEmailUpdated={(newEm) => setEmail(newEm)}
             onPasswordChanged={() => {
-              setNewPassword('');
+              setEmailPassword('');
             }}
           />
         </div>

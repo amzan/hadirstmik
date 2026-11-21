@@ -115,7 +115,7 @@ export const StudentScheduleDetailModal: React.FC<StudentScheduleDetailModalProp
               {onEditStudent && (
                 <button
                   type="button"
-                  onClick={() => {
+                  onClick={async () => {
                     onClose();
                     onEditStudent(student);
                   }}
@@ -251,7 +251,7 @@ export const StudentScheduleDetailModal: React.FC<StudentScheduleDetailModalProp
             {onEditStudent && (
               <button
                 type="button"
-                onClick={() => {
+                onClick={async () => {
                   onClose();
                   onEditStudent(student);
                 }}

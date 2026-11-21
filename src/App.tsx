@@ -1,3 +1,5 @@
+import { InitialPasswordForm } from './components/auth/InitialPasswordForm';
+import { api } from './utils/api';
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
@@ -90,126 +92,17 @@ const AppContent: React.FC = () => {
   const [activeRoleTab, setActiveRoleTab] = useState<'mahasiswa' | 'dosen'>('mahasiswa');
   const [profileModalTab, setProfileModalTab] = useState<'profil' | 'password' | 'sesi'>('profil');
 
-  // Authentication session state:
-  // "Logout otomatis hanya dilakukan dalam waktu 2 jam setelah tidak ada aktivitas user di dalam aplikasi, batalkan logout otomatis saat muat ulang"
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
-    try {
-      const savedAuth = localStorage.getItem(SESSION_KEYS.AUTH_ACTIVE);
-      const savedTime = localStorage.getItem(SESSION_KEYS.LAST_ACTIVITY);
-      const savedUserJson = localStorage.getItem(SESSION_KEYS.ACTIVE_USER);
-      const savedUserId = localStorage.getItem(SESSION_KEYS.CURRENT_USER_ID);
-
-      if (savedAuth === 'true' && savedTime && (savedUserJson || savedUserId)) {
-        const lastTime = Number(savedTime);
-        const now = Date.now();
-        if (!isNaN(lastTime) && (now - lastTime < INACTIVITY_TIMEOUT_MS)) {
-          // Sesi masih valid dalam batas 2 jam: tetap login saat muat ulang (reload)
-          return true;
-        }
-      }
-    } catch {
-      // fallback
-    }
-    return false;
-  });
-
-  // Inactivity tracking state (2-Hour Inactivity Rule)
-  const [lastActivityTimestamp, setLastActivityTimestamp] = useState<number>(() => {
-    try {
-      const savedTime = localStorage.getItem(SESSION_KEYS.LAST_ACTIVITY);
-      if (savedTime) {
-        const parsed = Number(savedTime);
-        if (!isNaN(parsed)) return parsed;
-      }
-    } catch {}
-    return Date.now();
-  });
-
-  const [inactivityNotice, setInactivityNotice] = useState<string | null>(() => {
-    try {
-      const savedAuth = localStorage.getItem(SESSION_KEYS.AUTH_ACTIVE);
-      const savedTime = localStorage.getItem(SESSION_KEYS.LAST_ACTIVITY);
-      if (savedAuth === 'true' && savedTime) {
-        const lastTime = Number(savedTime);
-        const now = Date.now();
-        if (!isNaN(lastTime) && (now - lastTime >= INACTIVITY_TIMEOUT_MS)) {
-          // Melewati 2 jam tanpa aktivitas sebelum reload: bersihkan sesi dan beri tahu pengguna
-          localStorage.removeItem(SESSION_KEYS.AUTH_ACTIVE);
-          localStorage.removeItem(SESSION_KEYS.LAST_ACTIVITY);
-          localStorage.removeItem(SESSION_KEYS.ACTIVE_USER);
-          localStorage.removeItem(SESSION_KEYS.CURRENT_USER_ID);
-          return 'Sesi Anda telah berakhir secara otomatis karena tidak ada aktivitas selama 2 jam. Silakan pilih portal login untuk masuk kembali.';
-        }
-      }
-    } catch {}
-    return null;
-  });
-
-  const lastStorageSyncRef = useRef<number>(Date.now());
-
-  // 2-hour inactivity auto-logout effect (hanya logout jika tidak ada aktivitas selama 2 jam)
+  const isAuthenticated = currentUser.id !== 'guest';
+  const [inactivityNotice, setInactivityNotice] = useState<string | null>(null);
   useEffect(() => {
     if (!isAuthenticated) return;
-
-    const handleUserActivity = () => {
-      const now = Date.now();
-      setLastActivityTimestamp(now);
-      // Sync ke localStorage secara berkala (maksimal sekali per 5 detik)
-      if (now - lastStorageSyncRef.current > 5000) {
-        lastStorageSyncRef.current = now;
-        localStorage.setItem(SESSION_KEYS.LAST_ACTIVITY, String(now));
-      }
-    };
-
-    const trackedEvents = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll', 'click'];
-    trackedEvents.forEach(evt => window.addEventListener(evt, handleUserActivity, { passive: true }));
-
-    const intervalId = setInterval(() => {
-      const now = Date.now();
-      const saved = localStorage.getItem(SESSION_KEYS.LAST_ACTIVITY);
-      const currentLastActivity = saved ? Number(saved) : lastActivityTimestamp;
-
-      if (!isNaN(currentLastActivity) && (now - currentLastActivity >= INACTIVITY_TIMEOUT_MS)) {
-        // Trigger auto-logout due to 2 hours of inactivity
-        setIsAuthenticated(false);
-        logoutSession();
-        setIsRoleSwitcherOpen(false);
-        setIsUnifiedLoginOpen(false);
-        setIsStudentLoginOpen(false);
-        setInactivityNotice(
-          'Sesi Anda telah berakhir secara otomatis karena tidak ada aktivitas selama 2 jam. Silakan pilih portal login untuk masuk kembali.'
-        );
-      }
-    }, 10000); // Check every 10 seconds
-
-    return () => {
-      trackedEvents.forEach(evt => window.removeEventListener(evt, handleUserActivity));
-      clearInterval(intervalId);
-    };
-  }, [isAuthenticated, lastActivityTimestamp, logoutSession]);
-
-  // Periodic device session validation to prevent unauthorized account switching and remote session revocations
-  useEffect(() => {
-    if (!isAuthenticated) return;
-
-    const checkSessionSecurity = () => {
-      const validation = validateCurrentDeviceSession();
-      if (!validation.valid) {
-        setIsAuthenticated(false);
-        setInactivityNotice(validation.reason || 'Sesi perangkat telah diakhiri demi keamanan data.');
-      }
-    };
-
-    const interval = setInterval(checkSessionSecurity, 10000);
-    window.addEventListener('focus', checkSessionSecurity);
-    window.addEventListener('storage', checkSessionSecurity);
-
-    return () => {
-      clearInterval(interval);
-      window.removeEventListener('focus', checkSessionSecurity);
-      window.removeEventListener('storage', checkSessionSecurity);
-    };
-  }, [isAuthenticated, validateCurrentDeviceSession]);
+    let active = false;
+    const markActive = () => { active = true; };
+    const events = ['mousedown','keydown','touchstart','scroll'];
+    events.forEach(name => window.addEventListener(name, markActive, {passive:true}));
+    const interval = setInterval(() => { if(active) { active=false; void api('/auth/heartbeat','POST',{}).catch(()=>{}); } },60000);
+    return () => { clearInterval(interval); events.forEach(name => window.removeEventListener(name,markActive)); };
+  }, [isAuthenticated]);
 
   // Handlers to open each user's login portal / switch role tab
   const handleOpenStudentLogin = useCallback(() => {
@@ -227,38 +120,12 @@ const AppContent: React.FC = () => {
   }, []);
 
   const handleLoginSuccess = useCallback((user: any) => {
-    const now = Date.now();
     setCurrentUser(user);
-    setIsAuthenticated(true);
-    setLastActivityTimestamp(now);
-    lastStorageSyncRef.current = now;
-    localStorage.setItem(SESSION_KEYS.AUTH_ACTIVE, 'true');
-    localStorage.setItem(SESSION_KEYS.LAST_ACTIVITY, String(now));
-    localStorage.setItem(SESSION_KEYS.CURRENT_USER_ID, user.id);
-    localStorage.setItem(SESSION_KEYS.ACTIVE_USER, JSON.stringify(user));
-    // Remember account preferences in browser for convenient re-login
-    if (user.role) {
-      localStorage.setItem(SESSION_KEYS.REMEMBERED_ROLE, user.role);
-    }
-    if (user.username) {
-      localStorage.setItem(SESSION_KEYS.REMEMBERED_USERNAME, user.username);
-    }
-    // Record device session fingerprint to prevent hijacking
-    registerDeviceSession(user);
-    setIsRoleSwitcherOpen(false);
-    setIsUnifiedLoginOpen(false);
-    setIsStudentLoginOpen(false);
-    setInactivityNotice(null);
-  }, [setCurrentUser, registerDeviceSession]);
-
-  const handleLogout = useCallback(() => {
-    setIsAuthenticated(false);
-    logoutSession();
-    setIsRoleSwitcherOpen(false);
-    setIsUnifiedLoginOpen(false);
-    setIsStudentLoginOpen(false);
-    setIsForgotPasswordOpen(false);
-    setInactivityNotice(null);
+    setIsRoleSwitcherOpen(false); setIsUnifiedLoginOpen(false); setIsStudentLoginOpen(false); setInactivityNotice(null);
+  }, [setCurrentUser]);
+  const handleLogout = useCallback(async () => {
+    try { await logoutSession(); setIsRoleSwitcherOpen(false); setIsUnifiedLoginOpen(false); setIsStudentLoginOpen(false); setIsForgotPasswordOpen(false); }
+    catch { setInactivityNotice('Logout belum berhasil. Coba kembali.'); }
   }, [logoutSession]);
 
   const handleOpenForgotPassword = useCallback((role?: 'mahasiswa' | 'dosen' | 'admin', identifier?: string) => {
@@ -266,6 +133,8 @@ const AppContent: React.FC = () => {
     setForgotPasswordIdentifier(identifier || '');
     setIsForgotPasswordOpen(true);
   }, []);
+
+  if (isAuthenticated && currentUser.mustChangePassword) return <InitialPasswordForm />;
 
   // EXCLUSIVE ACCESS: If visiting ~/portaladmin and not yet logged in as Admin, show AdminPortalPage
   if (isAdminRoute && (!isAuthenticated || currentUser.role !== 'admin')) {
@@ -341,12 +210,12 @@ const AppContent: React.FC = () => {
         ) : (
           /* User Dashboard saat berhasil login */
           <>
-            {currentUser.role === 'dosen' && <DosenDashboard />}
+            {currentUser.role === 'dosen' && <DosenDashboard key={currentUser.id} />}
             {currentUser.role === 'mahasiswa' && (
-              <MahasiswaDashboard onOpenProfile={() => setIsMahasiswaProfileOpen(true)} />
+              <MahasiswaDashboard key={currentUser.id} onOpenProfile={() => setIsMahasiswaProfileOpen(true)} />
             )}
             {currentUser.role === 'admin' && (
-              <AdminDashboard onOpenProfile={() => setIsBaakProfileOpen(true)} />
+              <AdminDashboard key={currentUser.id} onOpenProfile={() => setIsBaakProfileOpen(true)} />
             )}
           </>
         )}
@@ -437,6 +306,7 @@ const AppContent: React.FC = () => {
       {/* Modal Konfigurasi Profil Dosen Pengampu */}
       {isAuthenticated && currentUser.role === 'dosen' && (
         <DosenProfileModal
+          key={currentUser.id}
           isOpen={isDosenProfileOpen}
           onClose={() => setIsDosenProfileOpen(false)}
           defaultTab={profileModalTab}
@@ -446,6 +316,7 @@ const AppContent: React.FC = () => {
       {/* Modal Konfigurasi Profil Mahasiswa */}
       {isAuthenticated && currentUser.role === 'mahasiswa' && (
         <MahasiswaProfileModal
+          key={currentUser.id}
           isOpen={isMahasiswaProfileOpen}
           onClose={() => setIsMahasiswaProfileOpen(false)}
           defaultTab={profileModalTab}
@@ -455,6 +326,7 @@ const AppContent: React.FC = () => {
       {/* Modal Konfigurasi Profil Petugas BAAK */}
       {isAuthenticated && currentUser.role === 'admin' && (
         <BaakProfileModal
+          key={currentUser.id}
           isOpen={isBaakProfileOpen}
           onClose={() => setIsBaakProfileOpen(false)}
           defaultTab={profileModalTab}
@@ -496,10 +368,6 @@ class AppErrorBoundary extends React.Component<{ children: React.ReactNode }, Ap
   }
 
   handleRecover = () => {
-    try {
-      localStorage.removeItem('stmik_db_snapshots_v1');
-      localStorage.removeItem('stmik_db_seed_version');
-    } catch {}
     this.setState({ hasError: false, errorMessage: '' });
     window.location.reload();
   };

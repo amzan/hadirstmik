@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { ScheduleItem, Student, Course, Rombel } from '../../types/attendance';
-import { isStudentInRombel, getStudentRombelList } from '../../data/initialData';
+import { isStudentInRombel, getStudentRombelList, getStudentEnrolledSchedules } from '../../data/initialData';
 import {
   X, Users, Calendar, Clock, Building2, BookOpen, Search,
   GraduationCap, CheckCircle2, BookmarkCheck, ExternalLink, ShieldCheck,
@@ -44,14 +44,7 @@ export const ScheduleStudentRosterModal: React.FC<ScheduleStudentRosterModalProp
   // Connected students from Mahasiswa database
   const enrolledStudents = useMemo(() => {
     if (!schedule || !schedule.rombel) return [];
-    const parts = schedule.rombel.split(/[,;&/]+/).map(p => p.trim()).filter(Boolean);
-
-    return students.filter(st => {
-      if (st.excludedScheduleIds && st.excludedScheduleIds.includes(schedule.id)) {
-        return false;
-      }
-      return parts.some(part => isStudentInRombel(part, st.rombel, st.rombels));
-    });
+    return students.filter(st => getStudentEnrolledSchedules(st,[schedule]).length>0);
   }, [schedule, students]);
 
   // Filtered by search
@@ -68,8 +61,8 @@ export const ScheduleStudentRosterModal: React.FC<ScheduleStudentRosterModalProp
   // Matched rombel records
   const matchedRombels = useMemo(() => {
     if (!schedule) return [];
-    const parts = schedule.rombel.split(/[,;&/]+/).map(p => p.trim()).filter(Boolean);
-    return rombels.filter(r => parts.some(p => p.toUpperCase() === r.code.toUpperCase()));
+    const parts = getStudentRombelList(schedule.rombel);
+    return rombels.filter(r => parts.some(p => isStudentInRombel(r.code,p)));
   }, [schedule, rombels]);
 
   if (!isOpen || !schedule) return null;
@@ -229,10 +222,10 @@ export const ScheduleStudentRosterModal: React.FC<ScheduleStudentRosterModalProp
               {/* Action: Re-sync Roster */}
               <button
                 type="button"
-                onClick={() => {
+                onClick={async () => {
                   setIsSyncing(true);
                   if (onSyncRoster) onSyncRoster();
-                  setTimeout(() => {
+                  setTimeout(async () => {
                     setIsSyncing(false);
                     setSyncNotice(`Sinkronisasi berhasil! Seluruh ${enrolledStudents.length} mahasiswa terhubung otomatis dan memiliki akun pengguna aktif.`);
                     setTimeout(() => setSyncNotice(''), 4500);
@@ -250,7 +243,7 @@ export const ScheduleStudentRosterModal: React.FC<ScheduleStudentRosterModalProp
               {onEditSchedule && (
                 <button
                   type="button"
-                  onClick={() => {
+                  onClick={async () => {
                     onClose();
                     onEditSchedule(schedule);
                   }}

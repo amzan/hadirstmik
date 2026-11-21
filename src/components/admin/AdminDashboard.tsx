@@ -1,3 +1,6 @@
+import { summarizeAllAttendancePolicy, CURRENT_ACADEMIC_PERIOD } from '../../../shared/attendance-policy.mjs';
+import { AccountActivationPanel } from './AccountActivationPanel';
+import { LegacyExcludeReview } from './LegacyExcludeReview';
 import React, { useState, useMemo } from 'react';
 import { useAttendance } from '../../context/AttendanceContext';
 import { User, Student, ScheduleItem, Role, DayOfWeek, ProgramStudi, Rombel, Course, AttendanceSession } from '../../types/attendance';
@@ -29,10 +32,11 @@ interface AdminDashboardProps {
   onOpenProfile?: () => void;
 }
 
-export const AdminDashboard: React.FC<AdminDashboardProps> = ({
+const AdminDashboardContent: React.FC<AdminDashboardProps> = ({
   onOpenProfile
 }) => {
   const {
+    demoScope, setDemoScope, loading,
     users,
     students,
     courses,
@@ -75,7 +79,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [isBulkImportOpen, setIsBulkImportOpen] = useState(false);
   const [bulkImportCategory, setBulkImportCategory] = useState<ImportCategory>('all');
 
+  const switchScope = async (enabled: boolean) => {
+    setActiveTab('sessions'); setIsUserModalOpen(false); setIsExportModalOpen(false); setIsBulkImportOpen(false);
+    await setDemoScope(enabled);
+  };
+
   const handleOpenBulkImport = (cat: ImportCategory = 'all') => {
+    if (demoScope) return;
     setBulkImportCategory(cat);
     setIsBulkImportOpen(true);
   };
@@ -92,15 +102,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     isOpen: false,
     title: '',
     message: '',
-    onConfirm: () => {},
+    onConfirm: async () => {},
   });
 
   // Quick Summary Statistics Data for Admin
   const todayCampusSchedules = schedules.filter(s => s.day === activeDay);
   const openSessionsCount = sessions.filter(s => s.isOpen).length;
-  const totalCampusRecords = records.length;
-  const totalCampusHadir = records.filter(r => r.status === 'HADIR').length;
-  const campusAttendanceRate = totalCampusRecords > 0 ? Math.round((totalCampusHadir / totalCampusRecords) * 100) : 93;
+  const campusPolicy = summarizeAllAttendancePolicy(sessions.filter(session => session.academicPeriod === CURRENT_ACADEMIC_PERIOD), records);
+  const totalCampusRecords = campusPolicy.totalSessions;
+  const totalCampusHadir = campusPolicy.hadir;
+  const campusAttendanceRate = campusPolicy.percentage;
 
   // User form state
   const [isUserModalOpen, setIsUserModalOpen] = useState(false);
@@ -108,12 +119,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [userName, setUserName] = useState('');
   const [userUsername, setUserUsername] = useState('');
   const [userEmail, setUserEmail] = useState('');
-  const [userPassword, setUserPassword] = useState('');
-  const [showUserPassword, setShowUserPassword] = useState(false);
   const [userRole, setUserRole] = useState<Role>('dosen');
   const [userTitle, setUserTitle] = useState('');
   const [userRombel, setUserRombel] = useState('');
   const [userProdi, setUserProdi] = useState<ProgramStudi>('Teknologi Informasi');
+  const [userFormError, setUserFormError] = useState('');
+  const [isSavingUser, setIsSavingUser] = useState(false);
   const [searchUser, setSearchUser] = useState('');
   const [userRoleFilter, setUserRoleFilter] = useState<'ALL' | 'mahasiswa' | 'dosen' | 'admin'>('ALL');
   const [syncToastMessage, setSyncToastMessage] = useState<string | null>(null);
@@ -124,16 +135,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   // Open User modal
   const handleOpenUserModal = (user?: User) => {
+    setUserFormError('');
     if (user) {
       setEditingUserId(user.id);
       setUserName(user.name);
-      setUserUsername(user.username);
+      setUserUsername(user.role === 'dosen' ? user.nidn || user.username : user.username);
       setUserEmail(user.email);
       setUserRole(user.role);
       setUserTitle(user.title || '');
       setUserRombel(user.rombel || '');
       setUserProdi(user.prodi || 'Teknologi Informasi');
-      setUserPassword(user.password || '');
     } else {
       setEditingUserId(null);
       setUserName('');
@@ -143,42 +154,53 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       setUserTitle('');
       setUserRombel('');
       setUserProdi('Teknologi Informasi');
-      setUserPassword('');
     }
-    setShowUserPassword(false);
     setIsUserModalOpen(true);
   };
 
-  const handleSaveUser = (e: React.FormEvent) => {
+  const handleSaveUser = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!userName || !userUsername) return;
+    if (isSavingUser) return;
+    setUserFormError('');
+    const username = userUsername.trim();
+    if (!userName.trim() || !username) return;
+    const ownUser = users.find(user => user.id === editingUserId);
+    const normalized = username.toLowerCase();
+    const duplicateUser = users.some(user => user.id !== editingUserId && [user.username, user.nidn, user.loginAlias, user.email].some(value => value?.trim().toLowerCase() === normalized));
+    const duplicateStudent = students.some(student => student.nim.trim().toLowerCase() === normalized && !(ownUser?.role === 'mahasiswa' && student.nim === ownUser.username));
+    if (duplicateUser || duplicateStudent) {
+      setUserFormError('data yang dimasukan sudah ada');
+      return;
+    }
+    setIsSavingUser(true);
+    try {
 
     const userPayload: Partial<User> = {
       name: userName,
-      username: userUsername,
-      email: userEmail || `${userUsername.toLowerCase()}@stmik-arungbinang.ac.id`,
+      ...(!ownUser || username !== (ownUser.role === 'dosen' ? ownUser.nidn || ownUser.username : ownUser.username).trim() ? {
+        username,
+        ...(userRole === 'dosen' ? { nidn: username } : {}),
+      } : {}),
+      email: userEmail.trim() || `${username.toLowerCase()}@stmik-arungbinang.ac.id`,
       role: userRole,
       title: userTitle,
       rombel: userRombel,
       prodi: userProdi,
     };
 
-    if (userPassword.trim()) {
-      userPayload.password = userPassword.trim();
-    }
-
     if (editingUserId) {
-      updateUser(editingUserId, userPayload);
+      await updateUser(editingUserId, userPayload);
     } else {
-      addUser({
+      await addUser({
         ...userPayload,
         name: userName,
-        username: userUsername,
+        username,
         role: userRole,
-        email: userEmail || `${userUsername.toLowerCase()}@stmik-arungbinang.ac.id`,
+        email: userEmail.trim() || `${username.toLowerCase()}@stmik-arungbinang.ac.id`,
       });
     }
     setIsUserModalOpen(false);
+    } catch(error) { setUserFormError(error instanceof Error ? error.message : 'Permintaan gagal.'); } finally { setIsSavingUser(false); }
   };
 
   // Open Schedule modal
@@ -266,7 +288,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   });
 
   // Handler for safely deleting / blocking deletion of Rombel
-  const handleDeleteRombelRequest = (rombel: { code: string; id?: string; isArchived?: boolean }) => {
+  const handleDeleteRombelRequest = async (rombel: { code: string; id?: string; isArchived?: boolean }) => {
+    try {
     const rombelCode = rombel.code;
     const rel = checkRombelRelations(rombelCode);
 
@@ -282,8 +305,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         students: rel.students,
         sessions: rel.sessions,
         isAlreadyArchived: Boolean(rombel.isArchived),
-        onArchive: () => {
-          archiveRombel(rombelCode);
+        onArchive: async () => {
+          await archiveRombel(rombelCode);
         },
       });
     } else {
@@ -294,9 +317,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         message: `Rombel ${rombelCode} tidak memiliki relasi dengan jadwal perkuliahan maupun mahasiswa manapun. Apakah Anda yakin ingin menghapus data ini secara permanen?`,
         confirmLabel: 'Ya, Hapus Permanen',
         isDestructive: true,
-        onConfirm: () => {
+        onConfirm: async () => {
           if (rombel.id) {
-            deleteRombel(rombel.id);
+            await deleteRombel(rombel.id);
           } else {
             const found = rombels.find(r => r.code.toUpperCase() === rombelCode.toUpperCase());
             if (found) deleteRombel(found.id);
@@ -305,10 +328,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         },
       });
     }
+    } catch(error) { window.dispatchEvent(new CustomEvent('hadir-api-error',{detail:error instanceof Error?error.message:'Permintaan gagal.'})); } finally {  }
   };
 
   // Handler for safely deleting / blocking deletion of Course
-  const handleDeleteCourseRequest = (course: Course) => {
+  const handleDeleteCourseRequest = async (course: Course) => {
+    try {
     const rel = checkCourseRelations(course.code);
 
     if (!rel.canDelete) {
@@ -322,8 +347,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         schedules: rel.schedules,
         sessions: rel.sessions,
         isAlreadyArchived: Boolean(course.isArchived),
-        onArchive: () => {
-          archiveCourse(course.id);
+        onArchive: async () => {
+          await archiveCourse(course.id);
         },
       });
     } else {
@@ -334,26 +359,27 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         message: `Mata kuliah ${course.name} (${course.code}) tidak terhubung dengan jadwal perkuliahan aktif maupun sesi presensi manapun. Apakah Anda yakin ingin menghapus data ini secara permanen dari Master Database?`,
         confirmLabel: 'Ya, Hapus Permanen',
         isDestructive: true,
-        onConfirm: () => {
-          deleteCourse(course.id);
+        onConfirm: async () => {
+          await deleteCourse(course.id);
           setConfirmConfig(prev => ({ ...prev, isOpen: false }));
         },
       });
     }
+    } catch(error) { window.dispatchEvent(new CustomEvent('hadir-api-error',{detail:error instanceof Error?error.message:'Permintaan gagal.'})); } finally {  }
   };
 
   // Unique rombels across master rombels, students & schedules
   const allDistinctRombels = useMemo(() => {
     const set = new Set<string>();
     rombels.forEach(r => {
-      if (r.code) set.add(r.code.trim().toUpperCase());
+      if (r.code) set.add(getStudentRombelList(r.code)[0]);
     });
     students.forEach(s => {
       const list = s.rombels && s.rombels.length > 0 ? s.rombels : getStudentRombelList(s.rombel);
-      list.forEach(r => set.add(r));
+      getStudentRombelList(list).forEach(r => set.add(r));
     });
     schedules.forEach(s => {
-      const parts = s.rombel ? s.rombel.split(/[,;&/]+/).map(p => p.trim()).filter(Boolean) : [];
+      const parts = s.rombel ? getStudentRombelList(s.rombel) : [];
       parts.forEach(p => set.add(p));
     });
     return Array.from(set).sort();
@@ -458,11 +484,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   }, [courses, courseStatusFilter, courseProdiFilter, courseSemesterFilter, courseSearch]);
 
   // Helper: get count of students enrolled in a schedule's rombel from database
-  const getScheduleStudentCount = (rombelStr: string) => {
+  const getScheduleStudentCount = (rombelStr: string, schedule?: ScheduleItem) => {
+    if(schedule)return students.filter(st=>getStudentEnrolledSchedules(st,[schedule]).length>0).length;
     if (!rombelStr) return 0;
-    const parts = rombelStr.split(/[,;&/]+/).map(p => p.trim()).filter(Boolean);
+    const parts = getStudentRombelList(rombelStr);
     return students.filter(st => {
-      return parts.some(p => isStudentInRombel(p, st.rombel, st.rombels));
+      return parts.some(p => isStudentInRombel(st.rombel, p, st.rombels));
     }).length;
   };
 
@@ -474,7 +501,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
       // Rombel filter
       if (scheduleRombelFilter !== 'ALL') {
-        const parts = sch.rombel.split(/[,;&/]+/).map(p => p.trim()).filter(Boolean);
+        const parts = getStudentRombelList(sch.rombel);
         const matchRombel = parts.some(p => isStudentInRombel(scheduleRombelFilter, p) || isStudentInRombel(p, scheduleRombelFilter));
         if (!matchRombel) return false;
       }
@@ -514,9 +541,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const totalStudentsEnrolledInSchedules = useMemo(() => {
     const set = new Set<string>();
     schedules.forEach(sch => {
-      const parts = sch.rombel.split(/[,;&/]+/).map(p => p.trim()).filter(Boolean);
+      const parts = getStudentRombelList(sch.rombel);
       students.forEach(st => {
-        if (parts.some(p => isStudentInRombel(p, st.rombel, st.rombels))) {
+        if (getStudentEnrolledSchedules(st,[sch]).length>0) {
           set.add(st.nim);
         }
       });
@@ -539,12 +566,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     });
   }, [users, userRoleFilter, searchUser]);
 
-  const handleSyncStudentAccounts = () => {
-    const res = syncStudentUsers();
+  const handleSyncStudentAccounts = async () => {
+    try {
+    const res = await syncStudentUsers();
     setSyncToastMessage(`Sinkronisasi Berhasil! Seluruh ${res.count} mahasiswa terdaftar kini memiliki akun pengguna aktif untuk Login & Presensi QR (${res.added} akun baru dibuat, ${res.updated} diperbarui).`);
-    setTimeout(() => {
+    setTimeout(async () => {
       setSyncToastMessage(null);
     }, 5000);
+    } catch(error) { window.dispatchEvent(new CustomEvent('hadir-api-error',{detail:error instanceof Error?error.message:'Permintaan gagal.'})); } finally {  }
   };
 
   return (
@@ -614,15 +643,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </button>
 
             <button
-              onClick={() => {
+              onClick={async () => {
                 setConfirmConfig({
                   isOpen: true,
                   title: 'Reset ke Data Default?',
                   message: 'Tindakan ini akan mengembalikan seluruh jadwal, pengguna, sesi presensi, dan data mahasiswa ke kondisi bawaan STMIK PGRI Arungbinang Kebumen.',
                   confirmLabel: 'Ya, Reset Data',
                   isDestructive: true,
-                  onConfirm: () => {
-                    resetToDefaultData();
+                  onConfirm: async () => {
+                    await resetToDefaultData();
                     setConfirmConfig(prev => ({ ...prev, isOpen: false }));
                   },
                 });
@@ -688,7 +717,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               {campusAttendanceRate}%
             </div>
             <p className="text-xs text-[#555555] mt-1.5 tabular-nums">
-              {totalCampusHadir} hadir dari {totalCampusRecords} total rekaman
+              Kehadiran efektif {totalCampusHadir}/{totalCampusRecords}; hadir aktual {campusPolicy.rawHadir}. Toleransi Izin/Sakit masing-masing 2.
             </p>
           </div>
         </div>
@@ -710,8 +739,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         </div>
       </div>
 
+      <div className="frost-callout flex flex-wrap items-center justify-between gap-3" aria-label="Lingkup data admin">
+        <div><strong>{demoScope ? 'DATA DEMO' : 'Data Akademik Reguler'}</strong><p className="text-sm">{demoScope ? 'Hanya akun, jadwal, sesi, dan presensi demo. Tidak masuk laporan akademik reguler.' : 'Data demo dikelola terpisah dari data akademik reguler.'}</p></div>
+        <button type="button" disabled={loading} className="frost-btn-secondary" onClick={() => void switchScope(!demoScope)}>{demoScope ? 'Kembali ke Data Reguler' : 'Data Demo'}</button>
+      </div>
       {/* Admin Nav Tabs */}
-      <div className="frost-tabs">
+      <div className="frost-tabs" aria-label={demoScope ? 'Menu Data Demo' : 'Menu Data Reguler'}>
         <button
           onClick={() => setActiveTab('sessions')}
           className={`frost-tab-btn ${activeTab === 'sessions' ? 'frost-tab-btn-active' : ''}`}
@@ -750,21 +783,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           Master Mata Kuliah ({courses.length})
         </button>
 
-        <button
+        {!demoScope && <button
           onClick={() => setActiveTab('database')}
           className={`frost-tab-btn ${activeTab === 'database' ? 'frost-tab-btn-active' : ''}`}
         >
           <Database className="w-4 h-4" />
           <span>Cadangan & Database</span>
-        </button>
+        </button>}
 
-        <button
+        {!demoScope && <button
           onClick={() => setActiveTab('devices')}
           className={`frost-tab-btn ${activeTab === 'devices' ? 'frost-tab-btn-active' : ''}`}
         >
           <Laptop className="w-4 h-4" />
           <span>Sesi & Perangkat Kampus ({deviceSessions.filter(s => s.status === 'ACTIVE').length})</span>
-        </button>
+        </button>}
       </div>
 
       {/* TAB 0: SESSIONS MONITORING & CONTROL */}
@@ -773,6 +806,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       {/* TAB 1: USERS */}
       {activeTab === 'users' && (
         <div className="frost-card p-6 sm:p-7 space-y-6">
+          <AccountActivationPanel />
           {/* Student Account Sync Status Card */}
           <div className="frost-callout frost-callout-success flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div className="flex items-start gap-3.5">
@@ -925,7 +959,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <td className="py-3.5 px-4">
                       <div className="flex items-center gap-3">
                         <div className="w-8 h-8 rounded-[6px] bg-[#E4F2FF] border border-[#0080FF]/20 text-[#0080FF] font-bold text-xs flex items-center justify-center shrink-0">
-                          {user.name.slice(0, 2).toUpperCase()}
+                          {user.avatarUrl ? <img src={user.avatarUrl} alt={user.name} className="w-full h-full object-cover rounded-[6px]" /> : user.name.slice(0, 2).toUpperCase()}
                         </div>
                         <div className="font-semibold text-[#222222]">{user.name}</div>
                       </div>
@@ -965,13 +999,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     </td>
                     <td className="py-3.5 px-4">
                       <div className="text-[#222222] font-mono text-xs">{user.email || '-'}</div>
-                      {user.password ? (
+                      {user.hasCredentials ? (
                         <span className="inline-flex items-center gap-1 text-[10px] text-[#016F73] font-semibold bg-[#E5F6F5] px-1.5 py-0.5 rounded-[4px] mt-1">
                           Sandi Kustom Aktif
                         </span>
                       ) : (
                         <span className="text-[10px] text-[#777777]">
-                          (Default: {user.role === 'admin' ? 'baak123' : user.role === 'dosen' ? 'dosen123' : 'pass123'})
+                          (Belum diaktivasi)
                         </span>
                       )}
                     </td>
@@ -985,15 +1019,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           <Edit2 className="w-4 h-4" />
                         </button>
                         <button
-                          onClick={() => {
+                          onClick={async () => {
                             setConfirmConfig({
                               isOpen: true,
                               title: 'Hapus Pengguna?',
                               message: `Apakah Anda yakin ingin menghapus akun ${user.name} (${user.username})? Tindakan ini tidak dapat dibatalkan.`,
                               confirmLabel: 'Ya, Hapus',
                               isDestructive: true,
-                              onConfirm: () => {
-                                deleteUser(user.id);
+                              onConfirm: async () => {
+                                await deleteUser(user.id);
                                 setConfirmConfig(prev => ({ ...prev, isOpen: false }));
                               },
                             });
@@ -1175,7 +1209,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   {(scheduleSearch || scheduleRombelFilter !== 'ALL' || scheduleCourseFilter !== 'ALL' || scheduleDayFilter !== 'ALL') && (
                     <button
                       type="button"
-                      onClick={() => {
+                      onClick={async () => {
                         setScheduleSearch('');
                         setScheduleRombelFilter('ALL');
                         setScheduleCourseFilter('ALL');
@@ -1223,7 +1257,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         c => c.code.toLowerCase() === sch.courseCode.toLowerCase() ||
                              c.name.toLowerCase() === sch.courseName.toLowerCase()
                       );
-                      const studentCount = getScheduleStudentCount(sch.rombel);
+                      const studentCount = getScheduleStudentCount(sch.rombel,sch);
 
                       return (
                         <tr key={sch.id} className="hover:bg-[#fafafa] transition">
@@ -1325,15 +1359,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               </button>
                               <button
                                 type="button"
-                                onClick={() => {
+                                onClick={async () => {
                                   setConfirmConfig({
                                     isOpen: true,
                                     title: 'Hapus Jadwal Kuliah?',
                                     message: `Apakah Anda yakin ingin menghapus jadwal ${sch.courseName} (${sch.day}, ${sch.startTime}–${sch.endTime}) untuk rombel ${sch.rombel}?`,
                                     confirmLabel: 'Ya, Hapus Jadwal',
                                     isDestructive: true,
-                                    onConfirm: () => {
-                                      deleteSchedule(sch.id);
+                                    onConfirm: async () => {
+                                      await deleteSchedule(sch.id);
                                       setConfirmConfig(prev => ({ ...prev, isOpen: false }));
                                     },
                                   });
@@ -1773,15 +1807,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
                               <button
                                 type="button"
-                                onClick={() => {
+                                onClick={async () => {
                                   setConfirmConfig({
                                     isOpen: true,
                                     title: 'Hapus Data Mahasiswa?',
                                     message: `Apakah Anda yakin ingin menghapus data mahasiswa ${student.name} (${student.nim})? Akun login mahasiswa dan relasi rombel akan dihapus dari sistem.`,
                                     confirmLabel: 'Ya, Hapus',
                                     isDestructive: true,
-                                    onConfirm: () => {
-                                      deleteStudent(student.nim);
+                                    onConfirm: async () => {
+                                      await deleteStudent(student.nim);
                                       setConfirmConfig(prev => ({ ...prev, isOpen: false }));
                                     },
                                   });
@@ -1960,7 +1994,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           {/* Action Button: Delete Rombel (Protected with Relation Check) */}
                           <button
                             type="button"
-                            onClick={() => {
+                            onClick={async () => {
                               handleDeleteRombelRequest(item.rombelData || {
                                 id: `rombel-${item.rombel.toLowerCase()}`,
                                 code: item.rombel,
@@ -2421,7 +2455,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       )}
 
       {/* TAB 5: DATABASE BACKUP & RESTORE */}
-      {activeTab === 'database' && (
+      {activeTab === 'database' && (<>
+
+        <LegacyExcludeReview />
         <DatabaseBackupTab
           onOpenResetConfirm={() => {
             setConfirmConfig({
@@ -2430,13 +2466,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               message: 'Tindakan ini akan mengembalikan seluruh jadwal, pengguna, sesi presensi, dan data mahasiswa ke kondisi bawaan STMIK PGRI Arungbinang Kebumen.',
               confirmLabel: 'Ya, Reset Data',
               isDestructive: true,
-              onConfirm: () => {
-                resetToDefaultData();
+              onConfirm: async () => {
+                await resetToDefaultData();
                 setConfirmConfig(prev => ({ ...prev, isOpen: false }));
               },
             });
           }}
-        />
+        /></>
       )}
 
       {/* TAB 6: CAMPUS DEVICE SESSIONS & ANTI-HIJACKING */}
@@ -2455,8 +2491,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       {/* User Modal */}
       {isUserModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-fadeIn">
-          <div className="frost-card shadow-lg max-w-md w-full p-6 space-y-4">
-            <h3 className="text-base sm:text-lg font-bold text-[#222222]">
+          <div role="dialog" aria-modal="true" aria-labelledby="user-modal-title" className="frost-card shadow-lg max-w-md w-full p-6 space-y-4">
+            <h3 id="user-modal-title" className="text-base sm:text-lg font-bold text-[#222222]">
               {editingUserId ? 'Edit Akun Pengguna' : 'Tambah Pengguna Baru'}
             </h3>
 
@@ -2475,8 +2511,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="frost-label">NIM / NIDN</label>
+                  <label htmlFor="user-identifier" className="frost-label">{userRole === 'mahasiswa' ? 'NIM' : userRole === 'dosen' ? 'NIDN' : 'Username'}</label>
                   <input
+                    id="user-identifier"
                     type="text"
                     value={userUsername}
                     onChange={(e) => setUserUsername(e.target.value)}
@@ -2484,6 +2521,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     className="frost-input font-mono"
                     required
                   />
+                  {userRole !== 'admin' && <p className="text-xs text-[#555555] mt-1">Username login otomatis mengikuti {userRole === 'mahasiswa' ? 'NIM' : 'NIDN'}. Password tetap sama.</p>}
                 </div>
                 <div>
                   <label className="frost-label">Peran (Role)</label>
@@ -2500,44 +2538,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
 
               <div>
-                <label className="frost-label">Email</label>
+                <label htmlFor="user-email" className="frost-label">Email</label>
                 <input
+                  id="user-email"
                   type="email"
                   value={userEmail}
                   onChange={(e) => setUserEmail(e.target.value)}
                   placeholder="email@stmik-arungbinang.ac.id"
                   className="frost-input"
                 />
+                {editingUserId && <p className="text-xs text-[#555555] mt-1">Admin dapat mengubah email tanpa OTP. Email baru ditandai belum terverifikasi.</p>}
               </div>
 
-              <div>
-                <label className="frost-label flex items-center justify-between">
-                  <span>Kata Sandi Akun</span>
-                  <span className="text-xs font-normal text-[#777777]">
-                    {editingUserId ? 'Kosongkan jika tidak diubah' : 'Default sesuai role jika kosong'}
-                  </span>
-                </label>
-                <div className="relative">
-                  <input
-                    type={showUserPassword ? 'text' : 'password'}
-                    value={userPassword}
-                    onChange={(e) => setUserPassword(e.target.value)}
-                    placeholder={editingUserId ? 'Masukkan kata sandi baru untuk akun ini' : 'pass123 / dosen123 / baak123'}
-                    className="frost-input pr-10 font-mono text-sm"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowUserPassword(!showUserPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[#777777] hover:text-[#222222] p-1 cursor-pointer"
-                    title={showUserPassword ? 'Sembunyikan sandi' : 'Tampilkan sandi'}
-                  >
-                    {showUserPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                </div>
-                <p className="text-[11px] text-[#555555] mt-1">
-                  Perubahan email dan kata sandi otomatis tersimpan di database dan langsung diselaraskan ke seluruh sistem.
-                </p>
-              </div>
+              <p className="text-xs text-[#555555]">Kelola email dan reset password melalui panel Email dan Aktivasi Akun. Akun baru belum memiliki password sampai diaktivasi.</p>
 
               {userRole === 'mahasiswa' && (
                 <div className="grid grid-cols-2 gap-3">
@@ -2578,10 +2591,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </div>
               )}
 
+              {userFormError && <p role="alert" className="text-sm text-red-700">{userFormError}</p>}
               <div className="pt-4 flex items-center justify-end gap-2">
                 <button
                   type="button"
                   onClick={() => setIsUserModalOpen(false)}
+                  disabled={isSavingUser}
                   data-frost="Button"
                   className="frost-btn frost-btn-sm frost-btn-outline frost-btn-neutral"
                 >
@@ -2589,10 +2604,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </button>
                 <button
                   type="submit"
+                  disabled={isSavingUser}
                   data-frost="Button"
                   className="frost-btn frost-btn-sm frost-btn-solid frost-btn-brand"
                 >
-                  Simpan Pengguna
+                  {isSavingUser ? 'Menyimpan...' : 'Simpan Pengguna'}
                 </button>
               </div>
             </form>
@@ -2640,11 +2656,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         courses={courses}
         existingStudents={students}
         existingRombels={rombels}
-        onSave={(data) => {
+        onSave={async (data) => {
           if (editingStudent) {
-            updateStudent(editingStudent.nim, data);
+            await updateStudent(editingStudent.nim, data);
           } else {
-            addStudent(data);
+            await addStudent(data);
           }
         }}
       />
@@ -2657,11 +2673,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         schedules={schedules}
         courses={courses}
         existingRombels={rombels}
-        onSave={(data, scheduleIds) => {
-          addRombel(data, scheduleIds);
+        onSave={async (data, scheduleIds) => {
+          await addRombel(data, scheduleIds);
         }}
-        onUpdate={(id, data, scheduleIds, previousCode) => {
-          updateRombel(id, data, scheduleIds, previousCode);
+        onUpdate={async (id, data, scheduleIds, previousCode) => {
+          await updateRombel(id, data, scheduleIds, previousCode);
         }}
       />
 
@@ -2673,11 +2689,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         users={users}
         schedules={schedules}
         existingCourses={courses}
-        onSave={(data) => {
-          addCourse(data);
+        onSave={async (data) => {
+          await addCourse(data);
         }}
-        onUpdate={(id, data) => {
-          updateCourse(id, data);
+        onUpdate={async (id, data) => {
+          await updateCourse(id, data);
         }}
       />
 
@@ -2741,4 +2757,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       />
     </div>
   );
+};
+
+export const AdminDashboard: React.FC<AdminDashboardProps> = props => {
+  const { demoScope } = useAttendance();
+  return <AdminDashboardContent key={demoScope ? 'demo' : 'regular'} {...props} />;
 };

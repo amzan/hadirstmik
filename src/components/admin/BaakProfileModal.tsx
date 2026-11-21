@@ -1,3 +1,4 @@
+import { EmailVerificationSection } from '../shared/EmailVerificationSection';
 import React, { useState, useEffect, useRef } from 'react';
 import { useAttendance } from '../../context/AttendanceContext';
 import { ChangePasswordOtpSection } from '../shared/ChangePasswordOtpSection';
@@ -50,10 +51,10 @@ export const BaakProfileModal: React.FC<BaakProfileModalProps> = ({
   // Form states
   const [name, setName] = useState(currentUser.name || 'Administrator Akademik (BAAK)');
   const [title, setTitle] = useState(currentUser.title || 'Kepala Bagian BAAK');
-  const [email, setEmail] = useState(currentUser.email || 'baak@stmik-arungbinang.ac.id');
-  const [newPassword, setNewPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
-  const [phone, setPhone] = useState(currentUser.phone || '081234567890');
+  const [email, setEmail] = useState(currentUser.email || '');
+  const [emailPassword, setEmailPassword] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+  const [phone, setPhone] = useState(currentUser.phone || '');
   const [officeRoom, setOfficeRoom] = useState(currentUser.officeRoom || 'Gedung Rektorat Lt. 1 Ruang BAAK');
   const [avatarUrl, setAvatarUrl] = useState(currentUser.avatarUrl || BAAK_AVATAR_PRESETS[0].url);
   const [showCustomAvatarInput, setShowCustomAvatarInput] = useState(false);
@@ -69,8 +70,8 @@ export const BaakProfileModal: React.FC<BaakProfileModalProps> = ({
     if (isOpen) {
       setName(currentUser.name || 'Administrator Akademik (BAAK)');
       setTitle(currentUser.title || 'Kepala Bagian BAAK');
-      setEmail(currentUser.email || 'baak@stmik-arungbinang.ac.id');
-      setPhone(currentUser.phone || '081234567890');
+      setEmail(currentUser.email || '');
+      setPhone(currentUser.phone || '');
       setOfficeRoom(currentUser.officeRoom || 'Gedung Rektorat Lt. 1 Ruang BAAK');
       setAvatarUrl(currentUser.avatarUrl || BAAK_AVATAR_PRESETS[0].url);
       setSaveSuccess(false);
@@ -160,8 +161,11 @@ export const BaakProfileModal: React.FC<BaakProfileModalProps> = ({
 
   if (!isOpen) return null;
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSaving) return;
+    setIsSaving(true);
+    try {
     setErrorMessage('');
 
     const cleanName = name.trim();
@@ -171,35 +175,36 @@ export const BaakProfileModal: React.FC<BaakProfileModalProps> = ({
     }
 
     const cleanEmail = email.trim();
-    if (!cleanEmail || !cleanEmail.includes('@')) {
+    if (cleanEmail !== (currentUser.email || '') && (!cleanEmail || !cleanEmail.includes('@'))) {
       setErrorMessage('Alamat email BAAK harus valid.');
       return;
     }
 
-    const payload: Partial<AppUser> = {
+    const payload: Partial<AppUser> & { currentPassword?: string } = {
       name: cleanName,
       title: title.trim(),
       email: cleanEmail,
+      ...(cleanEmail.toLowerCase() !== (currentUser.email || '').toLowerCase() ? { currentPassword: emailPassword } : {}),
       phone: phone.trim(),
       officeRoom: officeRoom.trim(),
       avatarUrl: avatarUrl.trim(),
     };
 
-    if (newPassword.trim()) {
-      if (newPassword.trim().length < 6) {
-        setErrorMessage('Kata sandi baru minimal terdiri dari 6 karakter.');
-        return;
-      }
-      payload.password = newPassword.trim();
+    if (email.trim().toLowerCase() !== (currentUser.email || '').toLowerCase() && !emailPassword) {
+      setErrorMessage('Masukkan password saat ini untuk mengubah email.');
+      return;
     }
 
-    updateUser(currentUser.id, payload);
 
+    await updateUser(currentUser.id, payload);
+
+    setEmailPassword('');
     setSaveSuccess(true);
-    setNewPassword('');
-    setTimeout(() => {
+    setEmailPassword('');
+    setTimeout(async () => {
       setSaveSuccess(false);
     }, 2500);
+    } catch(error) { setErrorMessage(error instanceof Error ? error.message : 'Permintaan gagal.'); } finally { setIsSaving(false); }
   };
 
   return (
@@ -253,9 +258,9 @@ export const BaakProfileModal: React.FC<BaakProfileModalProps> = ({
             }`}
           >
             <KeyRound className="w-4 h-4" />
-            <span>Ganti Password (OTP Email)</span>
+            <span>Ganti Password</span>
             <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-100 text-indigo-700">
-              Resend OTP
+              Tanpa OTP
             </span>
           </button>
           <button
@@ -390,7 +395,7 @@ export const BaakProfileModal: React.FC<BaakProfileModalProps> = ({
                         <button
                           type="button"
                           key={idx}
-                          onClick={() => {
+                          onClick={async () => {
                             setAvatarUrl(p.url);
                             setUploadSuccessInfo('');
                             setUploadError('');
@@ -429,7 +434,7 @@ export const BaakProfileModal: React.FC<BaakProfileModalProps> = ({
                   <input
                     type="text"
                     required
-                    value={name}
+                    aria-label="Nama profil" value={name}
                     onChange={(e) => setName(e.target.value)}
                     placeholder="Contoh: Administrator Akademik (BAAK)"
                     className="w-full px-3.5 py-2 text-sm rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-hidden font-medium text-slate-900"
@@ -466,18 +471,18 @@ export const BaakProfileModal: React.FC<BaakProfileModalProps> = ({
 
                 <div className="sm:col-span-2">
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Email Resmi BAAK (Untuk Notifikasi & Verifikasi OTP) <span className="text-rose-500">*</span>
+                    Email Resmi BAAK <span className="text-rose-500">*</span>
                   </label>
                   <input
                     type="email"
-                    required
-                    value={email}
+                    aria-label="Email profil" value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="baak@stmik-arungbinang.ac.id"
                     className="w-full px-3.5 py-2 text-sm rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-hidden text-slate-900 font-mono"
                   />
+                  <EmailVerificationSection email={email} />
                   <p className="text-[11px] text-slate-500 mt-1">
-                    Kode verifikasi OTP ganti password admin akan dikirimkan ke email ini.
+                    Perubahan email memerlukan password saat ini dan tidak membutuhkan OTP.
                   </p>
                 </div>
 
@@ -487,9 +492,9 @@ export const BaakProfileModal: React.FC<BaakProfileModalProps> = ({
                   </label>
                   <input
                     type="tel"
-                    value={phone}
+                    aria-label="Telepon profil" value={phone}
                     onChange={(e) => setPhone(e.target.value)}
-                    placeholder="081234567890"
+                    placeholder=""
                     className="w-full px-3.5 py-2 text-sm rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-hidden text-slate-900"
                   />
                 </div>
@@ -507,32 +512,12 @@ export const BaakProfileModal: React.FC<BaakProfileModalProps> = ({
                   />
                 </div>
 
-                <div className="sm:col-span-2">
-                  <label className="block text-xs font-semibold text-slate-700 mb-1 flex items-center justify-between">
-                    <span>Kata Sandi Baru Administrator (Opsional)</span>
-                    <span className="text-[11px] font-normal text-slate-500">Kosongkan jika tidak ingin mengubah</span>
-                  </label>
-                  <div className="relative">
-                    <input
-                      type={showPassword ? 'text' : 'password'}
-                      value={newPassword}
-                      onChange={(e) => setNewPassword(e.target.value)}
-                      placeholder="Masukkan kata sandi baru admin (minimal 6 karakter)"
-                      className="w-full px-3.5 py-2 pr-10 text-sm rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-hidden text-slate-900 font-mono"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 p-1 cursor-pointer"
-                      title={showPassword ? 'Sembunyikan sandi' : 'Tampilkan sandi'}
-                    >
-                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                  </div>
-                  <p className="text-[11px] text-slate-500 mt-1">
-                    Jika diisi, kata sandi login admin akan otomatis diperbarui dan diselaraskan ke seluruh database sistem.
-                  </p>
-                </div>
+                {email.trim().toLowerCase() !== (currentUser.email || '').toLowerCase() && <div className="sm:col-span-2">
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Password saat ini untuk mengubah email
+                <input aria-label="Password konfirmasi perubahan email" type="password" autoComplete="current-password" required value={emailPassword} onChange={event => setEmailPassword(event.target.value)} className="frost-input w-full" />
+              </label>
+              <p className="text-xs text-slate-500 mt-1">Email baru ditandai belum terverifikasi. OTP tidak diperlukan.</p>
+            </div>}
               </div>
 
               {/* Bottom Buttons */}
@@ -555,7 +540,7 @@ export const BaakProfileModal: React.FC<BaakProfileModalProps> = ({
                     Tutup
                   </button>
                   <button
-                    type="submit"
+                    type="submit" disabled={isSaving}
                     className="px-5 py-2 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 rounded-lg transition flex items-center gap-1.5 shadow-xs cursor-pointer"
                   >
                     <Check className="w-4 h-4" />
@@ -569,9 +554,6 @@ export const BaakProfileModal: React.FC<BaakProfileModalProps> = ({
             <div className="space-y-4">
               <ChangePasswordOtpSection
                 currentUser={currentUser}
-                overrideEmail={email}
-                onEmailUpdated={(updatedEm) => setEmail(updatedEm)}
-                onPasswordChanged={() => setNewPassword('')}
               />
             </div>
           ) : (

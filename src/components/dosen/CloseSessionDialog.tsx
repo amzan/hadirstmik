@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { AttendanceSession } from '../../types/attendance';
 import { X, Check, Lock } from 'lucide-react';
 
@@ -6,7 +6,7 @@ interface CloseSessionDialogProps {
   isOpen: boolean;
   session: AttendanceSession | null;
   onClose: () => void;
-  onConfirm: () => void;
+  onConfirm: () => void | Promise<unknown>;
 }
 
 export const CloseSessionDialog: React.FC<CloseSessionDialogProps> = ({
@@ -15,10 +15,12 @@ export const CloseSessionDialog: React.FC<CloseSessionDialogProps> = ({
   onClose,
   onConfirm,
 }) => {
+  const [pending,setPending]=useState(false), [error,setError]=useState('');
+  const confirm=async()=>{ if(pending)return; setPending(true);setError(''); try{await onConfirm();}catch(err){setError(err instanceof Error?err.message:'Permintaan gagal.');}finally{setPending(false);} };
   if (!isOpen || !session) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fadeIn">
+    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fadeIn">
       <div className="bg-white rounded-xl shadow-2xl border border-slate-200 max-w-lg w-full overflow-hidden flex flex-col">
         {/* Header */}
         <div className="px-6 py-4 border-b border-slate-100 flex items-start justify-between gap-3">
@@ -36,6 +38,7 @@ export const CloseSessionDialog: React.FC<CloseSessionDialogProps> = ({
             </div>
           </div>
           <button
+            disabled={pending}
             onClick={onClose}
             className="p-1 rounded-lg text-slate-400 hover:text-slate-600 transition cursor-pointer"
           >
@@ -75,9 +78,11 @@ export const CloseSessionDialog: React.FC<CloseSessionDialogProps> = ({
           </div>
         </div>
 
+        {error && <p role="alert" className="px-6 py-2 text-sm text-rose-700">{error}</p>}
         {/* Action Buttons */}
         <div className="p-4 bg-slate-50/80 border-t border-slate-200 flex items-center justify-end gap-3">
           <button
+            disabled={pending}
             onClick={onClose}
             className="px-4 py-2.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 rounded-lg text-sm font-semibold transition cursor-pointer"
           >
@@ -85,7 +90,8 @@ export const CloseSessionDialog: React.FC<CloseSessionDialogProps> = ({
           </button>
 
           <button
-            onClick={onConfirm}
+            disabled={pending}
+            onClick={confirm}
             className="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-sm font-semibold flex items-center gap-2 transition cursor-pointer"
           >
             <Check className="w-4 h-4" />

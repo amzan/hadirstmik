@@ -11,6 +11,9 @@ import { MeetingDatesModal } from './MeetingDatesModal';
 import { BukaSesiModal } from './BukaSesiModal';
 import { DosenProfileModal } from './DosenProfileModal';
 import { isStudentInRombel } from '../../data/initialData';
+import { summarizeAllAttendancePolicy, CURRENT_ACADEMIC_PERIOD } from '../../../shared/attendance-policy.mjs';
+import { sessionsForSchedule } from '../../utils/sessionHistory';
+import { getSessionAttendanceRows, getSessionAttendanceSummary } from '../../utils/sessionAttendance';
 import {
   QrCode, Plus, Download, Users,
   Calendar, FileText, Search, UserCheck, BookOpen, Lock, Play, UserCog
@@ -68,11 +71,12 @@ export const DosenDashboard: React.FC = () => {
     if (selectedMeetingByCourse[sch.id]) {
       return selectedMeetingByCourse[sch.id];
     }
-    const openSes = sessions.find(s => s.courseCode === sch.courseCode && s.rombel === sch.rombel && s.isOpen);
+    const scheduleSessions = sessionsForSchedule(sch, sessions);
+    const openSes = scheduleSessions.find(s => s.isOpen);
     if (openSes) {
       return openSes.meetingNumber;
     }
-    const courseSessions = sessions.filter(s => s.courseCode === sch.courseCode && s.rombel === sch.rombel);
+    const courseSessions = scheduleSessions;
     if (courseSessions.length > 0) {
       const maxMeeting = Math.max(...courseSessions.map(s => s.meetingNumber));
       return Math.min(maxMeeting + 1, 16);
@@ -97,10 +101,10 @@ export const DosenDashboard: React.FC = () => {
   const [searchStudent, setSearchStudent] = useState<string>('');
 
   // Data filters
-  const mySessions = sessions.filter(s => s.lecturerId === currentUser.id || s.lecturerName.includes(currentUser.name));
+  const mySessions = sessions.filter(s => s.lecturerId === currentUser.id);
   const activeSessions = mySessions.filter(s => s.isOpen);
-  const mySchedules = schedules.filter(s => s.lecturerId === currentUser.id || s.lecturerName.includes(currentUser.name));
-  const myLeaveRequests = leaveRequests.filter(req => mySchedules.some(sch => sch.courseCode === req.courseCode));
+  const mySchedules = schedules.filter(s => s.lecturerId === currentUser.id);
+  const myLeaveRequests = leaveRequests.filter(req => req.recipientIds?.includes(currentUser.id));
 
   // Build classified course groups for Session History tabs
   const lecturerCourseTabs = React.useMemo(() => {
@@ -207,9 +211,10 @@ export const DosenDashboard: React.FC = () => {
   const todayLecturerSchedules = mySchedules.filter(s => s.day === activeDay);
   const mySessionIds = mySessions.map(s => s.id);
   const myRecords = records.filter(r => mySessionIds.includes(r.sessionId));
-  const totalLecturerRecords = myRecords.length;
-  const totalLecturerHadir = myRecords.filter(r => r.status === 'HADIR').length;
-  const avgAttendanceRate = totalLecturerRecords > 0 ? Math.round((totalLecturerHadir / totalLecturerRecords) * 100) : 92;
+  const lecturerPolicy = summarizeAllAttendancePolicy(mySessions.filter(session => session.academicPeriod === CURRENT_ACADEMIC_PERIOD), records);
+  const totalLecturerRecords = lecturerPolicy.totalSessions;
+  const totalLecturerHadir = lecturerPolicy.hadir;
+  const avgAttendanceRate = lecturerPolicy.percentage;
 
   const uniqueStudentNims = new Set<string>();
   mySchedules.forEach(s => {
@@ -229,7 +234,7 @@ export const DosenDashboard: React.FC = () => {
             className="w-12 h-12 sm:w-14 sm:h-14 rounded-[8px] bg-[#E4F2FF] border border-[#CCE6FF] text-[#0080FF] font-semibold text-base sm:text-lg flex items-center justify-center shrink-0 hover:bg-[#CCE6FF] transition cursor-pointer"
             title="Klik untuk konfigurasi profil dosen"
           >
-            {getInitials(currentUser.name)}
+            {currentUser.avatarUrl ? <img src={currentUser.avatarUrl} alt="Foto profil dosen" className="w-full h-full rounded-full object-cover" /> : getInitials(currentUser.name)}
           </button>
           <div className="space-y-1">
             <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 text-xs sm:text-sm text-[#555555] font-medium">
@@ -272,7 +277,7 @@ export const DosenDashboard: React.FC = () => {
           <button
             type="button"
             data-frost="Button"
-            onClick={() => {
+            onClick={async () => {
               setScheduleForBukaSesi(mySchedules[0] || schedules[0] || null);
             }}
             className="frost-btn frost-btn-md frost-btn-solid frost-btn-brand"
@@ -284,7 +289,7 @@ export const DosenDashboard: React.FC = () => {
           <button
             type="button"
             data-frost="Button"
-            onClick={() => {
+            onClick={async () => {
               setManualSessionId(activeSessions[0]?.id || mySessions[0]?.id || null);
               setIsManualModalOpen(true);
             }}
@@ -352,7 +357,7 @@ export const DosenDashboard: React.FC = () => {
               {avgAttendanceRate}%
             </div>
             <p className="text-xs sm:text-sm text-[#555555] tabular-nums">
-              {totalLecturerHadir} dari {totalLecturerRecords} rekaman hadir
+              Kehadiran efektif {totalLecturerHadir}/{totalLecturerRecords}; hadir aktual {lecturerPolicy.rawHadir}. Toleransi Izin/Sakit masing-masing 2.
             </p>
           </div>
         </div>
@@ -406,7 +411,7 @@ export const DosenDashboard: React.FC = () => {
             <button
               type="button"
               data-frost="Button"
-              onClick={() => {
+              onClick={async () => {
                 setManualSessionId(activeSessions[0].id);
                 setIsManualModalOpen(true);
               }}
@@ -526,9 +531,10 @@ export const DosenDashboard: React.FC = () => {
                 .map(sch => {
                   const isNow = activeDay === sch.day && simulatedTime >= sch.startTime && simulatedTime <= sch.endTime;
                   const enrolled = getStudentsForRombel(sch.rombel);
-                  const openSession = sessions.find(s => s.courseCode === sch.courseCode && s.rombel === sch.rombel && s.isOpen);
+                  const scheduleSessions = sessionsForSchedule(sch, mySessions);
+                  const openSession = scheduleSessions.find(s => s.isOpen);
                   const currentMeeting = getSelectedMeetingForCourse(sch);
-                  const meetingSession = sessions.find(s => s.courseCode === sch.courseCode && s.rombel === sch.rombel && s.meetingNumber === currentMeeting);
+                  const meetingSession = scheduleSessions.find(s => s.meetingNumber === currentMeeting);
                   const isMeetingOpen = meetingSession?.isOpen;
 
                   return (
@@ -588,12 +594,13 @@ export const DosenDashboard: React.FC = () => {
                             <div className="flex items-center gap-2.5">
                               <label className="text-[#555555] font-medium whitespace-nowrap">Pertemuan:</label>
                               <select
+                                aria-label={`Pertemuan ${sch.id}`}
                                 value={currentMeeting}
                                 onChange={(e) => handleSelectMeeting(sch.id, Number(e.target.value))}
                                 className="frost-select frost-select-sm w-auto font-medium cursor-pointer"
                               >
                                 {Array.from({ length: 16 }, (_, i) => i + 1).map(num => {
-                                  const ses = sessions.find(s => s.courseCode === sch.courseCode && s.rombel === sch.rombel && s.meetingNumber === num);
+                                  const ses = scheduleSessions.find(s => s.meetingNumber === num);
                                   const marker = num === 8 ? ' (UTS)' : num === 16 ? ' (UAS)' : '';
                                   const status = ses ? (ses.isOpen ? ' • Aktif' : ' • Selesai') : '';
                                   return (
@@ -649,7 +656,11 @@ export const DosenDashboard: React.FC = () => {
 
                       {/* Frost-UI Action Bar */}
                       <div className="flex flex-wrap items-center gap-2.5 pt-4 border-t border-[#eeeeee]">
-                        {!isMeetingOpen ? (
+                        {meetingSession && !meetingSession.isOpen ? (
+                          <button type="button" className="frost-btn frost-btn-md frost-btn-solid frost-btn-brand flex-1" onClick={() => setSelectedSessionIdForQr(meetingSession.id)}>
+                            <FileText className="w-4 h-4" /><span className="label">Detail Presensi</span>
+                          </button>
+                        ) : !isMeetingOpen ? (
                           <button
                             type="button"
                             data-frost="Button"
@@ -778,7 +789,7 @@ export const DosenDashboard: React.FC = () => {
                 <button
                   type="button"
                   data-frost="Button"
-                  onClick={() => {
+                  onClick={async () => {
                     setSessionCourseTab('ALL');
                     setSessionRombelFilter('ALL');
                   }}
@@ -796,7 +807,7 @@ export const DosenDashboard: React.FC = () => {
                       key={group.courseCode}
                       type="button"
                       data-frost="Button"
-                      onClick={() => {
+                      onClick={async () => {
                         setSessionCourseTab(group.courseCode);
                         setSessionRombelFilter('ALL');
                       }}
@@ -868,15 +879,8 @@ export const DosenDashboard: React.FC = () => {
                     s => sessionRombelFilter === 'ALL' || s.rombel === sessionRombelFilter
                   );
 
-                  const totalGroupHadir = filteredGroupSessions.reduce((acc, ses) => {
-                    return acc + records.filter(r => r.sessionId === ses.id && r.status === 'HADIR').length;
-                  }, 0);
-                  const totalGroupExpected = filteredGroupSessions.reduce((acc, ses) => {
-                    return acc + Math.max(getStudentsForRombel(ses.rombel).length, 1);
-                  }, 0);
-                  const groupAttendanceRate = filteredGroupSessions.length > 0
-                    ? Math.min(100, Math.round((totalGroupHadir / totalGroupExpected) * 100))
-                    : 0;
+                  const groupPolicy = summarizeAllAttendancePolicy(mySessions, records, { sessionIds: filteredGroupSessions.map(session => session.id) });
+                  const groupAttendanceRate = groupPolicy.percentage;
 
                   const primarySchedule = group.schedules[0] || mySchedules.find(s => s.courseCode === group.courseCode);
 
@@ -897,7 +901,7 @@ export const DosenDashboard: React.FC = () => {
                             <span className="text-xs text-[#555555]">Rombel {group.rombels.join(', ')}</span>
                           </div>
                           <p className="text-xs text-[#555555] tabular-nums">
-                            {filteredGroupSessions.length} dari 16 Pertemuan Terlaksana · Rata-rata Kehadiran Kelas:{' '}
+                            {filteredGroupSessions.length} dari 16 Pertemuan Terlaksana · Kehadiran efektif kelas:{' '}
                             <strong className="text-[#017171] font-semibold">{groupAttendanceRate}%</strong>
                           </p>
                         </div>
@@ -955,15 +959,11 @@ export const DosenDashboard: React.FC = () => {
                       ) : (
                         <div className="divide-y divide-[#eeeeee]">
                           {filteredGroupSessions.map((session) => {
-                            const sRecords = records.filter(r => r.sessionId === session.id);
-                            const hadirCount = sRecords.filter(r => r.status === 'HADIR').length;
-                            const izinCount = sRecords.filter(r => r.status === 'IZIN').length;
-                            const sakitCount = sRecords.filter(r => r.status === 'SAKIT').length;
-                            const alphaCount = sRecords.filter(r => r.status === 'ALPHA').length;
-                            const enrolled = getStudentsForRombel(session.rombel);
-                            const attendancePct = enrolled.length > 0
-                              ? Math.round((hadirCount / enrolled.length) * 100)
-                              : 0;
+                            const enrolled = getSessionAttendanceRows(session, students, records);
+                            const summary = getSessionAttendanceSummary(enrolled);
+                            const hadirCount = summary.HADIR, izinCount = summary.IZIN, sakitCount = summary.SAKIT, alphaCount = summary.ALPHA;
+                            const sessionPolicy = summarizeAllAttendancePolicy(mySessions, records, { sessionIds: [session.id] });
+                            const attendancePct = sessionPolicy.percentage;
 
                             return (
                               <div
@@ -1002,30 +1002,30 @@ export const DosenDashboard: React.FC = () => {
                                     <span className="font-medium text-[#333333]">Rombel {session.rombel}</span>
                                     <span aria-hidden="true">·</span>
                                     <span className="font-semibold text-[#222222]">
-                                      {hadirCount}/{enrolled.length} Hadir ({attendancePct}%)
+                                      {hadirCount}/{enrolled.length} Hadir aktual; Kehadiran efektif {sessionPolicy.hadir}/{sessionPolicy.totalSessions} ({attendancePct}%)
                                     </span>
                                     {(izinCount > 0 || sakitCount > 0 || alphaCount > 0) && (
                                       <span className="text-xs text-[#777777]">
                                         ({izinCount > 0 ? `${izinCount} Izin ` : ''}
                                         {sakitCount > 0 ? `${sakitCount} Sakit ` : ''}
-                                        {alphaCount > 0 ? `${alphaCount} Alpha` : ''})
+                                        {alphaCount > 0 ? `${alphaCount} Alpa` : ''})
                                       </span>
                                     )}
                                   </div>
                                 </div>
 
                                 <div className="flex flex-wrap items-center gap-2 shrink-0">
-                                  <button
+                                  {!session.isArchived && <button
                                     type="button"
                                     data-frost="Button"
-                                    onClick={() => {
+                                    onClick={async () => {
                                       setManualSessionId(session.id);
                                       setIsManualModalOpen(true);
                                     }}
                                     className="frost-btn frost-btn-xs frost-btn-outline frost-btn-brand"
                                   >
                                     <span className="label">Presensi Manual</span>
-                                  </button>
+                                  </button>}
 
                                   <button
                                     type="button"
@@ -1100,7 +1100,7 @@ export const DosenDashboard: React.FC = () => {
             <button
               type="button"
               data-frost="Button"
-              onClick={() => {
+              onClick={async () => {
                 setManualSessionId(activeSessions[0]?.id || mySessions[0]?.id || null);
                 setIsManualModalOpen(true);
               }}
@@ -1309,9 +1309,9 @@ export const DosenDashboard: React.FC = () => {
         isOpen={!!sessionToClose}
         session={sessionToClose}
         onClose={() => setSessionToClose(null)}
-        onConfirm={() => {
+        onConfirm={async () => {
           if (sessionToClose) {
-            closeSession(sessionToClose.id);
+            await closeSession(sessionToClose.id);
             setSessionToClose(null);
           }
         }}
